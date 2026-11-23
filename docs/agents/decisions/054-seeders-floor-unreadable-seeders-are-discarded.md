@@ -1,6 +1,6 @@
 # 54. Seeders floor: unreadable seeders are discarded, unreadable size passes
 
-**Location:** `daemon/search.go` — `filterBySeeders`, `filterSearchResults`, `filterBySize`; `files/filemanager.go` — `Config.MinSeeders` (default `1`); `nyaa/nyaa.go` — `ParseSeeders`.
+**Location:** `daemon/search.go` — `filterBySeeders`, `filterSearchResults`, `filterBySize`; `files/filemanager.go` — `Config.MinSeeders` (default `3`, see the amendment); `nyaa/nyaa.go` — `ParseSeeders`.
 
 **What it looks like:** two filters with an almost identical contract and an asymmetry of purpose — `Size == 0` (parse failed) **passes** the size ceiling, `seeders == 0` (including `"-"`) **does not pass** the floor.
 
@@ -12,6 +12,13 @@
 
 **(c) The filter stayed in the daemon, not in nyaa's `parseRow`.** The plan asked for it in parse, "before any sort". Because the sort is stable and the filters preserve order, the pick is the same; and in the daemon it reuses `filterBySize`'s pattern, holds for every search call site at one point (`filterSearchResults`) and keeps nyaa's `"Found N results"` log showing the dead torrent with its seeders — which is what diagnoses. `nyaa.ParseSeeders` exists only for that (same pattern as `IsBatch`/`ExtractSeason`).
 
+**Amendment (2026-11-23):** the default has been `3` since `d1d7091`, which changed it without
+recording why. The reason now written next to the field: `1` bars only the literally dead
+torrent, and a single seeder (or two) stalls often enough to count as "does not download in
+practice". So (a) holds with the floor at 3 instead of 1. The floor still only removes what
+won't finish; choosing among torrents that will is still `health`'s job (decisions/055).
+
 **Don't "fix" by:**
 - Making `Size == 0` discarded "for symmetry with seeders" (see (b)).
-- Raising the default to "only a healthy torrent": ranking is `health`'s job, not the floor's — the floor exists for what does not download at all.
+- Raising the default to "only a healthy torrent" (10, 50…): ranking healthy torrents is `health`'s
+  job, not the floor's — the floor exists for what does not download, in practice, at all.

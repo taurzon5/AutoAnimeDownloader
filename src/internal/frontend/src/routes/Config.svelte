@@ -127,15 +127,15 @@
     completed_anime_path: "",
     check_interval: 10,
     max_episodes_per_anime: 12,
-    max_batch_torrent_size_gb: 0,
-    max_episode_torrent_size_gb: 0,
-    min_seeders: 1,
+    max_batch_torrent_size_gb: 100,
+    max_episode_torrent_size_gb: 5,
+    min_seeders: 3,
     max_search_pages: 5,
     min_free_disk_gb: 10,
     episode_retry_limit: 5,
     max_concurrent_downloads: 3,
     delete_watched_episodes: true,
-    watched_episodes_to_keep: 0,
+    watched_episodes_to_keep: 2,
     excluded_lists: [],
     rename_files_for_jellyfin: false,
     disable_seeding: false,
@@ -143,7 +143,7 @@
     download_statuses: ["CURRENT", "REPEATING"],
     download_media_statuses: ["RELEASING", "FINISHED"],
     delete_statuses: [],
-    notifications: { webhooks: [], batch_window_seconds: 0 },
+    notifications: { webhooks: [], batch_window_seconds: 60 },
     priorities: {
       criteria_order: [],
       fansubs: [],
@@ -194,6 +194,9 @@
   }
 
   let loading = true;
+  /** The load failed: the form must NOT render. Its starting values are not the user's config, and
+   * saving them would overwrite it. */
+  let loadFailed = false;
   let saving = false;
   let showMissingConfigBanner = false;
   // Snapshot of what was loaded (or last saved); "" = nothing loaded, never dirty. Taken AFTER the
@@ -247,6 +250,7 @@
   async function loadConfig() {
     try {
       loading = true;
+      loadFailed = false;
       const data = await getConfig();
       config = { ...data, anilist_usernames: data.anilist_usernames ?? [], mal_usernames: data.mal_usernames ?? [] };
       if (config.anilist_username && (config.anilist_usernames ?? []).length === 0) {
@@ -256,6 +260,7 @@
       if (!Array.isArray(config.notifications.webhooks)) config.notifications.webhooks = [];
       baseline = snapshot(config);
     } catch (err) {
+      loadFailed = true;
       toast.error(err instanceof Error ? err.message : m.config_error_load());
     } finally {
       loading = false;
@@ -383,6 +388,11 @@
 
   {#if loading}
     <Loading message={T && T.loading || ""} />
+  {:else if loadFailed}
+    <div class="flex flex-wrap items-center gap-3 rounded-card border border-default bg-card p-4.5" role="alert">
+      <p class="text-copy text-body">{m.config_error_load()}</p>
+      <Button variant="ghost" on:click={loadConfig}>{m.config_btn_retry_load()}</Button>
+    </div>
   {:else}
     <form on:submit|preventDefault={saveConfig} class="space-y-4">
       <!-- Asterisk legend. Without it the `*` is an implicit convention; with one group at a time,

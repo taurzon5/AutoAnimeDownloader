@@ -154,10 +154,11 @@ func filterBySize(results []nyaa.TorrentResult, maxGB float64) ([]nyaa.TorrentRe
 // filterBySeeders discards torrents with fewer than minSeeders. minSeeders <= 0 turns the filter off.
 //
 // Same contract as filterBySize (runs after the sort, keeps the order). Here, unlike the size, an
-// unreadable seeders count counts as 0 and is DISCARDED with the default of 1: Nyaa's seeders column
-// is the only sign that someone is seeding, and a torrent without a seeder never downloads — letting
-// it pass trades "doesn't pick this one" for "locks the episode on a dead torrent", which is exactly
-// what happened with the only candidate for Naruto Shippuuden episode 3 (0 peers).
+// unreadable seeders count counts as 0 and is DISCARDED with any floor above 0 (the default is 3):
+// Nyaa's seeders column is the only sign that someone is seeding, and a torrent without a seeder
+// never downloads — letting it pass trades "doesn't pick this one" for "locks the episode on a dead
+// torrent", which is exactly what happened with the only candidate for Naruto Shippuuden episode 3
+// (0 peers).
 func filterBySeeders(results []nyaa.TorrentResult, minSeeders int) ([]nyaa.TorrentResult, int) {
 	if minSeeders <= 0 || len(results) == 0 {
 		return results, 0

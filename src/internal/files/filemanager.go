@@ -128,8 +128,9 @@ type Config struct {
 	MaxBatchTorrentSizeGB   float64 `json:"max_batch_torrent_size_gb"`
 	MaxEpisodeTorrentSizeGB float64 `json:"max_episode_torrent_size_gb"`
 	// MinSeeders drops from the search any torrent with fewer seeders than this. 0 disables. The
-	// default is 1: it only bars the literally dead torrent, which without a floor is a valid
-	// candidate and even gets picked when it's the episode's only result.
+	// default is 3, not 1: 1 only bars the literally dead torrent (which without a floor is a valid
+	// candidate and even gets picked when it's the episode's only result), and a single seeder
+	// stalls often.
 	MinSeeders int `json:"min_seeders"`
 	// MaxSearchPages is the ceiling of Nyaa pages per search. The search only goes down to the next
 	// page while it has few accepted candidates, so the ceiling is a limit, not a fixed cost. <= 1
