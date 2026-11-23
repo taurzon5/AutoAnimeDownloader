@@ -1,5 +1,13 @@
 # AutoAnimeDownloader
 
+> [!WARNING]
+> **This repository is vibe-coded.** Its code is written largely by AI coding assistants, and
+> changes may not have been reviewed line by line by a human. It can have bugs that
+> delete or re-download files, fill a disk, or misbehave with your torrents. Read the code before
+> pointing it at a library you care about, keep backups, and use it at your own risk.
+>
+> This is a fork of [icarosuper/AutoAnimeDownloader](https://github.com/icarosuper/AutoAnimeDownloader).
+
 **Automatically downloads your anime from your Anilist or MyAnimeList watching list.**
 
 Syncs with [Anilist](https://anilist.co) and [MyAnimeList](https://myanimelist.net) (one or more accounts — or none at all), scrapes [Nyaa](https://nyaa.si) for matching torrents, and downloads them with a built-in BitTorrent client — all unattended, from a single self-contained binary (no external torrent client to install or configure). Includes an embedded Svelte web UI for monitoring, torrent management and configuration.
