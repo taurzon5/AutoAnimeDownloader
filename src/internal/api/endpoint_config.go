@@ -105,6 +105,11 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
+		if config.NyaaRequestDelaySeconds < 0 {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Nyaa request delay must be non-negative")
+			return
+		}
+
 		if config.MinFreeDiskGB < 0 {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Min free disk space must be non-negative")
 			return

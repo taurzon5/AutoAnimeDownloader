@@ -135,6 +135,9 @@ type Config struct {
 	// page while it has few accepted candidates, so the ceiling is a limit, not a fixed cost. <= 1
 	// means searching only page 1.
 	MaxSearchPages int `json:"max_search_pages"`
+	// NyaaRequestDelaySeconds is the minimum gap between two Nyaa page requests (search pages and
+	// torrent detail pages), across every search of the pass. 0 disables the wait.
+	NyaaRequestDelaySeconds float64 `json:"nyaa_request_delay_seconds"`
 	// MinFreeDiskGB is the slack the disk guard keeps on the library volume, in GiB (2^30).
 	// Adding a torrent is refused when free - reserved would fall below this. 0 disables the
 	// policy; a torrent bigger than free - reserved is still refused (decisions/093).
@@ -220,6 +223,7 @@ func ApplyNyaaSettings(config *Config) (restore func()) {
 		nyaa.SetPriorities(config.Priorities),
 		nyaa.SetMaxSearchPages(config.MaxSearchPages),
 		nyaa.SetMaxBatchTorrentSizeGB(config.MaxBatchTorrentSizeGB),
+		nyaa.SetRequestDelay(config.NyaaRequestDelaySeconds),
 	}
 	return func() {
 		for i := len(restores) - 1; i >= 0; i-- {

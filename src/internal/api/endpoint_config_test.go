@@ -375,6 +375,25 @@ func TestHandleUpdateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("PUT with negative nyaa_request_delay_seconds returns 400", func(t *testing.T) {
+		config := files.Config{
+			AnilistUsernames:        []string{"newuser"},
+			CompletedAnimePath:      "/tmp/newcompleted",
+			CheckInterval:           15,
+			MaxEpisodesPerAnime:     20,
+			NyaaRequestDelaySeconds: -0.5,
+		}
+
+		jsonData, _ := json.Marshal(config)
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData))
+		w := httptest.NewRecorder()
+		handler(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, w.Code)
+		}
+	})
+
 	t.Run("PUT with missing anilist_username returns 400", func(t *testing.T) {
 		config := files.Config{
 			CheckInterval:       10,

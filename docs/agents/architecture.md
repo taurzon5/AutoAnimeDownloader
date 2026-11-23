@@ -549,6 +549,11 @@ number, so it is neither an episode nor a labeled pack
 walks further while accepted candidates are below `enoughCandidates` (3) and the page has rows, up
 to `ActiveMaxSearchPages()`. An error is only an error on page 1.
 
+**Every Nyaa HTML request must go through `fetchNyaaPage`** — search pages and the `/view/<id>`
+detail page alike. That is where `nyaa_request_delay_seconds` waits for the one global request
+slot (`pacing.go`, [decisions/135](decisions/135-the-nyaa-request-gap-is-one-global-slot-held.md));
+a new direct `httpGet` against Nyaa would skip the gap.
+
 **Episode search drops batches and movies, and the right guard is `hasMovieMarker`, not `isMovie`**
 (decisions/053) — two similar functions and only one is safe here. A long series (>100 episodes)
 **also** gets the 3-digit zero-padded variant, never in place of the plain one, and what unlocks it

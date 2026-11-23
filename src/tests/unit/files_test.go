@@ -268,6 +268,28 @@ func TestManager_LoadConfigs_AppliesDefaultPrioritiesToNyaa(t *testing.T) {
 	if nyaa.ActiveMaxSearchPages() != 5 {
 		t.Fatalf("expected LoadConfigs to apply max_search_pages to nyaa, got %d", nyaa.ActiveMaxSearchPages())
 	}
+	if nyaa.ActiveRequestDelay() != 0 {
+		t.Fatalf("expected the default nyaa_request_delay_seconds 0 to leave the wait off, got %v", nyaa.ActiveRequestDelay())
+	}
+}
+
+func TestManager_LoadConfigs_AppliesNyaaRequestDelay(t *testing.T) {
+	defer nyaa.SetRequestDelay(0)()
+
+	mockFS := NewMockFileSystem()
+	mockFS.SetFile("/config.json", []byte(`{"nyaa_request_delay_seconds": 2.5}`))
+	manager := files.NewManager(mockFS, "/config.json", "/episodes.txt", "/blocked_episodes", "/anime_settings", "/standalone_animes")
+
+	config, err := manager.LoadConfigs()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.NyaaRequestDelaySeconds != 2.5 {
+		t.Fatalf("expected nyaa_request_delay_seconds 2.5, got %v", config.NyaaRequestDelaySeconds)
+	}
+	if got := nyaa.ActiveRequestDelay(); got != 2500*time.Millisecond {
+		t.Fatalf("expected LoadConfigs to push 2.5s to nyaa, got %v", got)
+	}
 }
 
 func TestManager_SaveConfigs_WithValidConfig(t *testing.T) {
