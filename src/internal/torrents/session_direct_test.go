@@ -359,7 +359,7 @@ func TestDirectMode_RedownloadPlacementFetchesTheDeletedFileAgain(t *testing.T) 
 	if err := os.Remove(final); err != nil {
 		t.Fatal(err)
 	}
-	if err := leech.RedownloadPlacement(hash); err != nil {
+	if err := leech.RedownloadPlacement(hash, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -463,7 +463,7 @@ func TestSessionManager_RedownloadPlacementRespectsTheQueue(t *testing.T) {
 		}
 	}
 	for _, h := range hashes {
-		if err := m.RedownloadPlacement(h); err != nil {
+		if err := m.RedownloadPlacement(h, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

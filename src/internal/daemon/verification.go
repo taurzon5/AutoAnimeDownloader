@@ -89,8 +89,21 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 			logger.Logger.Error().Err(err).
 				Str("completed_anime_path", configs.CompletedAnimePath).
 				Msg("Completed anime path is not writable; skipping verification")
-			state.SetLastCheckError(fmt.Errorf("%w: %w", errCauseLibrary, err))
+			state.SetLastCheckError(fmt.Errorf("%w: %w", errCauseLibraryUnwritable, err))
 			return
+		}
+		// The incomplete folder's drive unmounted: every new download would stop at its first
+		// file, and creating the folder would fill the system disk under the mount point. The
+		// pass stops here, and once the folder is back the torrents waiting for it start again
+		// (decisions/141).
+		if staging := configs.StagingPath(); staging != "" {
+			if err := files.ProbeIncompleteFolder(staging, configs.CompletedAnimePath); err != nil {
+				logger.Logger.Error().Err(err).
+					Str("incomplete_path", staging).
+					Msg("Incomplete downloads folder is unavailable; skipping verification")
+				state.SetLastCheckError(fmt.Errorf("%w: %w", errCauseIncomplete, err))
+				return
+			}
 		}
 	} else if librarian != nil {
 		if err := librarian.ProbePath(configs.CompletedAnimePath); err != nil {
@@ -134,6 +147,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		// unmounted drive is worth knowing about before the redownloads fill the disk underneath it.
 		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared, configs.IsDirectMode()))
 	}
+	resumeTorrentsWaitingForStaging(backend)
 
 	// downloadedTorrents is an in-memory snapshot of the embedded client (cheap, no I/O).
 	//
@@ -358,6 +372,7 @@ outer:
 	} else {
 		// Only with the reloaded list: the snapshot misses the records this pass just wrote.
 		pruneOrphanPlacements(backend, afterPass, time.Now())
+		pruneStagingLeftovers(backend, configs.StagingPath(), time.Now())
 	}
 	alertsAfterPass(configs, passAlerts{problems: problems, limits: limits, watching: watching, animes: animes, saved: afterPass,
 		listsComplete: passLists.allRecordedSince(listDownload, configuredAccounts(configs), passStarted),

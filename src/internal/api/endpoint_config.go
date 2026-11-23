@@ -81,6 +81,13 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 				return
 			}
+			// Hardlink mode ignores incomplete_path, so a stale value there doesn't block a save.
+			if config.IncompletePath != "" {
+				if err := files.ProbeIncompleteFolder(config.IncompletePath, config.CompletedAnimePath); err != nil {
+					JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+					return
+				}
+			}
 		} else if server.Librarian != nil {
 			if err := server.Librarian.ProbePath(config.CompletedAnimePath); err != nil {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
@@ -107,6 +114,11 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 
 		if config.WatchedEpisodesToKeep < 0 {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Watched episodes to keep must be non-negative")
+			return
+		}
+
+		if config.IncompleteMinFreeDiskGB < 0 {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Incomplete folder minimum free space must be non-negative")
 			return
 		}
 

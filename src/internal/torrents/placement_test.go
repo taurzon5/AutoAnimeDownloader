@@ -544,3 +544,34 @@ func TestPlacedStorage_OpenRefusesToRecreateADeletedFinishedFile(t *testing.T) {
 		t.Fatal("nothing may be created")
 	}
 }
+
+// A staging placement writes under <IncompleteRoot>/<hash>/, by the final name, never .part, and
+// never creates the root itself (decisions/141).
+func TestPlacedStorage_StagingWritesInTheIncompleteFolder(t *testing.T) {
+	_, ps, lib := newPlaced(t, true, "ep.mkv")
+	staging := t.TempDir()
+	p, _ := ps.store.get(testHash)
+	p.IncompleteRoot = staging
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	writeThrough(t, ps, "ep.mkv")
+	if _, err := os.Stat(filepath.Join(staging, testHash, "Show", "Season 01", "ep.mkv")); err != nil {
+		t.Fatalf("the file must be staged by its final name: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(lib, "Show", "Season 01", "ep.mkv"+partSuffix)); err == nil {
+		t.Fatal("nothing may be written to the library while staging")
+	}
+
+	gone := filepath.Join(t.TempDir(), "unmounted")
+	p.IncompleteRoot = gone
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ps.Open("ep.mkv", 4); !errors.Is(err, ErrIncompleteFolderUnavailable) {
+		t.Fatalf("a missing root must stop the torrent, got %v", err)
+	}
+	if _, err := os.Stat(gone); err == nil {
+		t.Fatal("the incomplete folder must never be created")
+	}
+}

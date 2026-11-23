@@ -7,14 +7,18 @@ import "errors"
 // sentence. Before this the Status screen banner showed the raw `error.Error()`, which in
 // practice meant dumping an AniList response JSON in the user's face.
 const (
-	PassErrConfig  = "config"          // couldn't read or write the configuration
-	PassErrSetup   = "setup"           // setup is incomplete (library folder)
-	PassErrLibrary = "library"         // the library folder doesn't accept hardlinks
-	PassErrTorrent = "torrent_backend" // the torrent client didn't start
-	PassErrAnilist = "anilist"         // AniList didn't answer
-	PassErrMAL     = "mal"             // every MyAnimeList account failed and nothing else answered
-	PassErrStorage = "storage"         // the app's own data (episodes.json, migrations)
-	PassErrUnknown = "unknown"
+	PassErrConfig  = "config"  // couldn't read or write the configuration
+	PassErrSetup   = "setup"   // setup is incomplete (library folder)
+	PassErrLibrary = "library" // the library folder doesn't accept hardlinks
+	// PassErrLibraryUnwritable is direct mode's library failure: it needs no hardlinks, only a
+	// folder it can write to.
+	PassErrLibraryUnwritable = "library_unwritable"
+	PassErrIncomplete        = "incomplete_folder" // incomplete_path is gone or not writable (decisions/141)
+	PassErrTorrent           = "torrent_backend"   // the torrent client didn't start
+	PassErrAnilist           = "anilist"           // AniList didn't answer
+	PassErrMAL               = "mal"               // every MyAnimeList account failed and nothing else answered
+	PassErrStorage           = "storage"           // the app's own data (episodes.json, migrations)
+	PassErrUnknown           = "unknown"
 )
 
 // Sentinels wrapped into the error at the abort site. The code travels INSIDE the error instead
@@ -25,10 +29,13 @@ var (
 	errCauseConfig  = errors.New("configuration")
 	errCauseSetup   = errors.New("incomplete configuration")
 	errCauseLibrary = errors.New("library")
-	errCauseTorrent = errors.New("torrent client")
-	errCauseAnilist = errors.New("anilist")
-	errCauseMAL     = errors.New("myanimelist")
-	errCauseStorage = errors.New("app data")
+	// Checked before errCauseLibrary: it is the more specific one.
+	errCauseLibraryUnwritable = errors.New("library not writable")
+	errCauseIncomplete        = errors.New("incomplete downloads folder")
+	errCauseTorrent           = errors.New("torrent client")
+	errCauseAnilist           = errors.New("anilist")
+	errCauseMAL               = errors.New("myanimelist")
+	errCauseStorage           = errors.New("app data")
 )
 
 // passErrorCode translates an aborted pass's error into the code the frontend understands.
@@ -40,6 +47,10 @@ func passErrorCode(err error) string {
 		return PassErrConfig
 	case errors.Is(err, errCauseSetup):
 		return PassErrSetup
+	case errors.Is(err, errCauseLibraryUnwritable):
+		return PassErrLibraryUnwritable
+	case errors.Is(err, errCauseIncomplete):
+		return PassErrIncomplete
 	case errors.Is(err, errCauseLibrary):
 		return PassErrLibrary
 	case errors.Is(err, errCauseTorrent):

@@ -23,6 +23,11 @@ type StatusResponse struct {
 	// session still has to write, against min_free_disk_gb. Computed on the server on purpose: a
 	// threshold duplicated in the frontend would end up disagreeing with what the daemon is doing.
 	DiskLow bool `json:"disk_low" example:"false"`
+	// IncompleteDiskTotal and IncompleteDiskFree describe the incomplete_path volume, only when
+	// that folder is set and on another filesystem than the library (decisions/141). disk_low covers
+	// both volumes.
+	IncompleteDiskTotal uint64 `json:"incomplete_disk_total,omitempty" example:"1000204886016"`
+	IncompleteDiskFree  uint64 `json:"incomplete_disk_free,omitempty" example:"266287972352"`
 	// Anilist is AniList's last known state, written by ANY call (the daemon's pass or the
 	// frontend's poll). It travels here, and not in its own endpoint, because /status is already
 	// polled and is already the payload the WebSocket pushes — see decisions/066.
@@ -48,7 +53,7 @@ func handleStatus(server *Server) http.HandlerFunc {
 
 		status, lastCheck, hasError := server.State.GetAll()
 
-		var diskTotal, diskFree uint64
+		var diskTotal, diskFree, incompleteTotal, incompleteFree uint64
 		diskLow := false
 		// Same volume as the download directory, by construction (see Config.DownloadPath).
 		if cfg, err := server.FileManager.LoadConfigs(); err == nil && cfg.CompletedAnimePath != "" {
@@ -62,6 +67,9 @@ func handleStatus(server *Server) http.HandlerFunc {
 				saved = eps
 			}
 			diskLow = daemon.DiskLow(cfg, session, saved)
+			if staging := cfg.StagingPath(); staging != "" && !files.SameFilesystem(staging, cfg.CompletedAnimePath) {
+				incompleteTotal, incompleteFree, _ = files.DiskSpace(staging)
+			}
 		}
 
 		response := StatusResponse{
@@ -73,6 +81,9 @@ func handleStatus(server *Server) http.HandlerFunc {
 			DiskFree:  diskFree,
 			DiskLow:   diskLow,
 			Anilist:   anilist.CurrentHealth(),
+
+			IncompleteDiskTotal: incompleteTotal,
+			IncompleteDiskFree:  incompleteFree,
 		}
 		response.LatestVersion, response.LatestVersionURL = updates.Latest()
 		if server.DataDir != "" {

@@ -50,7 +50,7 @@ func DiskLow(configs *files.Config, session []torrents.TorrentInfo, saved []file
 	if configs == nil {
 		return false
 	}
-	return checkDiskSpace(configs, 0, newDiskBudget(session, saved).reserved) != nil
+	return newDiskBudget(session, saved).check(configs, 0) != nil
 }
 
 // checkDiskSpace blocks ADDING new torrents when the library volume is full OR when the requested
@@ -77,12 +77,35 @@ func DiskLow(configs *files.Config, session []torrents.TorrentInfo, saved []file
 // a full disk, and turning it into "stop downloading everything" is worse than the risk the guard
 // covers.
 func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64) error {
+	// Same volume as the download directory, by construction (see Config.DownloadPath).
+	return checkVolumeSpace(configs.CompletedAnimePath, configs.MinFreeDiskGB, torrentSizeBytes, reservedBytes)
+}
+
+// checkBudgetSpace is the add gate with the incomplete folder (decisions/141). Without one, or
+// with one on the library's own filesystem (where finishing is a hard link, not a copy), it is
+// checkDiskSpace. With one on another drive, both volumes must take the torrent: the library
+// also counts what staging torrents hold and have not moved yet (stagedPending), and the
+// incomplete folder's volume counts what staging torrents still have to download (staged), with
+// its own floor, incomplete_min_free_disk_gb.
+func checkBudgetSpace(configs *files.Config, torrentSizeBytes, reservedBytes, stagedBytes, stagedPendingBytes int64) error {
+	staging := configs.StagingPath()
+	if staging == "" || files.SameFilesystem(staging, configs.CompletedAnimePath) {
+		return checkDiskSpace(configs, torrentSizeBytes, reservedBytes)
+	}
+	if err := checkDiskSpace(configs, torrentSizeBytes, reservedBytes+stagedPendingBytes); err != nil {
+		return err
+	}
+	return checkVolumeSpace(staging, configs.IncompleteMinFreeDiskGB, torrentSizeBytes, stagedBytes)
+}
+
+// checkVolumeSpace is the guard on one volume: path's filesystem must take torrentSizeBytes on
+// top of reservedBytes, and keep minFreeGB GiB after that.
+func checkVolumeSpace(path string, minFreeGB int, torrentSizeBytes, reservedBytes int64) error {
 	needed := torrentSizeBytes + reservedBytes
-	if configs.CompletedAnimePath == "" || (configs.MinFreeDiskGB <= 0 && needed <= 0) {
+	if path == "" || (minFreeGB <= 0 && needed <= 0) {
 		return nil
 	}
-	// Same volume as the download directory, by construction (see Config.DownloadPath).
-	total, free, err := files.DiskSpace(configs.CompletedAnimePath)
+	total, free, err := files.DiskSpace(path)
 	if err != nil {
 		logger.Logger.Debug().Err(err).Msg("Disk space guard: statfs failed, not blocking downloads")
 		return nil
@@ -91,14 +114,14 @@ func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64
 		return nil
 	}
 	if needed > 0 && float64(needed) > float64(free) {
-		return fmt.Errorf("%w: torrent needs %d bytes on top of %d reserved by torrents still downloading, only %d free on %s", ErrInsufficientDiskSpace, torrentSizeBytes, reservedBytes, free, configs.CompletedAnimePath)
+		return fmt.Errorf("%w: torrent needs %d bytes on top of %d reserved by torrents still downloading, only %d free on %s", ErrInsufficientDiskSpace, torrentSizeBytes, reservedBytes, free, path)
 	}
-	if configs.MinFreeDiskGB <= 0 {
+	if minFreeGB <= 0 {
 		return nil
 	}
 	leftover := int64(free) - needed
-	if leftover < int64(configs.MinFreeDiskGB)*giB {
-		return fmt.Errorf("%w: %d GiB free required on %s (torrent: %d bytes, reserved by torrents still downloading: %d bytes)", ErrInsufficientDiskSpace, configs.MinFreeDiskGB, configs.CompletedAnimePath, torrentSizeBytes, reservedBytes)
+	if leftover < int64(minFreeGB)*giB {
+		return fmt.Errorf("%w: %d GiB free required on %s (torrent: %d bytes, reserved by torrents still downloading: %d bytes)", ErrInsufficientDiskSpace, minFreeGB, path, torrentSizeBytes, reservedBytes)
 	}
 	return nil
 }
@@ -118,6 +141,13 @@ func HandleTorrentFailure(hash string, cause error, backend torrents.TorrentBack
 	// A finished direct-mode torrent whose library file was deleted outside the app stops with an
 	// error, because the placement storage refuses to recreate the file. That is the warning and
 	// nothing else (decisions/139): no drop, no re-add, no download_failed.
+	// The incomplete folder is gone (its drive unmounted): dropping and re-adding would only fail
+	// the same way. The download queue starts the torrent again on every pass, which works as soon
+	// as the folder is back; until then the pass reports the folder (decisions/141).
+	if errors.Is(cause, torrents.ErrIncompleteFolderUnavailable) {
+		logger.Logger.Warn().Str("hash", hash).Msg("The incomplete downloads folder is unavailable; the torrent waits for it")
+		return
+	}
 	if backend != nil {
 		if p, ok := backend.Placement(hash); ok && PlacedFilesMissing(p) {
 			logger.Logger.Warn().Str("hash", hash).Str("series_dir", p.SeriesDir).

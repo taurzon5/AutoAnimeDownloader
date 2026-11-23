@@ -127,7 +127,7 @@ func stopAndWait(t *torrent.Torrent) error {
 //
 // Not a restart of the same torrent, nor rain's Verify: both leave rain trusting the old
 // complete state, and an empty recreated file can pass as finished (decisions/140).
-func (s *Session) RedownloadPlacement(hash string) error {
+func (s *Session) RedownloadPlacement(hash, incompleteRoot string) error {
 	if s.placements == nil {
 		return fmt.Errorf("torrent %s is not a direct-mode torrent", hash)
 	}
@@ -146,7 +146,7 @@ func (s *Session) RedownloadPlacement(hash string) error {
 		return fmt.Errorf("failed to remove torrent %s for the redownload: %w", hash, err)
 	}
 	// After the removal: no instance of this torrent is left to open files under the reopened state.
-	if err := s.placements.reopen(hash); err != nil {
+	if err := s.placements.reopen(hash, incompleteRoot); err != nil {
 		return err
 	}
 	t, err = s.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
@@ -172,12 +172,21 @@ const finalizeStopTimeout = 20 * time.Second
 // files is only marked completed: from then on a missing file is one deleted outside the app
 // (decisions/139). Idempotent: an already completed placement returns at once.
 func (s *Session) FinalizePlacement(hash string) error {
+	return s.finalizePlacement(hash, false)
+}
+
+// finalizePlacement is FinalizePlacement; copied says a staging torrent's files were already
+// copied into the library (SessionManager does that outside its lock, decisions/141).
+func (s *Session) finalizePlacement(hash string, copied bool) error {
 	if s.placements == nil {
 		return nil
 	}
 	stored, ok := s.placements.get(hash)
 	if !ok || stored.Completed {
 		return nil
+	}
+	if stored.IncompleteRoot != "" {
+		return s.finalizeStaged(stored, copied)
 	}
 	if !stored.PartFiles {
 		// Nothing to rename; the mark is what lets Open tell a deleted file from one not written yet.
@@ -433,6 +442,7 @@ func toInfo(t *torrent.Torrent) TorrentInfo {
 		ETASeconds:       eta,
 		SeededForSeconds: int64(st.SeededFor.Seconds()),
 		AddedAt:          t.AddedAt(),
+		StopError:        st.Error,
 	}
 }
 
