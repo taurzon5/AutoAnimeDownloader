@@ -15,5 +15,10 @@ subdirectory still stays) without widening it to "no video". `os.Remove` refuses
 dir, so the sweep has to empty `.chapters` before removing it (`removeLeftover`); FileSystem
 still has no `RemoveAll`.
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** the leftover rule moved: `nfoOnlyFolder` now delegates to
+`nyaa.IsLeftoverMetadataOnly`, which a deleted direct-mode torrent's own folder pruning
+(`torrents.pruneEmptyDirs`) shares. Widening what counts as a leftover also widens what a
+direct-mode delete prunes.
+
 **Don't "fix" by:** widening the sweep to "no video files" (that's the contextual wipe,
 #106); adding `RemoveAll` to `FileSystem`; treating every hidden directory as leftover.

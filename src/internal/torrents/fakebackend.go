@@ -2,6 +2,7 @@ package torrents
 
 import (
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -41,6 +42,15 @@ type FakeBackend struct {
 	MaxActiveDownloads int
 	// UploadDisabled records the last SetUploadDisabled(bool).
 	UploadDisabled bool
+	// DirectMode records the last SetDirectMode(bool).
+	DirectMode bool
+	// placements is the in-memory placement store (never persisted).
+	placements *placementStore
+	// KeepErr, if set, is returned by SetPlacementKept (a failed save of the placements).
+	KeepErr error
+	// LibraryRoot is what placements resolve against. Empty = the parent of the last Ensure path,
+	// like the real manager (the download path is <library>/.torrents).
+	LibraryRoot string
 }
 
 var _ TorrentBackend = (*FakeBackend)(nil)
@@ -138,6 +148,19 @@ func (f *FakeBackend) Remove(hash string, keepData bool) error {
 	}
 	f.RemovedKeepData[hash] = keepData
 	delete(f.torrents, hash)
+	store := f.placements
+	f.mu.Unlock()
+	// A placed torrent removed without keepData loses its files with it, like the real provider.
+	if store != nil && !keepData {
+		if p, ok := store.get(hash); ok {
+			if err := RemovePlacedFiles(p.Resolve(f.libraryRoot())); err != nil {
+				f.mu.Lock()
+				return err
+			}
+			_ = store.forget(hash)
+		}
+	}
+	f.mu.Lock()
 	return nil
 }
 
@@ -235,6 +258,121 @@ func (f *FakeBackend) SetUploadDisabled(disabled bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.UploadDisabled = disabled
+}
+
+// SetDirectMode records the value; the fake has no session to rebuild.
+func (f *FakeBackend) SetDirectMode(enabled bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.DirectMode = enabled
+}
+
+// SetPlacement registers a placement in an in-memory store, with the same rules as the real one
+// (a hash keeps its first placement).
+func (f *FakeBackend) SetPlacement(req PlacementRequest) error {
+	_, err := f.placementStore().register(req)
+	return err
+}
+
+func (f *FakeBackend) Placement(hash string) (Placement, bool) {
+	p, ok := f.placementStore().get(hash)
+	if !ok {
+		return Placement{}, false
+	}
+	return p.Resolve(f.libraryRoot()), true
+}
+
+func (f *FakeBackend) Placements() []Placement {
+	root := f.libraryRoot()
+	stored := f.placementStore().all()
+	out := make([]Placement, len(stored))
+	for i, p := range stored {
+		out[i] = p.Resolve(root)
+	}
+	return out
+}
+
+// AgePlacement backdates a placement's CreatedAt, so tests can drive the orphan sweep's grace.
+func (f *FakeBackend) AgePlacement(hash string, by time.Duration) {
+	store := f.placementStore()
+	if p, ok := store.get(hash); ok {
+		p.CreatedAt = p.CreatedAt.Add(-by)
+		_ = store.update(p)
+	}
+}
+
+func (f *FakeBackend) libraryRoot() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.LibraryRoot != "" {
+		return f.LibraryRoot
+	}
+	if n := len(f.ensureCalls); n > 0 {
+		return libraryRootOf(f.ensureCalls[n-1])
+	}
+	return ""
+}
+
+// FinalizePlacement does what the real one does minus stopping a torrent: renames the .part
+// files that exist on disk (tests that use a temp dir) and marks the placement completed.
+func (f *FakeBackend) FinalizePlacement(hash string) error {
+	store := f.placementStore()
+	p, ok := store.get(hash)
+	if !ok || !p.PartFiles || p.Completed {
+		return nil
+	}
+	if err := finalizeFiles(p.Resolve(f.libraryRoot())); err != nil {
+		return err
+	}
+	p.Completed = true
+	return store.update(p)
+}
+
+func (f *FakeBackend) ForgetPlacement(hash string) error {
+	return f.placementStore().forget(hash)
+}
+
+func (f *FakeBackend) SetPlacementKept(hash string, kept bool) error {
+	f.mu.Lock()
+	err := f.KeepErr
+	f.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	return f.placementStore().setKept(hash, kept)
+}
+
+// PlaceFiles is the test driver for "rain prepared the torrent": it plans the placement's file
+// map from the given torrent paths (rain's "<name>/<path>" form), as Prepare would.
+func (f *FakeBackend) PlaceFiles(hash string, torrentPaths []string) (Placement, error) {
+	store := f.placementStore()
+	p, ok := store.get(hash)
+	if !ok {
+		return Placement{}, fmt.Errorf("fake: no placement for %s", hash)
+	}
+	root := f.libraryRoot()
+	exists := func(rel string) bool { return pathExists(filepath.Join(root, rel)) }
+	files, err := planFiles(p.PlacementRequest, torrentPaths, exists, func(rel string) bool {
+		owner := store.ownerOf(rel)
+		return owner != "" && owner != hash
+	})
+	if err != nil {
+		return Placement{}, err
+	}
+	p.Files = files
+	if err := store.update(p); err != nil {
+		return Placement{}, err
+	}
+	return p.Resolve(root), nil
+}
+
+func (f *FakeBackend) placementStore() *placementStore {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.placements == nil {
+		f.placements = newPlacementStore("")
+	}
+	return f.placements
 }
 
 // AnnounceCalls returns the hashes passed to Announce, in order.

@@ -12,4 +12,10 @@ Both guards matter: without "every file above the total", an extra numbered 13 i
 
 The replacement branch stays intact for what it was made for: a collision between different `Organize` runs. What changed is only the collision **inside the same run**, which is never a legitimate replacement.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md), [#138](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)):** the `Season NN/` item below is about hardlink mode's organize, and
+still holds there. Direct mode does create `<Series>/Season NN/`, by the user's choice, but it
+decides the folder and the episode name when the torrent is ADDED, from the PREQUEL chain (the
+pass resolved it already; a manual or standalone download resolves it there, one cached call),
+and stores them on the placement. Organize still never calls AniList.
+
 **Don't "fix" by:** applying the offset without the two guards "because a continuous pack is common"; using `max - total` in place of `min - 1` (agrees on a complete pack and is wrong on a partial pack from the start of the season); calling AniList from inside `JobOrganize` to get the PREQUEL; creating a `Season NN/` subfolder in the library to "solve numbering" (decision #45); deduplicating a basename collision by overwriting "because the file is the same anime".

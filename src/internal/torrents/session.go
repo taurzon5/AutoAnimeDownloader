@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"AutoAnimeDownloader/src/internal/logger"
 
@@ -18,6 +20,10 @@ import (
 // per-operation, stateless qBittorrent HTTP client). It implements TorrentBackend.
 type Session struct {
 	ses *torrent.Session
+	// placements is non-nil in direct library mode (see sessionOptions.placements), and
+	// libraryRoot is what its relative paths resolve against.
+	placements  *placementStore
+	libraryRoot string
 
 	mu         sync.RWMutex
 	onComplete func(hash string)
@@ -41,6 +47,10 @@ type sessionOptions struct {
 	// the default allowed-fast set of 10, rain still serves those 10 pieces to every peer.
 	// rain's upload speed limit can't do this, 0 means unlimited there.
 	noUpload bool
+	// placements, when set, is direct library mode: rain gets a placementProvider as its
+	// CustomStorage, so a placed torrent writes straight to its library path. Nil keeps rain's
+	// own file storage — hardlink mode is byte-for-byte what it was before direct mode existed.
+	placements *placementStore
 }
 
 // NewSession creates the embedded client. savePath is where torrent files live and keep
@@ -56,7 +66,7 @@ func newSession(savePath, databasePath string, opts sessionOptions) (*Session, e
 		return nil, fmt.Errorf("failed to create embedded torrent session: %w", err)
 	}
 
-	return &Session{ses: rs}, nil
+	return &Session{ses: rs, placements: opts.placements, libraryRoot: libraryRootOf(savePath)}, nil
 }
 
 // rainConfig is the production rain config plus opts. Apart so the tests can read what a session
@@ -76,7 +86,80 @@ func rainConfig(savePath, databasePath string, opts sessionOptions) torrent.Conf
 		cfg.OptimisticUnchokedPeers = 0
 		cfg.AllowedFastSet = 0
 	}
+	if opts.placements != nil {
+		cfg.CustomStorage = &placementProvider{store: opts.placements, root: libraryRootOf(savePath), fallbackDir: savePath, perm: cfg.FilePermissions}
+	}
 	return cfg
+}
+
+// libraryRootOf is the library a session's placements are relative to. The download path is
+// always <completed_anime_path>/.torrents (Config.DownloadPath, decisions/031), so the library is
+// its parent — the session never needs to be told twice.
+func libraryRootOf(savePath string) string {
+	if savePath == "" {
+		return ""
+	}
+	return filepath.Dir(savePath)
+}
+
+// finalizeStopTimeout bounds how long FinalizePlacement waits for rain to close a torrent's
+// files. rain's Stop is asynchronous: "stopping" lasts until the stop announce reaches the
+// trackers, up to ~5s.
+const finalizeStopTimeout = 20 * time.Second
+
+// FinalizePlacement gives a completed direct-mode torrent's .part files their final names. The
+// torrent is stopped first so no file is open during the rename (Windows refuses to rename an
+// open file), then started again to keep seeding from the final names. Idempotent: a placement
+// without part files, or already completed, returns at once.
+func (s *Session) FinalizePlacement(hash string) error {
+	if s.placements == nil {
+		return nil
+	}
+	stored, ok := s.placements.get(hash)
+	if !ok || !stored.PartFiles || stored.Completed {
+		return nil
+	}
+	p := stored.Resolve(s.libraryRoot)
+	if len(p.Files) == 0 {
+		return fmt.Errorf("torrent %s has no file map yet", hash)
+	}
+	t := s.ses.GetTorrent(hash)
+	if t == nil {
+		return fmt.Errorf("torrent %s not found", hash)
+	}
+	if !completedFromStats(t.Stats()) {
+		return fmt.Errorf("torrent %s is not complete yet", hash)
+	}
+
+	wasRunning := t.Stats().Status != torrent.Stopped
+	if wasRunning {
+		if err := t.Stop(); err != nil {
+			return fmt.Errorf("failed to stop torrent %s for the rename: %w", hash, err)
+		}
+		deadline := time.Now().Add(finalizeStopTimeout)
+		for t.Stats().Status != torrent.Stopped {
+			if time.Now().After(deadline) {
+				return fmt.Errorf("torrent %s did not stop within %s", hash, finalizeStopTimeout)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	renameErr := finalizeFiles(p)
+	if renameErr == nil {
+		stored.Completed = true
+		renameErr = s.placements.update(stored)
+	}
+	if wasRunning {
+		if err := t.Start(); err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Failed to restart the torrent after naming its files")
+		}
+	}
+	if renameErr != nil {
+		return renameErr
+	}
+	logger.Logger.Info().Str("hash", hash).Int("files", len(p.Files)).Msg("Gave the finished torrent's files their final names")
+	return nil
 }
 
 func (s *Session) Add(magnet string) (string, error) {

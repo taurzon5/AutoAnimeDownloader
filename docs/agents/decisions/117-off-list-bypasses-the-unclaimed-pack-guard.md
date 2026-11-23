@@ -26,6 +26,10 @@ the same snapshot so it cannot delete the hash S2 just adopted. Sequel ids are s
 stored (#116 / #71). Empty vs nil is the gate: the automatic pass always passes a non-nil
 map (`make` even when `animes` is empty).
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** with direct mode's keep forever, the off-list bypass deletes nothing
+of a direct-mode torrent: `withoutKeptForever` filters those keys out before `removeEpisodesAndLinks`.
+With `auto_delete_downloads`, and for torrents added in hardlink mode, it applies as described.
+
 **Don't "fix" by:** dropping `hasUnclaimedContent` (watched pruning of S1 would then delete
 S2's files while S1 is still CURRENT); walking SEQUEL at deletion; treating a nil watching
 map as off-list (a per-episode API delete would drop the pack).

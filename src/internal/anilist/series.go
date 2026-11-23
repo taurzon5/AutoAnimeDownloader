@@ -23,14 +23,47 @@ type Series struct {
 	Key int
 	// Offset is how many episodes came before this anime in the series. 0 at the root.
 	Offset int
+	// Chain is the resolved PREQUEL chain, root first and this anime last. Direct library mode
+	// reads it for the series folder name (the root's title) and to place a split cour on its
+	// season's numbering. A link recorded before titles were fetched has empty titles.
+	Chain []ChainEntry
+}
+
+// ChainEntry is one anime of a Series chain.
+type ChainEntry struct {
+	ID       int
+	English  string
+	Romaji   string
+	Episodes int
+}
+
+// Title returns the entry's display title: English first, then romaji, the same order the
+// daemon names an anime by. Empty when the link predates titles.
+func (c ChainEntry) Title() string {
+	if c.English != "" {
+		return c.English
+	}
+	return c.Romaji
+}
+
+// RootTitle is the title of the chain's root (the first season), or "" when unknown.
+func (s Series) RootTitle() string {
+	if len(s.Chain) == 0 {
+		return ""
+	}
+	return s.Chain[0].Title()
 }
 
 // seriesLink is the immutable fact about a media: how many episodes it has and what the media
 // id of its prequel is (0 = root). It is only recorded for a node whose position in the
-// response was AUTHORITATIVE — see walkSeries's comment on the 2-level cut.
+// response was AUTHORITATIVE — see walkSeries's comment on the 2-level cut. The titles ride
+// along (direct library mode names the series folder after the root); a link cached before
+// they were fetched simply has them empty.
 type seriesLink struct {
 	PrequelID int
 	Episodes  int
+	English   string `json:",omitempty"`
+	Romaji    string `json:",omitempty"`
 }
 
 // seriesCache stores the links by media id. Long TTL because the data is immutable (a finished
@@ -56,6 +89,7 @@ type seriesNode struct {
 	Episodes  *int        `json:"episodes"`
 	Format    MediaFormat `json:"format"`
 	Status    MediaStatus `json:"status"`
+	Title     Title       `json:"title"`
 	Relations struct {
 		Edges []struct {
 			RelationType string     `json:"relationType"`
@@ -72,7 +106,7 @@ type seriesResponse struct {
 	} `json:"data"`
 }
 
-const seriesNodeFields = `id episodes format status`
+const seriesNodeFields = `id episodes format status title { english romaji }`
 
 // seriesQuery asks for TWO levels of relations, which is the most AniList expands: asking for
 // a third would only return empty edges (decisions/071). A batch of up to 50 ids costs the
@@ -138,6 +172,13 @@ func walkSeries(seed []int, priority Priority) (map[int]seriesLink, error) {
 		seen[id] = true
 		if cached, ok := seriesCache.get(seriesKey(id)); ok {
 			known[id] = cached
+			// A link cached before the walk fetched titles is served (the offset still works with
+			// AniList down) AND fetched again once: the snapshot restores with a full TTL on every
+			// boot (decisions/092), so without this a daemon restarted daily would never learn the
+			// root title direct library mode names the series folder after.
+			if cached.English == "" && cached.Romaji == "" {
+				frontier = append(frontier, id)
+			}
 			enqueue(cached.PrequelID) // the chain may continue on nodes not yet in the cache
 			return
 		}
@@ -192,6 +233,12 @@ func recordLink(known map[int]seriesLink, node seriesNode) *seriesNode {
 	if node.Episodes != nil {
 		link.Episodes = *node.Episodes
 	}
+	if node.Title.English != nil {
+		link.English = *node.Title.English
+	}
+	if node.Title.Romaji != nil {
+		link.Romaji = *node.Title.Romaji
+	}
 
 	prequel := prequelOf(node)
 	if prequel != nil {
@@ -242,6 +289,7 @@ func resolveSeries(known map[int]seriesLink, id int) (Series, bool) {
 	}
 
 	series := Series{Key: id}
+	chain := []ChainEntry{chainEntry(id, link)}
 	visited := map[int]bool{id: true}
 	for parent := link.PrequelID; parent != 0; {
 		ancestor, ok := known[parent]
@@ -251,7 +299,17 @@ func resolveSeries(known map[int]seriesLink, id int) (Series, bool) {
 		visited[parent] = true
 		series.Offset += ancestor.Episodes
 		series.Key = parent
+		chain = append(chain, chainEntry(parent, ancestor))
 		parent = ancestor.PrequelID
 	}
+	// Walked leaf to root; Chain is root first.
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	series.Chain = chain
 	return series, true
+}
+
+func chainEntry(id int, link seriesLink) ChainEntry {
+	return ChainEntry{ID: id, English: link.English, Romaji: link.Romaji, Episodes: link.Episodes}
 }

@@ -74,6 +74,14 @@
     hintCheckForUpdates: m.config_hint_check_for_updates(),
     labelRenameJellyfin: m.config_label_rename_jellyfin(),
     hintRenameJellyfin: m.config_hint_rename_jellyfin(),
+    labelDirectMode: m.config_label_direct_mode(),
+    hintDirectMode: m.config_hint_direct_mode(),
+    labelAutoDeleteDownloads: m.config_label_auto_delete_downloads(),
+    hintAutoDeleteDownloads: m.config_hint_auto_delete_downloads(),
+    labelPartFiles: m.config_label_part_files(),
+    hintPartFiles: m.config_hint_part_files(),
+    labelSeasonNumbering: m.config_label_season_numbering(),
+    hintSeasonNumbering: m.config_hint_season_numbering(),
     labelExcludedList: m.config_label_excluded_list(),
     hintExcludedList: m.config_hint_excluded_list(),
     labelDownloadStatuses: m.config_label_download_statuses(),
@@ -118,6 +126,11 @@
 
   let activeGroup: GroupId = "library";
 
+  /** The state a Toggle's forwarded change event left its switch in. */
+  function isOn(e: Event): boolean {
+    return (e.target as HTMLInputElement).checked;
+  }
+
   const ALL_STATUSES = ["CURRENT", "REPEATING", "PLANNING", "PAUSED", "DROPPED", "COMPLETED"];
   const ALL_MEDIA_STATUSES = ["RELEASING", "FINISHED", "CANCELLED", "HIATUS"];
 
@@ -138,6 +151,10 @@
     watched_episodes_to_keep: 0,
     excluded_lists: [],
     rename_files_for_jellyfin: false,
+    library_mode: "hardlink",
+    auto_delete_downloads: false,
+    incomplete_files: "part",
+    episode_numbering: "season",
     disable_seeding: false,
     check_for_updates: true,
     download_statuses: ["CURRENT", "REPEATING"],
@@ -585,6 +602,57 @@
               />
               <p class="text-caption text-subtle">{T && T.hintRenameJellyfin}</p>
             </div>
+
+            <!-- Direct library mode. The options are two-valued strings in config.json, drawn as
+                 toggles (no select component exists here): `checked` is one-way and on:change writes
+                 the string back. Auto delete shows in both modes: it governs the torrents added in
+                 direct mode even after a switch back to hardlink mode. The two below it only shape
+                 new direct-mode torrents, so they hide in hardlink mode. -->
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="library_mode"
+                checked={config.library_mode === "direct"}
+                on:change={(e) => (config.library_mode = isOn(e) ? "direct" : "hardlink")}
+                label={(T && T.labelDirectMode) || ""}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{T && T.hintDirectMode}</p>
+            </div>
+
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="auto_delete_downloads"
+                bind:checked={config.auto_delete_downloads}
+                label={(T && T.labelAutoDeleteDownloads) || ""}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{T && T.hintAutoDeleteDownloads}</p>
+            </div>
+
+            {#if config.library_mode === "direct"}
+
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="incomplete_files"
+                  checked={config.incomplete_files !== "in_place"}
+                  on:change={(e) => (config.incomplete_files = isOn(e) ? "part" : "in_place")}
+                  label={(T && T.labelPartFiles) || ""}
+                  inline={true}
+                />
+                <p class="text-caption text-subtle">{T && T.hintPartFiles}</p>
+              </div>
+
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="episode_numbering"
+                  checked={config.episode_numbering !== "entry"}
+                  on:change={(e) => (config.episode_numbering = isOn(e) ? "season" : "entry")}
+                  label={(T && T.labelSeasonNumbering) || ""}
+                  inline={true}
+                />
+                <p class="text-caption text-subtle">{T && T.hintSeasonNumbering}</p>
+              </div>
+            {/if}
 
             <div class="p-4.5">
               <Input

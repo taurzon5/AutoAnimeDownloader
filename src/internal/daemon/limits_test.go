@@ -443,7 +443,7 @@ func diskFullConfig(t *testing.T) *files.Config {
 
 func TestAttemptDownloadWithRetries_DiskFullDoesNotCallAdd(t *testing.T) {
 	backend := torrents.NewFakeBackend()
-	hash, _ := attemptDownloadWithRetries(diskFullConfig(t), backend, nil, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(1)}, {MagnetLink: fakeMagnet(2)}}, "ep")
+	hash, _ := attemptDownloadWithRetries(diskFullConfig(t), backend, nil, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(1)}, {MagnetLink: fakeMagnet(2)}}, "ep", torrentTarget{})
 
 	if hash != "" {
 		t.Errorf("want an empty hash with a full disk, got %q", hash)

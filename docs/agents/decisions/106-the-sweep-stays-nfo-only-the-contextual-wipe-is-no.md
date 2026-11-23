@@ -33,6 +33,13 @@ folder when we delete the last episode".
 Accepted limit: an orphan with `poster.jpg` and no records stays on disk. Cleaning those is a
 manual delete.
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** two things follow from direct mode. `RemoveFolderIfNoVideo` counts a
+`<name>.<video ext>.part` file as a video: a hardlink-mode entry folder and a direct-mode series
+folder of the same title are the same folder, and a download in progress there must survive.
+And a deleted direct-mode torrent prunes its own folders (`torrents.RemovePlacedFiles`) with the
+sweep's rule — the episode `.nfo` sidecar goes with the video, and a folder left with only `.nfo`
+files and a `.chapters` folder is removed, up to the library root.
+
 **Don't "fix" by:** writing episode nfos ourselves; widening the sweep to "no video"; dropping the
 sweep now that the contextual wipe exists; adding `RemoveAll` to `FileSystem`; calling this from
 `DownloadStandaloneAnime` (#49); changing `writeShowNFO` / `cleanupIfEmpty` / the

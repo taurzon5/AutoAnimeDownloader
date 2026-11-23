@@ -75,6 +75,7 @@ Windows uses `%APPDATA%\.autoAnimeDownloader\` for **all** the config/state file
 
 - **Download / seeding:** torrents live at `<Config.DownloadPath()>/<torrent-id>/...`, i.e. `<completed_anime_path>/.torrents/<torrent-id>/...` (rain's `DataDir` with `DataDirIncludesTorrentID`). Files are **never renamed here** — renaming would break seeding. Torrents keep seeding after completion. The download directory is **derived**, not user-configured — see decisions/031.
 - **Library (Jellyfin):** when a torrent completes, its video files are **hardlinked** into `<completed_anime_path>/<AnimeName>/` — one folder **per AniList entry**, season/cour marker kept (`sanitizeName`, decisions/045), plus a `tvshow.nfo` carrying the AniList id. With `RenameFilesForJellyfin`, every file gets the Jellyfin name `"Anime Name - E05.mkv"` — a single episode from its record, a batch file from the episode number parsed out of its own filename (`nyaa.ExtractEpisodeNumber`); files with no readable number (NCOP/NCED, extras, movies) and two files of one pack landing on the same number keep the raw filename. The hardlink shares bytes with the seeded copy, so no space is duplicated.
+- **Library in direct mode** (`library_mode: "direct"`): no `.torrents` copy and no hardlink — each torrent is written straight to `<completed_anime_path>/<Series>/Season NN/` (episodes), `<Series>/Specials/` (movies) or `<Series>/<its own folders>` (packs), and seeds from there; `<Series>` is the PREQUEL chain root's title. Only torrents added while the mode is on; see [config.md](config.md#direct-library-mode) and `internal/torrents/` below.
 - **Same volume, by construction:** the download directory lives inside `completed_anime_path`, so the old cross-filesystem failure mode is now structurally impossible. `Librarian.ProbePath(completedPath)` still validates that the filesystem supports hardlinks at all (exFAT/FAT32/some SMB shares don't) — it runs on config save and on every verification pass (decisions/026).
 - **Deletion** frees space by removing **both** links: the library hardlink (`Librarian.RemoveFromLibrary`, which also drops the sibling `.nfo`) and the seeding torrent (`TorrentBackend.Remove` with `keepData=false`). After those hardlinks, a library folder with no remaining video is wiped (`RemoveFolderIfNoVideo`). The end-of-pass sweep (`DeleteEmptyFolders`) then removes empty folders and folders left with only Jellyfin leftover metadata (`.nfo` files and `.chapters`) and still skips `.torrents` ([decisions/106](decisions/106-the-sweep-stays-nfo-only-the-contextual-wipe-is-no.md), [decisions/110](decisions/110-chapters-is-leftover-metadata-same-class-as-nfo.md)). A batch torrent shared by multiple episodes is only removed once **all** its episodes are in the delete set **and** unclaimed content does not hold (`canRemoveTorrent` / `unclaimedHolds`, [decisions/074](decisions/074-the-pack-exclusion-guards-unit-is-the-torrents.md) / [decisions/117](decisions/117-off-list-bypasses-the-unclaimed-pack-guard.md)): either the pack's span is fully claimed, or no claimed anime of the group is in this pass's watching set. `watching == nil` (manual per-episode delete) keeps the #74 hold. While it is held back, its records are kept too (`forgettableKeys`) — they carry the declared range. The manual torrent-delete path passes `force` and bypasses that guard.
 - **No `config.json` versioning.** There is no `config_version` field, no migration chain and no
@@ -572,7 +573,10 @@ AoT 01–87) keep min-max
 ([decisions/116](decisions/116-restart-per-season-packs-flatten-onto-the.md)).
 **`IsVideoFile` lives here, not in `files`**, because both
 read the same pack file list (the Librarian after download, `PackFileRange` before) and `files`
-already imports `nyaa` — the other way would be a cycle. The loose-number-before-extension pattern
+already imports `nyaa` — the other way would be a cycle. **`IsLeftoverMetadataOnly`** (`.nfo` files and a `.chapters`
+folder are leftovers) lives here for the same kind of reason: the library sweep in `files` and a
+deleted direct-mode torrent's own folder pruning in `torrents` must apply one rule, and `torrents`
+may not import `files` (`tests/unit/architecture_test.go`). The loose-number-before-extension pattern
 is compiled from `videoExtensions`
 ([decisions/112](decisions/112-the-loose-episode-number-before-an-extension-is.md)):
 adding an extension to the map is what numbers `Anime 01.<ext>`. Do not add `\.` to the dash
@@ -640,7 +644,32 @@ pair is how a moved/deleted/swapped folder is detected (decisions/034). With no 
 `ConsumeRootSwap`, because the manual-download endpoints also call `Ensure`.
 
 `session.db` (bbolt, resume) and `queue.json` live **outside** the download folder, so they survive
-a library-path swap.
+a library-path swap. So does `placements.json`.
+
+**Direct library mode** (`placement.go`): a `storage.Provider` plugged into rain as `CustomStorage`
+writes a placed torrent straight to `<library>/<Series>/…` and seeds it from there. Three things bite:
+
+- **The daemon registers the placement BEFORE `backend.Add`** (`daemon/placement.go`,
+  `registerPlacement`, called in `attemptDownloadWithRetries` and `addAndPrioritize` — the only two
+  adds). rain asks for the storage synchronously inside `AddURI`; a placement registered after
+  the add is never used. A new add path must call it too.
+- **The file map is frozen at the first `Prepare`** and `register` keeps a hash's first placement:
+  nothing ever moves a seeding file ([decisions/136](decisions/136-direct-mode-places-a-torrent-before-the-add-and.md)).
+- **The provider is installed only in direct mode or while placements exist.** Hardlink mode
+  with no placements runs rain's own storage, untouched. A torrent with no placement gets
+  `legacyStorage`, a copy of rain's `<DataDir>/<id>` layout.
+- **Stored paths are relative to the library root** (the parent of `DataDir`). `Placement()` /
+  `Placements()` hand them back resolved; the store, `planFiles` and `ownerOf` work relative.
+  Anything that deletes or opens must use a resolved placement — `pruneOrphanPlacements` skips
+  unresolved ones, which would otherwise resolve against the process's working directory.
+
+There is no hardlink anywhere in direct mode: organize (`daemon.organizeTorrent`, placed branch)
+renames the `.part` files (`FinalizePlacement`, which stops and restarts the torrent) and records the
+placed video paths; deletion is `Remove(hash, false)`, which reaches `placedStorage.Remove`
+([decisions/137](decisions/137-direct-mode-deletes-through-the-torrent-and-keep.md)).
+`TorrentInfo.DataDir` of a placed torrent is its **series folder**, not a folder holding the
+torrent's raw paths: anything joining `DataDir` with a `FileInfo.Path` must go through
+`Placement.Files` instead (`api.videoCodecOf` does).
 
 ### `src/internal/notifications/`
 

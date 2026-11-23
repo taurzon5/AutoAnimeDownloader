@@ -23,4 +23,10 @@ Three properties that fell out for free and are intentional:
 
 **Amendment to decision 29:** `clearLibraryPathsAfterRootSwap` zeros `LibraryPaths` — exactly what #29 forbids. The prohibition still holds for a missing file: what it protects is the deliberate deletion of **one** episode from the library, which a `Stat` check every pass would resurrect forever. A root swap is a different event: the entire folder the records point at is gone, the daemon is already re-downloading its contents, and detection fires **once per swap** — it never becomes #29's resurrection loop. Without this cleanup recovery is half-done: the torrents re-download, but episodes organized before the swap keep an orphan `LibraryPaths` and never return to the library.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** in direct mode the torrents' files are in the library itself, and
+placements store their paths **relative to the library root**, resolved against the configured
+path when rain opens them. Moving the library and re-pointing the config at it therefore keeps
+every direct-mode torrent seeding, exactly like the hardlink case above. The swap check itself is
+unchanged: the marker still lives in `<library>/.torrents`.
+
 **Don't "fix" by:** returning the flag from `Ensure` instead of the latch (see above); replacing the markers with inode comparison (`syscall.Stat_t.Ino` does not exist on Windows); treating a marker-read error as "it vanished" (a permission failure would start wiping library records — that is why `readRootID` only swallows `IsNotExist`); cleaning `LibraryPaths` on every pass instead of only on a swap (that really would be the #29 violation); ~~dropping the marker rename in `MigrateSavePath`~~ (the migration was removed on 2026-08-24 — see #31; if it comes back, the marker rename becomes mandatory again for the same reason).

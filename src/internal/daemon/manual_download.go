@@ -20,11 +20,14 @@ import (
 // anyway, just in its turn — aborting the whole download because of that would be worse. sizeBytes
 // is the size Nyaa announced; 0 when the magnet was pasted by the user and there's no way to know
 // the size before the metadata.
-func addAndPrioritize(backend torrents.TorrentBackend, magnet string, sizeBytes int64, configs *files.Config) (string, error) {
+func addAndPrioritize(backend torrents.TorrentBackend, magnet string, sizeBytes int64, configs *files.Config, target torrentTarget) (string, error) {
 	// The disk space guard lives here (and not in torrents.Session.Add) because the torrents package
 	// doesn't know files.Config — passing the config there just to read a percentage would invert the
 	// dependency. This is the only Add of the manual paths.
 	if err := checkDiskSpace(configs, sizeBytes, 0); err != nil {
+		return "", err
+	}
+	if err := registerPlacement(configs, backend, magnet, target); err != nil {
 		return "", err
 	}
 	hash, err := backend.Add(magnet)
@@ -125,7 +128,7 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 	}
 
 	epName := fmt.Sprintf("%s - Episode %d", details.title, targetNode.Episode)
-	hash, err := addAndPrioritize(backend, magnet, 0, configs)
+	hash, err := addAndPrioritize(backend, magnet, 0, configs, manualTarget(configs, details.mediaList, targetNode.Episode, false))
 	if err != nil || hash == "" {
 		return files.EpisodeStruct{}, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
@@ -153,7 +156,7 @@ func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.Tor
 		return nil, err
 	}
 
-	hash, err := addAndPrioritize(backend, magnet, 0, configs)
+	hash, err := addAndPrioritize(backend, magnet, 0, configs, manualTarget(configs, details.mediaList, 0, true))
 	if err != nil || hash == "" {
 		return nil, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
@@ -218,9 +221,10 @@ func ManualDownloadEpisode(fm FileManagerInterface, backend torrents.TorrentBack
 	}
 
 	maxAttempts := min(configs.EpisodeRetryLimit, len(results))
+	target := manualTarget(configs, details.mediaList, targetNode.Episode, false)
 	var hash string
 	for i := range maxAttempts {
-		h, err := addAndPrioritize(backend, results[i].MagnetLink, results[i].Size, configs)
+		h, err := addAndPrioritize(backend, results[i].MagnetLink, results[i].Size, configs, target)
 		if err == nil && h != "" {
 			hash = h
 			break

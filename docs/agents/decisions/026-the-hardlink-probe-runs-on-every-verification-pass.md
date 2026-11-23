@@ -8,6 +8,9 @@
 
 The probe aborts the pass instead of merely warning: downloading episodes that provably cannot be organized only fills the disk. It reuses the same probe the config endpoint calls (`Librarian.ProbePath`, see the amendment at the end of this entry), so the message the user sees in the UI is identical to the one `PUT /config` returns. Cost is one small file write, one link and two unlinks per `check_interval` (default 10 min) — negligible next to the Anilist and Nyaa requests in the same pass.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** in direct mode the same gate runs `files.ProbeWritable` instead:
+direct mode needs no hardlinks, only a library it can write to. Same position, same abort.
+
 **Don't "fix" by:** removing the gate because "the endpoint already validates it" (it does not, for pre-upgrade and entrypoint-written configs), or downgrading it to a warning that lets the pass continue. Caching the result per path pair is a legitimate optimization if the I/O ever shows up in a profile — but it must be invalidated on config change, and the current cost does not justify the extra state.
 
 **Amendment (see #31):** the probe is now single-path. `Librarian.ProbePaths(save, completed)` was replaced by `Librarian.ProbePath(completedPath)`, which writes a probe file directly under `<completedPath>/.torrents` and hardlinks it in place — there is no second user-supplied path to compare against, since the download directory is derived, not configured. The check still exists for the same reason: exFAT/FAT32 and some SMB shares don't support hardlinks at all, so the invariant "the download dir and the library share a filesystem" is guaranteed by construction, but "the filesystem supports hardlinks" is not.

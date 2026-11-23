@@ -12,4 +12,9 @@ Measured packs: Kaguya EMBER 1355132 → 24; Kaguya DB 1928670 → 41 (12+12+13+
 
 **Organize does not call AniList.** `SeriesOffset` and `AnimeSeason` are persisted on `EpisodeStruct` from data the pass already computed. `FilesInPackWindow` rebuilds the same groups from the on-disk paths and keeps files whose axis number is in `(offset, offset+total]`. A continuous 1–23 under cour 1 (offset 0, total 11) keeps 01–11 because a contiguous run past the total is the next cour; cour 2 (offset 11) maps 12–23 onto E01–E12. Claimed extras (OVA / `.5` / `S00E` / episode 0) stay out of the span ([#113](113-packfilerange-min-max-skips-extrasova-an-isolated.md)) and are still hardlinked with the **raw** name, including extras that sit in a season group of their own (EMBER `S01E24 [OVA]` next to plain `01–23`, `S02E00` next to un-tagged `01–12`). `animeSeason` on the request keeps an extras-only `Sxx` group from leaking into another season's folder. `organizeTorrent` groups the hash's records by `AnimeID` and calls `Organize` once per folder.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** applies to hardlink mode. In direct mode a pack is not sliced:
+its files stay in the torrent's own layout under the series folder, and every record of the hash
+points at them. Coverage and adoption (`#78`) still work, because they read the records; an
+adopting entry just records the same paths. `FilesInPackWindow` slicing never runs for a placed torrent.
+
 **Don't "fix" by:** storing sequel AniList ids at S1 download; putting `Season NN/` inside one franchise folder; using per-folder file **count** as a pack-choice tie-break ([#84](084-a-pack-without-a-range-in-its-name-gets-its.md) still rejects that); calling AniList from `JobOrganize` ([#68](068-pack-numbering-the-offset-is-guessed-from-the.md)); clamping `declaredSpan` at `AnimeTotalEpisodes` (that deletes the 1–24 pack under S1).

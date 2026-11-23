@@ -1,7 +1,7 @@
 # Direct library mode: no hardlinks, Series/Season layout, packs as-is, several download roots
 
 **Date:** 2026-11-22
-**Status:** designed, not implemented — no fixed release
+**Status:** PR 1 (direct mode, one root) implemented on `feat/direct-library-mode`; PRs 2–4 (several roots, rules and the movie library, pack season rename) not started — no fixed release
 **Origin:** a user who seeds without limit wants the library file to *be* the seeding file (no
 `.torrents` copy, no hardlink, so filesystems without hardlinks work too), episodes filed as
 `<Series>/Season 01/`, multi-season packs left in their own layout, and torrents spread across
@@ -86,10 +86,15 @@ only in hardlink mode.
 - **Series name:** the title of the root of the PREQUEL chain (`anilist.Series.Key`), using the
   same title choice as `AnimeName`. `seriesNodeFields` has no title today: add `title{romaji
   english}` to it (the walk already fetches those nodes, so no extra request).
-- **Season number:** the number of TV/TV_SHORT entries before this one in the chain, plus one,
-  counting split cours (Part 2, Cour 2) as the same season as their first part, the way
-  `ExtractAnimeSeasonPart` reads them ([decisions/010](../../agents/decisions/010-cour-n-treated-as-part-n-not-as-a-distinct-concept.md)).
-  Fallback when the chain is unknown: `ExtractAnimeSeasonPart`'s season, then `1`.
+- **Season number:** walk the chain root first. An entry's own season marker wins ("Season 2",
+  "2nd Season", "II"); an entry without one continues its prequel's season when it is a later part
+  ("Part 2", "Cour 2", [decisions/010](../../agents/decisions/010-cour-n-treated-as-part-n-not-as-a-distinct-concept.md)),
+  and starts the next season otherwise; the root without a marker is season 1. The anime itself
+  also reads its synonyms; ancestors only their titles. Unknown chain: the anime's own marker, then
+  `1`. Details and limits:
+  [decisions/138](../../agents/decisions/138-direct-mode-numbers-seasons-along-the-tv-prequel.md).
+- **The folder is pinned:** a series that already has a folder (any placement with the same series
+  id) keeps it, even after AniList renames the root.
 - Both are computed once, when the torrent is added, and stored on the placement (below). AniList
   correcting a relation later never moves a seeding file.
 

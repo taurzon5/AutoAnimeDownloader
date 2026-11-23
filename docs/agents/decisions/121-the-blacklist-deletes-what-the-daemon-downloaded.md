@@ -40,6 +40,11 @@ rejected in `appendStandaloneAnimes`' comment.
 The protection is per episode, not per anime. A blacklisted anime with some hand-downloaded
 episodes and some downloaded by the daemon loses only the daemon's.
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** with `auto_delete_downloads` off ("keep forever"), the blacklist
+deletes nothing of a torrent added in direct mode either: `withoutKeptForever` drops those keys
+before `removeEpisodesAndLinks`, whatever the current `library_mode`. Stopping still holds — the
+blacklisted anime downloads nothing new — and the files stay, like a hand download's.
+
 **Don't "fix" by:** making the blacklist stop downloading without deleting, for every anime; letting
 the blacklist delete `manually_managed` records; keeping the standalone record of a blacklisted
 anime "to remember the intent", since the files already carry it; letting a standalone record survive

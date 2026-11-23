@@ -21,6 +21,7 @@ func (s *stubLibrarian) Organize(files.OrganizeRequest) ([]string, error) { retu
 func (s *stubLibrarian) RemoveFromLibrary(string) error                   { return nil }
 func (s *stubLibrarian) RemoveFolderIfNoVideo(string) error               { return nil }
 func (s *stubLibrarian) ProbePath(completedPath string) error             { return s.probeErr }
+func (s *stubLibrarian) WriteShowNFO(string, string, int)                 {}
 
 type mockFileManager struct {
 	configs           *files.Config
@@ -471,6 +472,46 @@ func TestHandleUpdateConfig(t *testing.T) {
 			t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, w.Code)
 		}
 	})
+
+	// Direct library mode links nothing: a filesystem the hardlink probe refuses is fine as long
+	// as it is writable.
+	t.Run("PUT in direct mode skips the hardlink probe", func(t *testing.T) {
+		noLinksServer := &Server{
+			State:       state,
+			FileManager: mockFM,
+			Librarian:   &stubLibrarian{probeErr: fmt.Errorf("this filesystem does not support hardlinks")},
+		}
+		config := files.Config{
+			CompletedAnimePath:  t.TempDir(),
+			CheckInterval:       10,
+			MaxEpisodesPerAnime: 12,
+			LibraryMode:         files.LibraryModeDirect,
+		}
+		jsonData, _ := json.Marshal(config)
+		w := httptest.NewRecorder()
+		handleUpdateConfig(noLinksServer)(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+		if w.Code != http.StatusOK {
+			t.Errorf("direct mode on a writable folder must save, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	for _, bad := range []files.Config{
+		{LibraryMode: "copy"},
+		{IncompleteFiles: "tmp"},
+		{EpisodeNumbering: "absolute"},
+	} {
+		t.Run(fmt.Sprintf("PUT with invalid direct-mode value %+v returns 400", bad), func(t *testing.T) {
+			bad.CompletedAnimePath = "/tmp/newcompleted"
+			bad.CheckInterval = 10
+			bad.MaxEpisodesPerAnime = 12
+			jsonData, _ := json.Marshal(bad)
+			w := httptest.NewRecorder()
+			handler(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, w.Code)
+			}
+		})
+	}
 
 	t.Run("PUT with invalid JSON returns 400", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBufferString("invalid json"))

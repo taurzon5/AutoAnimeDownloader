@@ -198,6 +198,7 @@ func handleTorrentFiles(server *Server) http.HandlerFunc {
 			JSONInternalError(w, err)
 			return
 		}
+		placement, placed := server.Torrents.Placement(hash)
 
 		out := make([]TorrentFileResponse, 0, len(list))
 		for _, f := range list {
@@ -210,7 +211,7 @@ func handleTorrentFiles(server *Server) http.HandlerFunc {
 				// wrong number or nothing. Measured on the Erai-raws pack of Mushoku Tensei II:
 				// the full path yields nil on EVERY file, the file name yields the right episode.
 				Episode: nyaa.ExtractEpisodeNumber(path.Base(f.Path)),
-				Codec:   videoCodecOf(info.DataDir, f),
+				Codec:   videoCodecOf(info.DataDir, f, placement, placed),
 			})
 		}
 
@@ -226,8 +227,20 @@ func handleTorrentFiles(server *Server) http.HandlerFunc {
 // ponytail: re-read on every poll tick of an open panel (~13 opens of a few KB every 2s for a
 // season pack). Negligible next to the torrent traffic itself; if it ever shows up, cache it
 // by path — the header of a finished file does not change.
-func videoCodecOf(dataDir string, f torrents.FileInfo) string {
+//
+// A direct-mode torrent's files are not under DataDir by their torrent path: the placement maps
+// each one to its library path (and, while it downloads, a .part name). A file the map doesn't
+// know answers "".
+func videoCodecOf(dataDir string, f torrents.FileInfo, placement torrents.Placement, placed bool) string {
 	if dataDir == "" || f.BytesCompleted == nil || *f.BytesCompleted < f.Size {
+		return ""
+	}
+	if placed {
+		for _, pf := range placement.Files {
+			if pf.Torrent == f.Path {
+				return files.VideoCodec(placement.DiskPath(pf))
+			}
+		}
 		return ""
 	}
 	return files.VideoCodec(filepath.Join(dataDir, f.Path))

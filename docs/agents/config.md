@@ -26,7 +26,11 @@ Struct defined in `src/internal/files/filemanager.go`. Defaults set in `DefaultC
 | `ExcludedLists` | `excluded_lists` | `[]string` | `[]` | Names of Anilist custom lists to exclude from downloads. AniList accounts only — MyAnimeList has no custom lists |
 | `ExcludedList` | `excluded_list` | `string` | `""` | **Legacy.** Same migration pattern as `AnilistUsername` — merged (comma-split) into `ExcludedLists` by `FileManager.LoadConfigs()` on load |
 | `DisableSeeding` | `disable_seeding` | `bool` | `false` | No upload at all: the torrent session never unchokes a peer and serves no allowed-fast piece, even during the download, and every torrent is removed with its download copy as soon as it is organized into the library (the hardlink stays). A pack's parts that were not linked (another season, extras) are deleted with it. Downloads may be slower, since peers favor whoever uploads back. Toggling rebuilds the session: right away from `PUT /config` (only when the value changed), and the pass re-applies it every cycle. Turning it on also releases the torrents already seeding, on the next pass. See [decisions/119](decisions/119-disable-seeding-means-no-upload-at-all-and-a.md) |
-| `RenameFilesForJellyfin` | `rename_files_for_jellyfin` | `bool` | `false` | Give the **library hardlink** a Jellyfin-compatible name (`"Anime Name - E05.mkv"`). Single episodes use the episode number from the record (only when the torrent holds one video file); **batch packs** rename each file using the number parsed out of its own filename, so pack episodes mix into the anime folder alongside individually downloaded ones. Files with no readable number (NCOP/NCED, extras, movies) keep the raw name. The seeded copy in the download directory is never renamed (that would break seeding) |
+| `RenameFilesForJellyfin` | `rename_files_for_jellyfin` | `bool` | `false` | Give the **library hardlink** a Jellyfin-compatible name (`"Anime Name - E05.mkv"`). Single episodes use the episode number from the record (only when the torrent holds one video file); **batch packs** rename each file using the number parsed out of its own filename, so pack episodes mix into the anime folder alongside individually downloaded ones. Files with no readable number (NCOP/NCED, extras, movies) keep the raw name. The seeded copy in the download directory is never renamed (that would break seeding). In **direct mode** the name is decided before the add and becomes the torrent's own file name: a single episode becomes `"Series - S02E05.mkv"` (numbered per `episode_numbering`); packs and movies keep their raw names |
+| `LibraryMode` | `library_mode` | `string` | `"hardlink"` | How torrents reach the library. `"hardlink"` (also what an empty value means) is everything else on this page: download into `.torrents`, hardlink into the library. `"direct"` writes each torrent **straight to its final path** and seeds it from there — no `.torrents` copy, no hardlink, so filesystems without hardlinks work. See [Direct Library Mode](#direct-library-mode). Applies to torrents **added** while it is on; a torrent keeps the mode it was added in. Changing it rebuilds the torrent session (like `disable_seeding`). Must be one of the two values |
+| `AutoDeleteDownloads` | `auto_delete_downloads` | `bool` | `false` | For torrents added in direct mode. `false` = **keep forever**: no automatic path (watched pruning, `delete_statuses`, blacklist, off-list, the episode limit) deletes a direct-mode torrent — **whatever `library_mode` is now**, so switching back to hardlink mode doesn't start deleting them — and while direct mode is on, `max_episodes_per_anime` is ignored (every aired episode downloads, the pack window is open — `daemon.effectiveMax`/`windowEnd`). `true` = the usual rules apply, and deleting a file also stops seeding it. Torrents added in hardlink mode always follow the usual rules. Manual deletes always work |
+| `IncompleteFiles` | `incomplete_files` | `string` | `"part"` | Direct mode only. `"part"` writes `<name>.part` while the torrent downloads; organize renames to the final name (stopping the torrent for the rename and starting it again), so a media server never scans a half-written episode. `"in_place"` writes the final name from the start. Fixed per torrent when it is added. Must be one of the two values |
+| `EpisodeNumbering` | `episode_numbering` | `string` | `"season"` | Direct mode with `rename_files_for_jellyfin`. A split cour (Season 2 Part 1 and Part 2 are separate AniList entries, each numbered from 1) shares one `Season NN/` folder. `"season"` continues the season's numbering, TVDB/TMDB style: Part 2 episode 1 = `S02E13` (the earlier entries of the same season, from the PREQUEL chain, are added). `"entry"` keeps AniList's number and tags the part: `S02E01 (Part 2)`. Must be one of the two values |
 | `DownloadStatuses` | `download_statuses` | `[]string` | `["CURRENT", "REPEATING"]` | Anilist **list** statuses (user's relationship to the anime) to download. Also governs which not-yet-downloaded animes appear in `/api/v1/animes` (filtered server-side via GraphQL `status_in`). Valid values: `CURRENT`, `REPEATING`, `COMPLETED`, `PAUSED`, `DROPPED`, `PLANNING` |
 | `DownloadMediaStatuses` | `download_media_statuses` | `[]string` | `["RELEASING", "FINISHED"]` | Anilist **media** statuses (the anime's own airing state) eligible for download. Also governs which not-yet-downloaded animes appear in `/api/v1/animes` (filtered client-side, since AniList doesn't support this in the same `status_in` filter as list status). Filtered via `anilist.MediaStatusAllowed` in both `searchAnilist` (`daemon/verification.go`, download pipeline) and `fetchAniListEntries` (`api/endpoint_animes.go`, frontend listing). Animes with at least one downloaded episode are never hidden by either filter regardless of current status — see [Architecture](architecture.md#media-status-filter). Whitelist semantics: empty = nothing downloads/shows. Valid values: `RELEASING`, `FINISHED`, `CANCELLED`, `HIATUS` (`NOT_YET_RELEASED` excluded — can never have episodes) |
 | `CheckForUpdates` | `check_for_updates` | `bool` | `true` | Asks GitHub once a day (first check ~2 min after boot) for the latest release: the update badge in the web UI, `Update available` in CLI `status`, and the `update_available` event. `false` = no request ever leaves; read before every check, so it needs no restart. A `dev` build never checks. Whoever installs from the AUR or a container image already hears about updates there |
@@ -67,6 +71,45 @@ A `config.json` that still carries `save_path` loads fine (JSON ignores unknown 
 disappears on the next save, but its data is **not** moved — rain opens the derived path, finds it
 empty and re-downloads. Moving the folder is now a manual, pre-upgrade step. See decisions/031.
 
+## Direct Library Mode
+
+With `library_mode: "direct"` there is no download copy: rain writes each torrent through a custom
+storage (`torrents/placement.go`) straight to where it lives in the library, and seeds from there.
+Design: [the spec](../superpowers/specs/2026-11-22-direct-library-mode-design.md); the rules that
+look odd: [decisions/136](decisions/136-direct-mode-places-a-torrent-before-the-add-and.md),
+[decisions/137](decisions/137-direct-mode-deletes-through-the-torrent-and-keep.md).
+
+| Torrent | Path |
+|---|---|
+| Single episode | `<completed_anime_path>/<Series>/Season NN/<file>` |
+| Movie (AniList format `MOVIE`) | `<completed_anime_path>/<Series>/Specials/<file>` |
+| Pack (any multi-episode torrent) | `<completed_anime_path>/<Series>/<the torrent's own folders>` |
+
+`<Series>` is the title of the PREQUEL chain's root (the first season), so every season lands in one
+folder; with the chain unknown it is the anime's own title. Once a series has a folder, later
+seasons reuse it even if AniList renamed the root since. `NN` follows the chain: an entry's own
+season marker, else its prequel's season for a later part ("Part 2", "Cour 2"), else the next
+season ([decisions/138](decisions/138-direct-mode-numbers-seasons-along-the-tv-prequel.md)). `tvshow.nfo` goes in the series
+folder with the root's AniList id. A destination that already exists on disk (or belongs to another
+torrent) gets the torrent's short hash appended instead of being overwritten.
+
+The placement is decided and saved (`placements.json`, next to `session.db`) **before** the add,
+and the file map is frozen when rain first prepares the torrent: changing a setting, the mode or an
+AniList title later never moves a file that is seeding. Its paths are stored **relative to the
+library**, so moving the library and re-pointing `completed_anime_path` at it keeps everything
+seeding. Torrents added in hardlink mode keep downloading and seeding in `.torrents` after the
+switch.
+
+Deleting: from the app (web UI or CLI), a direct-mode episode's torrent is removed with its files
+(and the folders they leave empty). A file deleted by hand, outside the app, while its torrent is
+still in the session is downloaded again the next time the session opens — the file is the
+torrent's data. A failed download whose episode was then fetched from another release leaves no
+garbage: the end-of-pass sweep deletes files no torrent and no episode record points at any more.
+
+`completed_anime_path` is still required and still the library root; `Config.DownloadPath()` still
+exists (it is where torrents added in hardlink mode live). Validation and the per-pass probe check
+that the folder is **writable** (`files.ProbeWritable`) instead of probing hardlinks.
+
 ## Removed Field
 
 `qbittorrent_url` (and its `QBITTORRENT_URL` env override) was **removed** when the external qBittorrent dependency was replaced by an embedded BitTorrent client. Old configs that still contain the key load fine (JSON ignores unknown fields) and the key disappears on the next save.
@@ -86,7 +129,8 @@ Default: `completed_anime_path` starts as `~/Animes` (`DefaultConfig()`), so a f
 
 `handleUpdateConfig()` in `endpoint_config.go` validates:
 - `completed_anime_path` — non-empty. `anilist_usernames` is **not** validated (see Required Fields); the legacy `anilist_username` is migrated into it by `LoadConfigs`, not by this handler (decisions/090)
-- `completed_anime_path` must support hardlinks — verified with a single-path probe (`Librarian.ProbePath`); a filesystem without hardlink support is rejected with HTTP 400
+- `completed_anime_path` must support hardlinks — verified with a single-path probe (`Librarian.ProbePath`); a filesystem without hardlink support is rejected with HTTP 400. In direct mode it only has to be writable (`files.ProbeWritable`)
+- `library_mode` — `""`, `"hardlink"` or `"direct"`; `incomplete_files` — `""`, `"part"` or `"in_place"`; `episode_numbering` — `""`, `"season"` or `"entry"` (an empty value means the default)
 - `check_interval` — > 0
 - `episode_retry_limit`, `watched_episodes_to_keep`, `max_concurrent_downloads`, `max_episodes_per_anime`, `max_batch_torrent_size_gb`, `max_episode_torrent_size_gb`, `min_seeders`, `max_search_pages` — >= 0 (`max_episodes_per_anime` and `max_batch_torrent_size_gb` treat `0` as "off"; see their field descriptions above)
 - `min_free_disk_gb` — >= 0

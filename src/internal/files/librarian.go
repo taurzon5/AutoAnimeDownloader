@@ -45,6 +45,10 @@ type Librarian interface {
 	// same link function Organize uses, so it never disagrees with it. Also creates the
 	// download directory and the .ignore marker.
 	ProbePath(completedPath string) error
+	// WriteShowNFO writes dir/tvshow.nfo with the AniList id, never overwriting one that is
+	// there (decisions/044). Direct library mode calls it for the series folder, which it fills
+	// without Organize.
+	WriteShowNFO(dir, animeName string, animeID int)
 }
 
 // OrganizeRequest describes one torrent to organize into the library.
@@ -102,6 +106,13 @@ func sanitizeName(name string) string {
 	sanitized = strings.TrimSpace(sanitized)
 	sanitized = strings.ReplaceAll(sanitized, "  ", " ")
 	return sanitized
+}
+
+// SanitizeName is sanitizeName for direct library mode, which names the series folder and the
+// episode files itself (daemon/placement.go). Same rules, so a series folder and a hardlink-mode
+// entry folder of the same title come out identical.
+func SanitizeName(name string) string {
+	return sanitizeName(name)
 }
 
 func stripInvalidChars(name string) string {
@@ -336,7 +347,9 @@ func (o *organizer) BackfillShowNFOs(episodes []EpisodeStruct) {
 	seen := make(map[string]bool)
 	written := 0
 	for _, ep := range episodes {
-		if ep.AnimeID <= 0 || len(ep.LibraryPaths) == 0 {
+		// A direct-mode record's first path is inside Season NN/: the nfo belongs one level up,
+		// with the series id, and organize already wrote it there.
+		if ep.AnimeID <= 0 || len(ep.LibraryPaths) == 0 || ep.DirectLibrary {
 			continue
 		}
 		dir := filepath.Dir(ep.LibraryPaths[0])
@@ -393,7 +406,36 @@ func (o *organizer) RemoveFolderIfNoVideo(dir string) error {
 	if len(videos) > 0 {
 		return nil
 	}
+	// A direct-mode download in progress is "<name>.mkv.part" (torrents/placement.go): not a video
+	// by extension, but a video all the same, and rain is writing it. A hardlink-mode entry
+	// folder and a direct-mode series folder of the same title are the same folder.
+	partial, err := o.hasPartialVideo(dir)
+	if err != nil || partial {
+		return err
+	}
 	return o.removeTree(dir)
+}
+
+// hasPartialVideo reports whether dir (recursively) holds a video still downloading in direct
+// library mode, "<name>.<video ext>.part".
+func (o *organizer) hasPartialVideo(dir string) (bool, error) {
+	entries, err := o.fs.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			found, err := o.hasPartialVideo(filepath.Join(dir, e.Name()))
+			if err != nil || found {
+				return found, err
+			}
+			continue
+		}
+		if name, ok := strings.CutSuffix(e.Name(), ".part"); ok && isVideoFile(name) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // removeTree deletes path and everything under it using ReadDir + Remove. FileSystem
@@ -497,4 +539,8 @@ func (o *organizer) cleanupIfEmpty(dir string, dirExisted bool) {
 	}
 	// os.Remove only succeeds on an empty dir; a non-empty pre-existing dir is left alone.
 	_ = o.fs.Remove(dir)
+}
+
+func (o *organizer) WriteShowNFO(dir, animeName string, animeID int) {
+	o.writeShowNFO(dir, animeName, animeID)
 }

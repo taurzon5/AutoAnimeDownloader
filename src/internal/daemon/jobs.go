@@ -340,6 +340,25 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 		return false
 	}
 
+	// Direct library mode: the files were written in place, so "organize" is giving them their
+	// final names (the .part rename), recording those paths and writing the series nfo. A torrent
+	// with no placement was added in hardlink mode and is organized the old way, whatever the
+	// current mode is.
+	placement, placed := backend.Placement(hash)
+	var placedPaths []string
+	if placed {
+		if err := backend.FinalizePlacement(hash); err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Organize: failed to give the downloaded files their final names")
+			return false
+		}
+		placement, _ = backend.Placement(hash)
+		placedPaths = placement.VideoPaths()
+		if len(placedPaths) == 0 {
+			logger.Logger.Warn().Str("hash", hash).Msg("Organize: the placed torrent has no video files")
+			return false
+		}
+	}
+
 	// The webhook + write-back run only when at least one matched episode is not yet
 	// organized (empty LibraryPaths). This makes reconciliation re-runs no-ops.
 	needsOrganize := false
@@ -356,9 +375,15 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 		// reconcileLibrary sends back here: a release that didn't finish, or one organized before
 		// the setting was turned on.
 		if configs.DisableSeeding {
-			return releaseTorrent(hash, backend, fm, matched)
+			return releaseTorrent(hash, backend, fm, matched, placed)
 		}
 		return true
+	}
+
+	if placed {
+		// One placement, one set of files: every record of the hash (several entries of a shared
+		// pack included) points at them. They all live in the one series folder.
+		librarian.WriteShowNFO(placement.SeriesDir, placement.SeriesName, placement.SeriesID)
 	}
 
 	byID := map[int][]int{}
@@ -402,7 +427,10 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 			req.EpisodeNumber = &ep
 		}
 
-		created, err := librarian.Organize(req)
+		created, err := placedPaths, error(nil)
+		if !placed {
+			created, err = librarian.Organize(req)
+		}
 		if err != nil {
 			logger.Logger.Warn().Err(err).Str("hash", hash).Str("anime", head.AnimeName).Msg("Organize: failed to hardlink into library")
 			return false // retry with backoff; permanent errors drop after MaxRetries
@@ -410,6 +438,7 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 		createdCount += len(created)
 		for _, i := range idxs {
 			matched[i].LibraryPaths = created
+			matched[i].DirectLibrary = placed
 		}
 	}
 
@@ -435,7 +464,7 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 	}
 	logger.Logger.Info().Str("hash", hash).Str("anime", matched[0].AnimeName).Int("files", createdCount).Msg("Organized torrent into library")
 	if configs.DisableSeeding {
-		return releaseTorrent(hash, backend, fm, matched)
+		return releaseTorrent(hash, backend, fm, matched, placed)
 	}
 	return true
 }
@@ -450,7 +479,11 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 // torrent is still in the session, and the next reconcileLibrary sends it back here. The other
 // order leaves a record with no torrent and no marker, which the pass reads as a lost download and
 // fetches again.
-func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManagerInterface, matched []files.EpisodeStruct) bool {
+//
+// A placed (direct-mode) torrent is removed with keepData: its files ARE the library, there is no
+// second name to keep them. The placement stays with them, so the provider never claims those
+// paths for another torrent (decisions/137).
+func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManagerInterface, matched []files.EpisodeStruct, placed bool) bool {
 	for i := range matched {
 		matched[i].TorrentReleased = true
 	}
@@ -458,7 +491,7 @@ func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManager
 		logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Disable seeding: failed to mark the episodes released; keeping the torrent")
 		return false
 	}
-	if err := backend.Remove(hash, false); err != nil {
+	if err := backend.Remove(hash, placed); err != nil {
 		logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Disable seeding: failed to remove the organized torrent")
 		return false
 	}

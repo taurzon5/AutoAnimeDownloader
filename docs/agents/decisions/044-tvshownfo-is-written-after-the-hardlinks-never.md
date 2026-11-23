@@ -18,4 +18,9 @@
 
 **Requires in Jellyfin:** the `jellyfin-plugin-anilist` plugin as a metadata provider; without it `uniqueid type="anilist"` is ignored.
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** in direct mode organize writes the nfo in the series folder
+(`Placement.SeriesDir`) with the PREQUEL chain root's id (`Placement.SeriesID`), and
+`BackfillShowNFOs` skips records marked `DirectLibrary`, whose first path is inside `Season NN/`.
+The three rules above (after the files, never overwrite, a failure only logs) still hold.
+
 **Don't "fix" by:** moving the write next to `MkdirAll`; always overwriting "to keep it in sync"; propagating the write error to `Organize`'s return; giving the backfill a config flag; deriving the backfill folder from the anime name; running the backfill before/independent of the id migration.
