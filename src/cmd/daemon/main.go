@@ -196,6 +196,7 @@ func ensureStartupSession(manager *torrents.SessionManager, fileManager *files.F
 	// Before Ensure too: rain reads the unchoke settings only when the session opens, so a session
 	// born without it would upload until the first pass rebuilt it.
 	manager.SetUploadDisabled(configs.DisableSeeding)
+	manager.SetDirectMode(configs.IsDirectMode())
 	downloadPath := configs.DownloadPath()
 	if _, err := manager.Ensure(downloadPath); err != nil {
 		logger.Logger.Error().Err(err).Str("download_path", downloadPath).Msg("Failed to create the embedded torrent session at startup; the verification pass will retry")

@@ -675,6 +675,30 @@ func TestRemoveFolderIfNoVideo(t *testing.T) {
 		assertPresent(t, nfo, "tvshow.nfo")
 	})
 
+	// A hardlink-mode entry folder can be the same folder as a direct-mode series folder of the
+	// same title, with an episode still downloading as .part in Season NN/. It must survive.
+	t.Run("folder with a direct-mode download in progress is left untouched", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "Anime")
+		partial := filepath.Join(dir, "Season 01", "Anime - S01E02.mkv.part")
+		writeFile(t, partial, "half")
+		writeFile(t, filepath.Join(dir, "tvshow.nfo"), "show")
+
+		if err := lib.RemoveFolderIfNoVideo(dir); err != nil {
+			t.Fatalf("RemoveFolderIfNoVideo: %v", err)
+		}
+		assertPresent(t, partial, "the .part file rain is writing")
+	})
+
+	t.Run("a .part that is not a video does not keep the folder", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "Anime")
+		writeFile(t, filepath.Join(dir, "subs.ass.part"), "x")
+
+		if err := lib.RemoveFolderIfNoVideo(dir); err != nil {
+			t.Fatalf("RemoveFolderIfNoVideo: %v", err)
+		}
+		assertMissing(t, dir, "library folder")
+	})
+
 	t.Run("poster-only folder is wiped", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "Anime")
 		writeFile(t, filepath.Join(dir, "poster.jpg"), "art")

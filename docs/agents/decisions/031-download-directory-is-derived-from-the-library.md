@@ -6,6 +6,10 @@
 
 **Why it's right:** the same-filesystem constraint from `#21` was a trap that only showed up as an error on save; deriving the path turns it into an invariant. Two required fields with no clear difference confused the user, for whom only the library matters. `ProbePath` still exists because exFAT/FAT32/some SMB have no hardlinks at all. The `.ignore` + the leading-dot prefix keep Jellyfin out of the download folder.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** still holds. `DownloadPath()` stays rain's `DataDir`; in direct mode
+only torrents without a placement (added in hardlink mode) use it. Direct-mode validation and the
+per-pass gate probe that the library is writable instead of probing hardlinks.
+
 **Don't "fix" by:** reintroducing `save_path` as a config field or environment variable; removing the guard that makes `DeleteEmptyFolders` skip `.torrents`.
 
 **Amendment (2026-08-24): the migration was REMOVED.** `daemon.MigrateSavePath`, the

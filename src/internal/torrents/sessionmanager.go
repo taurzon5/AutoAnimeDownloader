@@ -50,6 +50,12 @@ type SessionManager struct {
 	// session opens, so a difference between the two is a reason for Ensure to rebuild it.
 	uploadDisabled        bool
 	sessionUploadDisabled bool
+	// placements holds the direct-mode file maps. It lives on the manager, like the queue, so
+	// it survives the session being rebuilt; directMode/sessionDirectMode follow the same
+	// next-vs-running pattern as uploadDisabled (rain reads CustomStorage once, at open).
+	placements        *placementStore
+	directMode        bool
+	sessionDirectMode bool
 }
 
 // queue.mu is taken BEFORE m.mu (queue.enforce calls List/pause/resume). Every exported
@@ -74,6 +80,7 @@ func NewSessionManager(dbPath string) *SessionManager {
 	// queue.json lives next to the resume database for the same reason as download_root.id: it
 	// is torrent-client state, and it has to follow the database.
 	m.queue.load(filepath.Join(filepath.Dir(dbPath), queueFileName))
+	m.placements = newPlacementStore(filepath.Join(filepath.Dir(dbPath), placementsFileName))
 	return m
 }
 
@@ -111,16 +118,19 @@ func (m *SessionManager) ensure(savePath string) (bool, error) {
 	}
 
 	uploadChanged := m.sessionUploadDisabled != m.uploadDisabled
-	if m.session != nil && m.savePath == savePath && !swapped && !uploadChanged {
+	modeChanged := m.sessionDirectMode != m.directMode
+	if m.session != nil && m.savePath == savePath && !swapped && !uploadChanged && !modeChanged {
 		return false, nil
 	}
 	if m.session != nil {
 		switch {
 		case swapped:
 			logger.Logger.Warn().Str("save_path", savePath).
-				Msg("The download folder was moved, trashed or replaced; recreating the torrent session so the files are redownloaded at the configured path")
+				Msg("The download folder was moved, trashed or replaced; recreating the torrent session so the files are redownloaded at the configured path (direct-mode torrents stop instead, decisions/139)")
 		case m.savePath != savePath:
 			logger.Logger.Info().Str("old", m.savePath).Str("new", savePath).Msg("Download path changed, recreating torrent session")
+		case modeChanged:
+			logger.Logger.Info().Bool("direct", m.directMode).Msg("Library mode changed, recreating torrent session")
 		default:
 			logger.Logger.Info().Bool("disable_seeding", m.uploadDisabled).Msg("Upload setting changed, recreating torrent session")
 		}
@@ -132,6 +142,13 @@ func (m *SessionManager) ensure(savePath string) (bool, error) {
 
 	opts := m.sessionOpts
 	opts.noUpload = m.uploadDisabled
+	// A placed torrent needs the provider even after direct mode is switched off: its files are
+	// not under savePath, and rain's own storage would look for them there and download them
+	// again. So the provider stays installed while any placement exists; hardlink mode with no
+	// placements gets rain's untouched file storage (decisions/136).
+	if m.directMode || m.placements.count() > 0 {
+		opts.placements = m.placements
+	}
 	s, err := newSession(savePath, m.dbPath, opts)
 	if err != nil {
 		return false, err
@@ -140,6 +157,7 @@ func (m *SessionManager) ensure(savePath string) (bool, error) {
 	m.session = s
 	m.savePath = savePath
 	m.sessionUploadDisabled = m.uploadDisabled
+	m.sessionDirectMode = m.directMode
 
 	m.writeRoot(savePath, id)
 
@@ -382,6 +400,63 @@ func (m *SessionManager) SetUploadDisabled(disabled bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.uploadDisabled = disabled
+}
+
+func (m *SessionManager) SetDirectMode(enabled bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.directMode = enabled
+}
+
+// SetPlacement registers where a torrent's files go. It must run BEFORE Add: rain asks the
+// storage provider for the torrent's storage synchronously inside AddURI. It needs no session —
+// the store lives on the manager.
+func (m *SessionManager) SetPlacement(req PlacementRequest) error {
+	_, err := m.placements.register(req)
+	return err
+}
+
+// Placement returns the placement with its paths resolved against the library of the current
+// session (the store keeps them relative). Before the first Ensure there is no library yet and
+// the paths stay relative.
+func (m *SessionManager) Placement(hash string) (Placement, bool) {
+	p, ok := m.placements.get(hash)
+	if !ok {
+		return Placement{}, false
+	}
+	m.mu.RLock()
+	root := libraryRootOf(m.savePath)
+	m.mu.RUnlock()
+	return p.Resolve(root), true
+}
+
+func (m *SessionManager) Placements() []Placement {
+	m.mu.RLock()
+	root := libraryRootOf(m.savePath)
+	m.mu.RUnlock()
+	stored := m.placements.all()
+	out := make([]Placement, len(stored))
+	for i, p := range stored {
+		out[i] = p.Resolve(root)
+	}
+	return out
+}
+
+func (m *SessionManager) FinalizePlacement(hash string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.session == nil {
+		return ErrSessionNotReady
+	}
+	return m.session.FinalizePlacement(hash)
+}
+
+func (m *SessionManager) ForgetPlacement(hash string) error {
+	return m.placements.forget(hash)
+}
+
+func (m *SessionManager) SetPlacementKept(hash string, kept bool) error {
+	return m.placements.setKept(hash, kept)
 }
 
 func (m *SessionManager) Announce(hash string) error {

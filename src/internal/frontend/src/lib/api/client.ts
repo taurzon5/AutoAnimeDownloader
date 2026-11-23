@@ -227,6 +227,14 @@ export interface Config {
   excluded_list?: string
   excluded_lists: string[]
   rename_files_for_jellyfin: boolean
+  /** "hardlink" (default) or "direct": write torrents straight to <Series>/Season NN/, no hardlinks. */
+  library_mode: "hardlink" | "direct"
+  /** Direct mode: false = keep forever (no automatic deletion, no per-anime episode limit). */
+  auto_delete_downloads: boolean
+  /** Direct mode: "part" writes <name>.part until the torrent completes; "in_place" doesn't. */
+  incomplete_files: "part" | "in_place"
+  /** Direct mode + Jellyfin renaming: "season" numbers a split cour across its season (S02E13). */
+  episode_numbering: "season" | "entry"
   /** No upload at all, and each torrent is removed once organized into the library. */
   disable_seeding: boolean
   /** Asks GitHub once a day whether a newer release exists (the update badge and update_available). */
@@ -329,6 +337,8 @@ export interface TorrentInfo {
   peers_total: number
   eta_seconds: number | null
   seeded_for_seconds: number
+  /** A finished direct-mode torrent whose library file was deleted outside the app. */
+  files_missing?: boolean
 }
 
 /** A file inside a torrent. */

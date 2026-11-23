@@ -176,7 +176,11 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return 0, err
 	}
-	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs)
+	target, err := standaloneTarget(configs, mediaID)
+	if err != nil {
+		return 0, err
+	}
+	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs, target)
 	if err != nil || hash == "" {
 		return 0, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}

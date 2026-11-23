@@ -37,6 +37,13 @@ whoever turns seeding off doesn't want data parked on disk. If S2 enters watchin
 again. `findCoveringPack` does not read the flag on purpose, since it adopts what is ON DISK and a
 released pack is not.
 
+**Amendment (see [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** for a direct-mode torrent the release removes the torrent with
+`keepData=true`: its files are the library, there is no download copy to delete. The upload side
+(no unchoke, no allowed-fast set) is unchanged. Because nothing is deleted, a released direct-mode pack keeps its other
+seasons and extras on disk, out of the session: a later season cannot adopt it (`findCoveringPack`
+needs a live torrent, [#78](078-a-torrents-unit-of-ownership-is-coverage-on-the.md)) and downloads its own copy. The "parts that were not linked are deleted"
+rule above does not apply to direct mode.
+
 **Don't "fix" by:** using `SpeedLimitUpload` (0 = unlimited); zeroing the unchokes and leaving
 `AllowedFastSet`; also stopping the torrent at completion: organize runs right after completion and
 removes it, and with no upload a completed torrent has nothing to send anyway, so a stop in between

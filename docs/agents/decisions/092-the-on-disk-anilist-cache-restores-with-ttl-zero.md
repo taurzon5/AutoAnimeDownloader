@@ -62,3 +62,11 @@ new rule** — the pass already searches when the countdown goes negative.
 **Relation to #72:** the budget gate's refusal still serves the expired value **without** an
 error. The data there is seconds old and the next poll comes back fresh; the screen gains nothing
 from knowing. Only a real failure carries `ErrFromCache`.
+
+**Amendment (see [#138](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)):** the series links gained the node's titles (direct library mode names
+the series folder after the chain root). A link cached before that has none, and the full-TTL
+restore would keep serving it forever on a daemon restarted daily, so `walkSeries` serves such a
+link (the offset keeps working with AniList down) **and** fetches it once more to learn the title. Titles,
+unlike episode counts and prequel links, are not immutable: AniList edits them, and the full-TTL
+restore can keep a stale one for a while. Direct mode does not depend on that freshness — a series
+keeps the folder its first torrent got ([#138](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)).

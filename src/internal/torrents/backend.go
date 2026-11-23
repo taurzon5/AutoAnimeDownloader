@@ -143,6 +143,30 @@ type TorrentBackend interface {
 	// It takes effect on the next Ensure, which rebuilds the session when the value differs from
 	// the running one. Call it BEFORE Ensure.
 	SetUploadDisabled(disabled bool)
+	// SetDirectMode is library_mode "direct"'s session half: placed torrents are written straight
+	// to their library path. Like SetUploadDisabled, it takes effect on the next Ensure, which
+	// rebuilds the session when the value differs from the running one. Call it BEFORE Ensure.
+	SetDirectMode(enabled bool)
+	// SetPlacement registers where a torrent's files go in direct mode. Call it BEFORE Add, with
+	// the hash the magnet will get (InfoHash). A hash that already has a placement keeps it (Kept
+	// included), so a re-add resumes into its files: the file map is frozen once made
+	// (decisions/136).
+	SetPlacement(req PlacementRequest) error
+	// Placement returns a torrent's placement; false for a torrent added in hardlink mode.
+	Placement(hash string) (Placement, bool)
+	// Placements returns every placement, resolved like Placement (the daemon's orphan sweep).
+	Placements() []Placement
+	// FinalizePlacement renames a completed placed torrent's .part files to their final names and
+	// marks the placement completed (only the mark, without part files). Idempotent.
+	FinalizePlacement(hash string) error
+	// ForgetPlacement drops a placement whose torrent is gone and whose files the caller deleted
+	// itself (a released torrent). Removing a placed torrent with keepData=false forgets it already.
+	ForgetPlacement(hash string) error
+	// SetPlacementKept marks a placement Kept BEFORE its torrent is removed with keepData on
+	// purpose: its files then belong to the user, and neither the orphan sweep nor a removal
+	// before the metadata deletes them. A failure must abort the removal. The daemon never clears
+	// it (decisions/137). No placement is not an error.
+	SetPlacementKept(hash string, kept bool) error
 	// Announce forces a re-announce to all trackers and DHT. It does not override the
 	// trackers' minimum interval, so calling it in a loop achieves nothing.
 	Announce(hash string) error

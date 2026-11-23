@@ -421,6 +421,7 @@ func (l *trackingLibrarian) RemoveFromLibrary(path string) error {
 }
 func (l *trackingLibrarian) RemoveFolderIfNoVideo(string) error { return nil }
 func (l *trackingLibrarian) ProbePath(string) error             { return nil }
+func (l *trackingLibrarian) WriteShowNFO(string, string, int)   {}
 
 func deleteTorrentRequest(hash, query string) *http.Request {
 	url := "/api/v1/torrents/" + hash
@@ -836,5 +837,51 @@ func TestHandleTorrentFilesSkipsTheCodecForNonMKV(t *testing.T) {
 	items := decodeTorrentList(t, w)
 	if _, present := items[0]["codec"]; present {
 		t.Errorf("codec = %v, want the field omitted", items[0]["codec"])
+	}
+}
+
+// A finished direct-mode torrent whose library file was deleted outside the app carries
+// files_missing — the only warning (decisions/139). A torrent with its file in place doesn't.
+func TestHandleTorrentsFlagsADeletedLibraryFile(t *testing.T) {
+	lib := t.TempDir()
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	const gone = "1111111111111111111111111111111111111111"
+	const there = "2222222222222222222222222222222222222222"
+	for _, h := range []string{gone, there} {
+		if err := backend.SetPlacement(torrents.PlacementRequest{Hash: h, SeriesDir: "Show", Kind: torrents.PlacementEpisode, Season: 1}); err != nil {
+			t.Fatal(err)
+		}
+		p, err := backend.PlaceFiles(h, []string{h[:4] + ".mkv"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(p.Files[0].Path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p.Files[0].Path, []byte("v"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		backend.AddCompleted(h, p.SeriesDir)
+		if err := backend.FinalizePlacement(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, _ := backend.Placement(gone)
+	if err := os.Remove(p.Files[0].Path); err != nil {
+		t.Fatal(err)
+	}
+
+	server := &Server{Torrents: backend, FileManager: &mockFileManager{}}
+	w := httptest.NewRecorder()
+	handleTorrents(server)(w, httptest.NewRequest(http.MethodGet, "/api/v1/torrents", nil))
+
+	flags := map[string]bool{}
+	for _, item := range decodeTorrentList(t, w) {
+		missing, _ := item["files_missing"].(bool)
+		flags[item["hash"].(string)] = missing
+	}
+	if !flags[gone] || flags[there] {
+		t.Fatalf("only the torrent with the deleted file is flagged, got %v", flags)
 	}
 }

@@ -29,8 +29,8 @@ func TestDiskBudget_TwoTorrentsThatOnlyFitAlone(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	disk := newDiskBudget(nil, nil)
 
-	first, _ := attemptDownloadWithRetries(configs, backend, disk, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(1), Size: size}}, "ep 1")
-	second, _ := attemptDownloadWithRetries(configs, backend, disk, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(2), Size: size}}, "ep 2")
+	first, _ := attemptDownloadWithRetries(configs, backend, disk, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(1), Size: size}}, "ep 1", torrentTarget{})
+	second, _ := attemptDownloadWithRetries(configs, backend, disk, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(2), Size: size}}, "ep 2", torrentTarget{})
 
 	if first == "" || second != "" {
 		t.Fatalf("want only the first added, got first=%q second=%q", first, second)
@@ -51,7 +51,7 @@ func TestDiskBudget_PackPaysOnceAcrossItsEpisodes(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			hashes[i], _ = attemptDownloadWithRetries(configs, backend, disk, pack, "pack episode")
+			hashes[i], _ = attemptDownloadWithRetries(configs, backend, disk, pack, "pack episode", torrentTarget{})
 		}()
 	}
 	wg.Wait()

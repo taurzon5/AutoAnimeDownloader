@@ -83,6 +83,10 @@ type EpisodeStruct struct {
 	// chain episode count). Organize slices a multi-season/cour pack with (offset, offset+total].
 	// Zero is season/cour 1. Old records omit it and Organize keeps the whole torrent.
 	SeriesOffset int `json:"series_offset,omitempty"`
+	// DirectLibrary marks a record organized in direct library mode: its LibraryPaths are the
+	// torrent's own files under <Series>/Season NN/, not hardlinks in a per-entry folder. The
+	// series tvshow.nfo is written by organize, so BackfillShowNFOs leaves these records alone.
+	DirectLibrary bool `json:"direct_library,omitempty"`
 }
 
 type WebhookPreset struct {
@@ -174,6 +178,53 @@ type Config struct {
 	AnimeIDsAreMediaIDs bool                `json:"anime_ids_are_media_ids"`
 	Notifications       NotificationsConfig `json:"notifications"`
 	Priorities          nyaa.Priorities     `json:"priorities"`
+	// LibraryMode picks how torrents reach the library. "hardlink" (the default, and what an
+	// empty value means) downloads into DownloadPath() and hardlinks into CompletedAnimePath.
+	// "direct" writes each torrent straight to its final <Series>/Season NN/ path through the
+	// torrents placement storage and seeds from there: no hardlink, no download copy.
+	LibraryMode string `json:"library_mode"`
+	// AutoDeleteDownloads governs torrents ADDED in direct mode, whatever the mode is now: false =
+	// keep forever, no automatic path deletes them (and, while direct mode is on,
+	// max_episodes_per_anime is ignored — LiftsEpisodeLimit). true = the usual deletion rules
+	// apply, and deleting also stops the seed (the library file is the torrent's data).
+	AutoDeleteDownloads bool `json:"auto_delete_downloads"`
+	// IncompleteFiles (direct mode only): "part" (default) writes "<name>.part" and renames on
+	// completion, so the media server never scans a half-written episode; "in_place" writes the
+	// final name from the start.
+	IncompleteFiles string `json:"incomplete_files"`
+	// EpisodeNumbering (direct mode, with RenameFilesForJellyfin): how a split cour sharing one
+	// Season NN folder is named. "season" (default) continues the season's numbering (Part 2
+	// episode 1 = S02E13); "entry" keeps the AniList entry's own numbers plus a part tag.
+	EpisodeNumbering string `json:"episode_numbering"`
+}
+
+// Library modes and the direct-mode option values.
+const (
+	LibraryModeHardlink    = "hardlink"
+	LibraryModeDirect      = "direct"
+	IncompleteFilesPart    = "part"
+	IncompleteFilesInPlace = "in_place"
+	EpisodeNumberingSeason = "season"
+	EpisodeNumberingEntry  = "entry"
+)
+
+// IsDirectMode reports whether torrents are written straight to their library path.
+func (c *Config) IsDirectMode() bool {
+	return c.LibraryMode == LibraryModeDirect
+}
+
+// LiftsEpisodeLimit reports whether max_episodes_per_anime is ignored: direct mode with keep
+// forever (auto_delete_downloads off). It depends on the current mode on purpose — a hardlink-mode
+// install keeps its limit. Sparing direct-mode torrents from automatic deletion does NOT depend
+// on the mode: that is daemon.withoutKeptForever, gated on AutoDeleteDownloads alone
+// (decisions/137).
+func (c *Config) LiftsEpisodeLimit() bool {
+	return c.IsDirectMode() && !c.AutoDeleteDownloads
+}
+
+// UsePartFiles reports whether direct mode writes incomplete files under a .part name.
+func (c *Config) UsePartFiles() bool {
+	return c.IncompleteFiles != IncompleteFilesInPlace
 }
 
 // downloadDirName is the name of the download directory inside the library. The dot hides it from
@@ -269,6 +320,9 @@ func DefaultConfig() *Config {
 		DeleteStatuses:        []string{},
 		Notifications:         NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
 		Priorities:            nyaa.DefaultPriorities(),
+		LibraryMode:           LibraryModeHardlink,
+		IncompleteFiles:       IncompleteFilesPart,
+		EpisodeNumbering:      EpisodeNumberingSeason,
 	}
 }
 
@@ -916,19 +970,11 @@ func (m *FileManager) deleteEmptyFolders(path string) error {
 // `.nfo` files (tvshow.nfo plus episode sidecars) and a `.chapters` directory of
 // extracted chapter XML. Zero entries is the same rule: the folder is leftover.
 // A poster, a video, or any other subdirectory keeps the folder.
+//
+// The rule itself is nyaa.IsLeftoverMetadataOnly: a deleted direct-mode torrent prunes its folders
+// with it too (torrents/placement.go), and the two must never disagree.
 func nfoOnlyFolder(entries []os.DirEntry) bool {
-	for _, e := range entries {
-		if e.IsDir() {
-			if e.Name() != ".chapters" {
-				return false
-			}
-			continue
-		}
-		if !strings.EqualFold(filepath.Ext(e.Name()), ".nfo") {
-			return false
-		}
-	}
-	return true
+	return nyaa.IsLeftoverMetadataOnly(entries)
 }
 
 // removeLeftover deletes path. Directories are emptied first because FileSystem.Remove

@@ -51,6 +51,27 @@ var videoExtensions = map[string]bool{
 	".mpeg": true, ".ogm": true,
 }
 
+// IsLeftoverMetadataOnly reports whether every entry of a library folder is leftover media-server
+// metadata: `.nfo` files (tvshow.nfo plus episode sidecars) and a `.chapters` directory of
+// extracted chapter XML. Zero entries is the same rule. A poster, a video or any other
+// subdirectory keeps the folder. It lives here for IsVideoFile's reason: the library sweep
+// (files) and a deleted direct-mode torrent's own pruning (torrents) must agree, and torrents
+// may not import files.
+func IsLeftoverMetadataOnly(entries []os.DirEntry) bool {
+	for _, e := range entries {
+		if e.IsDir() {
+			if e.Name() != ".chapters" {
+				return false
+			}
+			continue
+		}
+		if !strings.EqualFold(filepath.Ext(e.Name()), ".nfo") {
+			return false
+		}
+	}
+	return true
+}
+
 // IsVideoFile reports whether the name has a video extension. It lives in this package, not in
 // files, because both read the same file list of a pack — the Librarian after downloading,
 // PackFileRange before — and files imports nyaa (the reverse would be a cycle).

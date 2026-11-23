@@ -85,8 +85,11 @@ func selectEpisodes(
 // effectiveMax is the per-anime limit applied to the pass. max_episodes_per_anime == 0 means NO
 // CEILING, and "no ceiling" is expressed as len(episodes)+1 — the same trick the pack path already
 // used to lift the limit, now also for the ceiling turned off.
+//
+// Direct mode's "keep forever" turns the limit off too: it downloads every aired episode and deletes
+// nothing for being over the limit.
 func effectiveMax(configs *files.Config, episodes []anilist.AiringNode) int {
-	if configs.MaxEpisodesPerAnime <= 0 {
+	if configs.MaxEpisodesPerAnime <= 0 || configs.LiftsEpisodeLimit() {
 		return len(episodes) + 1
 	}
 	return configs.MaxEpisodesPerAnime
@@ -96,7 +99,7 @@ func effectiveMax(configs *files.Config, episodes []anilist.AiringNode) int {
 // max_episodes_per_anime. With the ceiling off the window is open, which is expensive on purpose
 // (the brakes become max_batch_torrent_size_gb, per torrent, and checkDiskSpace).
 func windowEnd(configs *files.Config, firstPending int) int {
-	if configs.MaxEpisodesPerAnime <= 0 {
+	if configs.MaxEpisodesPerAnime <= 0 || configs.LiftsEpisodeLimit() {
 		return math.MaxInt
 	}
 	return firstPending + configs.MaxEpisodesPerAnime - 1
@@ -304,7 +307,14 @@ func processAnimeEpisodes(
 			notifications.Notify(configs, notifications.NewEpisode, torrentItem(torrentKey, notifications.Episode{AnimeID: anime.Media.Id, AnimeName: animeTitle, Number: ep.Episode}))
 		}
 
-		hash, torrentSize := attemptDownloadWithRetries(configs, backend, disk, candidates, epName)
+		target := torrentTarget{anime: anime, batch: skipSubfolder}
+		if !skipSubfolder {
+			target.episode = ep.Episode
+		}
+		if series, ok := seriesIndex[anime.Media.Id]; ok {
+			target.series = &series
+		}
+		hash, torrentSize := attemptDownloadWithRetries(configs, backend, disk, candidates, epName, target)
 
 		if hash != "" {
 			added[torrentKey] = true
@@ -1029,7 +1039,7 @@ func handleAlreadySavedEpisode(maxEpisodes int, downloadedEpisodes *int, isInTor
 // attemptDownloadWithRetries returns the hash of the torrent it added and the size Nyaa announced
 // for it, which the record keeps so the disk budget can count the torrent while it waits in the
 // queue (newDiskBudget).
-func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentBackend, disk *diskBudget, candidates []nyaa.TorrentResult, fileName string) (hash string, size int64) {
+func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentBackend, disk *diskBudget, candidates []nyaa.TorrentResult, fileName string, target torrentTarget) (hash string, size int64) {
 	// Full disk: not a single magnet is tried and there's no retry — the candidate isn't the problem,
 	// and trying 3 times would only fill the log. Each candidate's size is checked in the loop. A
 	// candidate already paid for (another episode of the same pack) skips this: it adds no bytes.
@@ -1057,6 +1067,11 @@ func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentB
 			continue
 		}
 
+		if err := registerPlacement(configs, backend, candidates[i].MagnetLink, target); err != nil {
+			undo()
+			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping candidate: it could not be placed in the library")
+			continue
+		}
 		h, err := backend.Add(candidates[i].MagnetLink)
 		if err != nil {
 			undo()
@@ -1133,7 +1148,22 @@ func RemoveTorrentWithEpisodes(
 	}
 
 	if len(group) == 0 {
+		// Kept BEFORE the removal: once the torrent is gone, a placement still in the store that
+		// nothing points at is what the orphan sweep deletes (decisions/137).
+		if opts.KeepData {
+			if err := backend.SetPlacementKept(hash, true); err != nil {
+				return fmt.Errorf("failed to keep the torrent's files: %w", err)
+			}
+		}
 		return backend.Remove(hash, opts.KeepData)
+	}
+
+	// Same for the group, and before Block: a failure must change nothing and reach the caller,
+	// not come back as a success that deleted nothing (decisions/074, decisions/137).
+	if opts.KeepData {
+		if err := backend.SetPlacementKept(hash, true); err != nil {
+			return fmt.Errorf("failed to keep the torrent's files: %w", err)
+		}
 	}
 
 	if opts.Block {
@@ -1154,7 +1184,7 @@ func RemoveTorrentWithEpisodes(
 
 // deleteEpisodesByStatus deletes the episodes of the anime that ALL accounts agree to delete.
 // deletableMediaIDs (verification.go) decides that — it's only applied here.
-func deleteEpisodesByStatus(deletableMedia map[int]bool, fileManager FileManagerInterface, backend torrents.TorrentBackend, librarian files.Librarian, savedEpisodes []files.EpisodeStruct, newEpisodes []files.EpisodeStruct, watching map[int]bool) {
+func deleteEpisodesByStatus(configs *files.Config, deletableMedia map[int]bool, fileManager FileManagerInterface, backend torrents.TorrentBackend, librarian files.Librarian, savedEpisodes []files.EpisodeStruct, newEpisodes []files.EpisodeStruct, watching map[int]bool) {
 	if len(deletableMedia) == 0 {
 		return
 	}
@@ -1169,6 +1199,7 @@ func deleteEpisodesByStatus(deletableMedia map[int]bool, fileManager FileManager
 		}
 	}
 
+	keysToDelete = withoutKeptForever(configs, backend, keysToDelete, savedEpisodes)
 	if len(keysToDelete) == 0 {
 		logger.Logger.Debug().Msg("Status-based deletion: no matching episodes found")
 		return
@@ -1193,6 +1224,7 @@ func handleSavedEpisodes(fileManager FileManagerInterface, configs *files.Config
 
 	if configs.DeleteWatchedEpisodes {
 		allKeys := append(append([]files.EpisodeKey{}, data.keysToDelete...), episodesNotInWatching...)
+		allKeys = withoutKeptForever(configs, backend, allKeys, data.savedEpisodes)
 		// data.savedEpisodes is the PRE-pass snapshot: the records saveEpisodesToFile just wrote are
 		// invisible in it. If one of them reused the hash of a pack whose old records are leaving now,
 		// the torrent guard would conclude "nobody survives" and delete the file the pass just adopted.
@@ -1202,6 +1234,33 @@ func handleSavedEpisodes(fileManager FileManagerInterface, configs *files.Config
 			logger.Logger.Warn().Err(err).Msg("Failed to delete episodes from file")
 		}
 	}
+}
+
+// withoutKeptForever drops from an AUTOMATIC deletion the records of direct-mode torrents while
+// "keep forever" is on (auto_delete_downloads false): the library file is the seeding file, and
+// the user chose to keep both. Torrents added in hardlink mode keep the usual rules. Manual
+// deletes never pass through here (decisions/137).
+//
+// It does not look at library_mode: a torrent keeps the mode it was added in, so switching back
+// to hardlink mode must not start deleting the direct-mode torrents kept until then.
+func withoutKeptForever(configs *files.Config, backend torrents.TorrentBackend, keys []files.EpisodeKey, saved []files.EpisodeStruct) []files.EpisodeKey {
+	if configs.AutoDeleteDownloads || len(keys) == 0 {
+		return keys
+	}
+	hashOf := make(map[files.EpisodeKey]string, len(saved))
+	for _, ep := range saved {
+		hashOf[ep.Key()] = ep.EpisodeHash
+	}
+	kept := keys[:0:0]
+	for _, k := range keys {
+		if hash := hashOf[k]; hash != "" {
+			if _, placed := backend.Placement(hash); placed {
+				continue
+			}
+		}
+		kept = append(kept, k)
+	}
+	return kept
 }
 
 // removeEpisodesAndLinks deletes episodes and frees their disk space by removing BOTH links:
@@ -1247,6 +1306,7 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 	// torrent is removed anyway does not double as "keep everything" since it's the same inode).
 	if !keepData {
 		touchedDirs := make(map[string]bool)
+		releasedPlaced := make(map[string]bool)
 		for _, ep := range savedEpisodes {
 			if !deleteSet[ep.Key()] {
 				continue
@@ -1255,6 +1315,21 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 			if ep.IsBatch && !removingTorrent {
 				// Keep batch library files while siblings survive (can't identify a single
 				// episode's raw-named file safely). Freed only when the whole torrent goes.
+				continue
+			}
+			// A direct-mode record's library paths are the torrent's own files. While the torrent is
+			// in the session, removing it below deletes them through the placement storage; deleting
+			// them here first would only race it. A released one (disable_seeding) left the session
+			// with its files kept, so they are deleted here, with its placement (decisions/137).
+			if placement, placed := backend.Placement(ep.EpisodeHash); placed && ep.EpisodeHash != "" {
+				if ep.TorrentReleased && removingTorrent && !releasedPlaced[ep.EpisodeHash] {
+					releasedPlaced[ep.EpisodeHash] = true
+					if err := torrents.RemovePlacedFiles(placement); err != nil {
+						logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to delete a released torrent's library files")
+					} else if err := backend.ForgetPlacement(ep.EpisodeHash); err != nil {
+						logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to forget a released torrent's placement")
+					}
+				}
 				continue
 			}
 			for _, p := range ep.LibraryPaths {
@@ -1275,6 +1350,7 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 
 	// Remove torrents (seeding copy) with no surviving siblings.
 	removedHashes := make(map[string]bool)
+	notKept := make(map[string]bool)
 	for _, ep := range savedEpisodes {
 		// A released record's torrent already left the session: there is nothing to remove, and
 		// trying would only log a failure.
@@ -1282,16 +1358,35 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 			continue
 		}
 		if force || canRemoveTorrent(byHash[ep.EpisodeHash], deleteSet, watching) {
+			removedHashes[ep.EpisodeHash] = true
+			// With keepData a direct-mode torrent's files become the user's: its placement is
+			// marked Kept BEFORE the removal, so the orphan sweep can never delete them. When the
+			// mark fails, the torrent and its records stay, untouched (decisions/137).
+			if keepData {
+				if err := backend.SetPlacementKept(ep.EpisodeHash, true); err != nil {
+					logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to keep the torrent's files; leaving the torrent and its episodes in place")
+					notKept[ep.EpisodeHash] = true
+					continue
+				}
+			}
 			if err := backend.Remove(ep.EpisodeHash, keepData); err != nil {
 				logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to remove torrent")
 			} else {
 				logger.Logger.Info().Str("hash", ep.EpisodeHash).Msg("Removed torrent (seeding copy)")
 			}
-			removedHashes[ep.EpisodeHash] = true
 		}
 	}
 
 	forgotten := forgettableKeys(keysToDelete, byKey, byHash, force, watching)
+	if len(notKept) > 0 {
+		kept := forgotten[:0:0]
+		for _, k := range forgotten {
+			if !notKept[byKey[k].EpisodeHash] {
+				kept = append(kept, k)
+			}
+		}
+		forgotten = kept
+	}
 	if err := fm.DeleteEpisodesFromFile(forgotten); err != nil {
 		return fmt.Errorf("failed to delete episodes from file: %w", err)
 	}

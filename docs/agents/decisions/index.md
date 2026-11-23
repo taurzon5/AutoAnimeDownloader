@@ -147,3 +147,7 @@ do not edit by hand.
 - [**#133** — An ONA entry counts its ONA prequel in the season offset, while the series axis still walks TV prequels only](133-an-ona-entry-counts-its-ona-prequel-in-the-season.md)
 - [**#134** — Each decision is its own numbered file, and the index is generated from their headings](134-each-decision-is-its-own-numbered-file-and-the.md)
 - [**#135** — The Nyaa request gap is one global slot held across the sleep, not a pause per search](135-the-nyaa-request-gap-is-one-global-slot-held.md)
+- [**#136** — Direct mode places a torrent before the add and freezes its file map at the first prepare](136-direct-mode-places-a-torrent-before-the-add-and.md)
+- [**#137** — Direct mode deletes through the torrent, and keep forever spares only direct-mode torrents](137-direct-mode-deletes-through-the-torrent-and-keep.md)
+- [**#138** — Direct mode numbers seasons along the TV PREQUEL chain and pins a series to its first folder](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)
+- [**#139** — A direct-mode file deleted outside the app is reported and never downloaded again](139-a-direct-mode-file-deleted-outside-the-app-is.md)

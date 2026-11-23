@@ -88,8 +88,10 @@ func renderMedia(graph map[int]*fixtureMedia, id int, node *fixtureMedia, depth 
 		}
 	}
 
-	return fmt.Sprintf(`{"id":%d,"episodes":%s,"format":%q,"status":%q,"relations":{"edges":[%s]}}`,
-		id, episodes, node.format, node.status, strings.Join(edges, ","))
+	// Every real node has a romaji title; the walk records it (direct library mode names the
+	// series folder after the root).
+	return fmt.Sprintf(`{"id":%d,"episodes":%s,"format":%q,"status":%q,"title":{"english":null,"romaji":"Media %d"},"relations":{"edges":[%s]}}`,
+		id, episodes, node.format, node.status, id, strings.Join(edges, ","))
 }
 
 // goldenChains are the three chains measured against the real AniList on 28/Aug/2026
@@ -297,5 +299,51 @@ func TestGetSeriesIndex_CycleTerminates(t *testing.T) {
 	}
 	if index[600].Offset != 12 {
 		t.Errorf("the cycle has to stop after one hop: want offset 12, got %d", index[600].Offset)
+	}
+}
+
+// The chain comes back root first, with the titles the walk recorded: the root title is what
+// names a direct-mode series folder.
+func TestGetSeriesIndex_ChainCarriesTitlesRootFirst(t *testing.T) {
+	mockSeriesAPI(t, goldenGraph())
+	index, err := GetSeriesIndex([]int{166873}, PriorityDisposable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	series := index[166873]
+	if len(series.Chain) != 4 || series.Chain[0].ID != 108465 || series.Chain[3].ID != 166873 {
+		t.Fatalf("chain must run root first to the anime itself, got %+v", series.Chain)
+	}
+	if got := series.RootTitle(); got != "Media 108465" {
+		t.Fatalf("RootTitle = %q", got)
+	}
+	if series.Chain[1].Episodes != 12 {
+		t.Fatalf("chain entries carry their episode counts, got %+v", series.Chain[1])
+	}
+}
+
+// A link cached before the walk fetched titles (an upgrade: the snapshot restores it with a full
+// TTL on every boot, decisions/092) is still served, and fetched again once to learn the title.
+func TestGetSeriesIndex_TitleLessCachedLinkIsServedAndRefetched(t *testing.T) {
+	requests := mockSeriesAPI(t, goldenGraph())
+	seriesCache.set(seriesKey(108465), seriesLink{Episodes: 11}, seriesTTL)
+	t.Cleanup(func() { seriesCache.deleteWhere(func(string) bool { return true }) })
+
+	index, err := GetSeriesIndex([]int{108465}, PriorityDisposable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *requests == 0 {
+		t.Fatal("a title-less cached link must be fetched again")
+	}
+	if got := index[108465].RootTitle(); got != "Media 108465" {
+		t.Fatalf("the refetch must bring the title, got %q", got)
+	}
+	before := *requests
+	if _, err := GetSeriesIndex([]int{108465}, PriorityDisposable); err != nil {
+		t.Fatal(err)
+	}
+	if *requests != before {
+		t.Fatal("once the title is cached, the walk must not go back to the network")
 	}
 }

@@ -115,6 +115,17 @@ func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64
 func HandleTorrentFailure(hash string, cause error, backend torrents.TorrentBackend, fileManager FileManagerInterface) {
 	logger.Logger.Warn().Err(cause).Str("hash", hash).Msg("Torrent stopped with error")
 
+	// A finished direct-mode torrent whose library file was deleted outside the app stops with an
+	// error, because the placement storage refuses to recreate the file. That is the warning and
+	// nothing else (decisions/139): no drop, no re-add, no download_failed.
+	if backend != nil {
+		if p, ok := backend.Placement(hash); ok && PlacedFilesMissing(p) {
+			logger.Logger.Warn().Str("hash", hash).Str("series_dir", p.SeriesDir).
+				Msg("A library file of this torrent was deleted outside the app; it stays stopped and is not downloaded again")
+			return
+		}
+	}
+
 	failed := notifications.Episode{TorrentHash: hash}
 	if saved, err := fileManager.LoadSavedEpisodes(); err != nil {
 		logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Torrent failure: failed to load saved episodes for the webhook")

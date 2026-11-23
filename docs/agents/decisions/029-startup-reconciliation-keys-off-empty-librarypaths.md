@@ -8,6 +8,12 @@
 
 The deviation is intentional and better than the design. It is also what makes reconciliation idempotent and cheap: `EnqueueOrganize` dedupes by hash, so three consecutive passes over the same unorganized torrent produce one job.
 
+**Amendment (see [#139](139-a-direct-mode-file-deleted-outside-the-app-is.md)):** in direct mode the library file is the torrent's data, so a file the
+user deletes by hand would come back: on the next session open rain would find it missing and
+download it again. It doesn't: the placement storage refuses to recreate a finished torrent's
+file, the torrent stays stopped, and its row in Downloads says the file was deleted outside the
+app — a warning, nothing else. Reconciliation itself is unchanged: it still keys off empty `LibraryPaths`.
+
 **Don't "fix" by:** adding a `Stat` on `LibraryPaths` to "detect" missing library files, or clearing `LibraryPaths` when the paths no longer resolve — both reintroduce the resurrection loop. A user who wants the link back should redownload or replace the episode, which resets `LibraryPaths` through the merge in decision 27.
 
 **One exception, see decision 34:** when the *entire download root* is detected as swapped (moved/trashed/replaced folder), `clearLibraryPathsAfterRootSwap` wipes the records once. That is a different event from a per-file deletion and is edge-triggered, so it cannot become the loop this decision guards against.

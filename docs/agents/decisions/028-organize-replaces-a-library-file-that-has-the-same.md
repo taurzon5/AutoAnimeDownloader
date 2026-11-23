@@ -8,4 +8,8 @@
 
 The related `*req.EpisodeNumber > 0` guard is defence in depth for the same failure: AniList has no episode 0, so a zero unambiguously means *missing data* rather than a real episode. Falling back to the raw filename (unique per release) is strictly better than emitting `Anime - E00.mkv`, which collides across every episode of the anime and, before the `SameFile` fix, made them all resolve to the same destination. Decision 27 fixes the cause; this guard makes sure no future path reintroduces it.
 
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** holds for `Organize` (hardlink mode). Direct mode never replaces a
+file: a destination already on disk, or claimed by another torrent's placement, gets the torrent's
+short hash appended, because rain would open the existing file as this torrent's data.
+
 **Don't "fix" by:** restoring the bare `Stat`-and-skip, turning the different-inode case into an error, or dropping the `> 0` term because "the persistence layer guarantees a real episode number now" — the guard exists precisely because that guarantee is not enforceable at this layer.

@@ -83,7 +83,16 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	// JobOrganize dies, and the UI shows a healthy daemon. Probing here returns the same actionable
 	// message as the endpoint, and aborts the pass: downloading what can't be organized only fills the
 	// disk.
-	if librarian != nil {
+	// Direct library mode links nothing, so it only needs a library it can write to.
+	if configs.IsDirectMode() {
+		if err := files.ProbeWritable(configs.CompletedAnimePath); err != nil {
+			logger.Logger.Error().Err(err).
+				Str("completed_anime_path", configs.CompletedAnimePath).
+				Msg("Completed anime path is not writable; skipping verification")
+			state.SetLastCheckError(fmt.Errorf("%w: %w", errCauseLibrary, err))
+			return
+		}
+	} else if librarian != nil {
 		if err := librarian.ProbePath(configs.CompletedAnimePath); err != nil {
 			logger.Logger.Error().Err(err).
 				Str("completed_anime_path", configs.CompletedAnimePath).
@@ -107,6 +116,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	backend.SetMaxActiveDownloads(configs.MaxConcurrentDownloads)
 	// Same safety net for disable_seeding; Ensure below rebuilds the session when it changed.
 	backend.SetUploadDisabled(configs.DisableSeeding)
+	backend.SetDirectMode(configs.IsDirectMode())
 
 	// Ensure the embedded torrent session exists for the current save path (created lazily,
 	// recreated if the save path changed, if the download folder was swapped underneath, or if
@@ -122,7 +132,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		cleared := clearLibraryPathsAfterRootSwap(fileManager, configs.CompletedAnimePath)
 		// Even with 0 cleared: an empty library that vanished is still a folder that vanished, and an
 		// unmounted drive is worth knowing about before the redownloads fill the disk underneath it.
-		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared))
+		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared, configs.IsDirectMode()))
 	}
 
 	// downloadedTorrents is an in-memory snapshot of the embedded client (cheap, no I/O).
@@ -315,7 +325,7 @@ outer:
 		watching[a.Media.Id] = true
 	}
 
-	deleteEpisodesByStatus(deletableMedia, fileManager, backend, librarian, savedEpisodes, newEpisodes, watching)
+	deleteEpisodesByStatus(configs, deletableMedia, fileManager, backend, librarian, savedEpisodes, newEpisodes, watching)
 
 	handleSavedEpisodes(fileManager, configs, backend, librarian, handleEpisodesData{
 		savedEpisodes:   savedEpisodes,
@@ -345,6 +355,9 @@ outer:
 	if err != nil {
 		logger.Logger.Warn().Err(err).Msg("Failed to reload saved episodes; the library alerts use the start-of-pass snapshot")
 		afterPass = savedEpisodes
+	} else {
+		// Only with the reloaded list: the snapshot misses the records this pass just wrote.
+		pruneOrphanPlacements(backend, afterPass, time.Now())
 	}
 	alertsAfterPass(configs, passAlerts{problems: problems, limits: limits, watching: watching, animes: animes, saved: afterPass,
 		listsComplete: passLists.allRecordedSince(listDownload, configuredAccounts(configs), passStarted),
@@ -410,11 +423,17 @@ func clearLibraryPathsAfterRootSwap(fileManager FileManagerInterface, completedP
 	logger.Logger.Warn().
 		Int("episodes", len(stale)).
 		Str("completed_anime_path", completedPath).
-		Msg("Root swap: the library folder is gone, cleared the stale library links; episodes will be redownloaded and reorganized at the configured path")
+		Msg("Root swap: the library folder is gone, cleared the stale library links; hardlink-mode episodes will be redownloaded at the configured path, direct-mode torrents stop with their files missing")
 	return len(stale)
 }
 
-func libraryMissingItem(completedPath string, cleared int) notifications.Episode {
+// libraryMissingItem words the library_missing alert. In direct mode the files lived in the library
+// itself, and their torrents stop instead of downloading again (decisions/139); torrents added
+// in hardlink mode still download again.
+func libraryMissingItem(completedPath string, cleared int, direct bool) notifications.Episode {
+	if direct {
+		return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. Torrents written straight to it stop and show their files missing; they are not downloaded again.", completedPath)}
+	}
 	return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. %s will be downloaded again.", completedPath, plural(cleared, "episode"))}
 }
 

@@ -50,6 +50,11 @@ the numbering SubsPlease and Erai-raws use on the files. The test seeds **only t
 chain: seeding every id would make each ancestor arrive as level 0 and the cut would never be
 exercised — verified by mutation, the previous version of the test passed with rule 2's bug.
 
+**Amendment (see [#138](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)):** the chain now also carries each node's titles, root first
+(`Series.Chain`), which direct library mode reads for the series folder and the season. Episode
+counts and prequel links are as immutable as described above; titles are not (AniList edits them),
+which is why a direct-mode series is pinned to the folder its first torrent got.
+
 **Don't "fix" by:** treating `edges: []` as root; assuming depth 2 as a contract; fetching one
 ancestor per request (height becomes the cost, and AniList's budget is 30/min); caching a level-2,
 `RELEASING` or no-count node; persisting the offset to disk or on the episode record (see the

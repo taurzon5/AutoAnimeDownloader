@@ -54,9 +54,34 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
-		// The library is built with hardlinks; not every filesystem supports them. Probe at
-		// save time, with the same function the runtime uses.
-		if server.Librarian != nil {
+		switch config.LibraryMode {
+		case "", files.LibraryModeHardlink, files.LibraryModeDirect:
+		default:
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Library mode must be "hardlink" or "direct"`)
+			return
+		}
+		switch config.IncompleteFiles {
+		case "", files.IncompleteFilesPart, files.IncompleteFilesInPlace:
+		default:
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Incomplete files must be "part" or "in_place"`)
+			return
+		}
+		switch config.EpisodeNumbering {
+		case "", files.EpisodeNumberingSeason, files.EpisodeNumberingEntry:
+		default:
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Episode numbering must be "season" or "entry"`)
+			return
+		}
+
+		// The hardlink library needs hardlinks; not every filesystem supports them. Probe at
+		// save time, with the same function the runtime uses. Direct mode links nothing, so it
+		// only needs a library folder it can write to.
+		if config.IsDirectMode() {
+			if err := files.ProbeWritable(config.CompletedAnimePath); err != nil {
+				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+				return
+			}
+		} else if server.Librarian != nil {
 			if err := server.Librarian.ProbePath(config.CompletedAnimePath); err != nil {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 				return
@@ -144,7 +169,10 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			// Only when it changed: Ensure here would also apply a download path change, which is
 			// the pass's job. An incomplete config has no session yet; the first pass builds it right.
 			server.Torrents.SetUploadDisabled(config.DisableSeeding)
-			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding) {
+			// library_mode, the same way: rain reads its storage once, when the session opens.
+			server.Torrents.SetDirectMode(config.IsDirectMode())
+			modeChanged := previous == nil || previous.IsDirectMode() != config.IsDirectMode()
+			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding || modeChanged) {
 				if _, err := server.Torrents.Ensure(path); err != nil {
 					logger.Logger.Warn().Err(err).Msg("Failed to apply disable_seeding to the torrent session; the next pass retries")
 				}
