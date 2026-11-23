@@ -11,8 +11,10 @@ The deviation is intentional and better than the design. It is also what makes r
 **Amendment (see [#139](139-a-direct-mode-file-deleted-outside-the-app-is.md)):** in direct mode the library file is the torrent's data, so a file the
 user deletes by hand would come back: on the next session open rain would find it missing and
 download it again. It doesn't: the placement storage refuses to recreate a finished torrent's
-file, the torrent stays stopped, and its row in Downloads says the file was deleted outside the
-app — a warning, nothing else. Reconciliation itself is unchanged: it still keys off empty `LibraryPaths`.
+file, the torrent stays stopped, and its row in Downloads says "File not found" — a warning,
+nothing else, until the user picks "Redownload missing files"
+([#140](140-redownloading-missing-files-adds-the-same-torrent.md)). Reconciliation itself is
+unchanged: it still keys off empty `LibraryPaths`.
 
 **Don't "fix" by:** adding a `Stat` on `LibraryPaths` to "detect" missing library files, or clearing `LibraryPaths` when the paths no longer resolve — both reintroduce the resurrection loop. A user who wants the link back should redownload or replace the episode, which resets `LibraryPaths` through the merge in decision 27.
 

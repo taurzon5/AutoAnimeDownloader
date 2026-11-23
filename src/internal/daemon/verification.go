@@ -428,11 +428,12 @@ func clearLibraryPathsAfterRootSwap(fileManager FileManagerInterface, completedP
 }
 
 // libraryMissingItem words the library_missing alert. In direct mode the files lived in the library
-// itself, and their torrents stop instead of downloading again (decisions/139); torrents added
-// in hardlink mode still download again.
+// itself, and their torrents stop instead of downloading again on their own (decisions/139) until
+// the user picks "Redownload missing files" (decisions/140); torrents added in hardlink mode still
+// download again.
 func libraryMissingItem(completedPath string, cleared int, direct bool) notifications.Episode {
 	if direct {
-		return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. Torrents written straight to it stop and show their files missing; they are not downloaded again.", completedPath)}
+		return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. Torrents written straight to it stop and show their files missing; use \"Redownload missing files\" in Downloads to get them back.", completedPath)}
 	}
 	return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. %s will be downloaded again.", completedPath, plural(cleared, "episode"))}
 }

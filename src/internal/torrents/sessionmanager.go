@@ -430,6 +430,26 @@ func (m *SessionManager) Placement(hash string) (Placement, bool) {
 	return p.Resolve(root), true
 }
 
+// RedownloadPlacement adds the torrent back to rain, which starts it at once: like Add, the
+// queue then pauses what exceeds max_concurrent_downloads (decisions/041). Per torrent, not once
+// after a bulk run: a replaced library folder can mean hundreds in one click, and they must not
+// all start together while the loop runs (decisions/140).
+func (m *SessionManager) RedownloadPlacement(hash string) error {
+	err := func() error {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		if m.session == nil {
+			return ErrSessionNotReady
+		}
+		return m.session.RedownloadPlacement(hash)
+	}()
+	if err != nil {
+		return err
+	}
+	m.queue.enforce(m)
+	return nil
+}
+
 func (m *SessionManager) Placements() []Placement {
 	m.mu.RLock()
 	root := libraryRootOf(m.savePath)

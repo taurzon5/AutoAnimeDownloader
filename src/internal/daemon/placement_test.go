@@ -579,7 +579,99 @@ func TestLibraryMissingItem_SaysWhatHappensInEachMode(t *testing.T) {
 	if got := libraryMissingItem("/lib", 3, false).Text; !strings.Contains(got, "3 episodes will be downloaded again") {
 		t.Errorf("hardlink mode re-downloads, got %q", got)
 	}
-	if got := libraryMissingItem("/lib", 3, true).Text; !strings.Contains(got, "not downloaded again") {
-		t.Errorf("direct mode does not, got %q", got)
+	if got := libraryMissingItem("/lib", 3, true).Text; strings.Contains(got, "will be downloaded again") || !strings.Contains(got, "Redownload missing files") {
+		t.Errorf("direct mode does not on its own, and names the way back, got %q", got)
+	}
+}
+
+// finishedPlacement places one episode of hash on disk, finalizes it and puts its torrent in the
+// session as finished, with a file list of the given size. Returns the file's path.
+func finishedPlacement(t *testing.T, backend *torrents.FakeBackend, configs *files.Config, hash string, episode int, size int64) string {
+	t.Helper()
+	path := placedOnDisk(t, backend, configs, hash, episode)
+	if err := backend.FinalizePlacement(hash); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := backend.Placement(hash)
+	backend.AddCompleted(hash, p.SeriesDir)
+	backend.SetFiles(hash, []torrents.FileInfo{{Path: p.Files[0].Torrent, Size: size}})
+	return path
+}
+
+// The bulk "redownload missing files" (decisions/139) touches only finished torrents whose files
+// are gone and that are still in the session, and only the ones the user left ticked.
+func TestRedownloadMissingFiles_PicksTheTorrentsWithMissingFiles(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	configs.MinFreeDiskGB = 0
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+
+	const (
+		picked   = "a000000000000000000000000000000000000001"
+		unticked = "b000000000000000000000000000000000000002"
+		intact   = "c000000000000000000000000000000000000003"
+		gone     = "d000000000000000000000000000000000000004"
+	)
+	for i, h := range []string{picked, unticked, intact, gone} {
+		path := finishedPlacement(t, backend, configs, h, i+1, 10)
+		if h != intact {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := backend.Remove(gone, true); err != nil { // no longer in the session
+		t.Fatal(err)
+	}
+
+	result, err := RedownloadMissingFiles(configs, backend, nil, []string{strings.ToUpper(picked)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Redownloaded != 1 || result.SkippedNoSpace != 0 {
+		t.Fatalf("only the picked torrent must go, got %+v", result)
+	}
+	if calls := backend.RedownloadCalls(); len(calls) != 1 || calls[0] != picked {
+		t.Fatalf("calls = %v, want [%s]", calls, picked)
+	}
+	if p, _ := backend.Placement(picked); p.Completed {
+		t.Error("the redownloaded placement must be reopened")
+	}
+	if p, _ := backend.Placement(unticked); !p.Completed {
+		t.Error("an unticked torrent must be left as it was")
+	}
+
+	// No list: every torrent with missing files. The picked one is downloading now (its placement
+	// reopened), so only the unticked one is left.
+	result, err = RedownloadMissingFiles(configs, backend, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls := backend.RedownloadCalls(); result.Redownloaded != 1 || len(calls) != 2 || calls[1] != unticked {
+		t.Fatalf("the second run must take only the unticked torrent, got %+v and calls %v", result, calls)
+	}
+}
+
+func TestRedownloadMissingFiles_SkipsWhatDoesNotFit(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	configs.MinFreeDiskGB = 1 << 30 // no disk has this much free
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	path := finishedPlacement(t, backend, configs, directHash, 1, 10)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := RedownloadMissingFiles(configs, backend, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Redownloaded != 0 || result.SkippedNoSpace != 1 || len(backend.RedownloadCalls()) != 0 {
+		t.Fatalf("a torrent that doesn't fit must be skipped, got %+v", result)
+	}
+	if p, _ := backend.Placement(directHash); !p.Completed {
+		t.Error("a skipped torrent must stay finished: nothing may recreate its file")
 	}
 }

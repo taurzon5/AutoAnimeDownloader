@@ -885,3 +885,93 @@ func TestHandleTorrentsFlagsADeletedLibraryFile(t *testing.T) {
 		t.Fatalf("only the torrent with the deleted file is flagged, got %v", flags)
 	}
 }
+
+// POST /torrents/redownload-missing (decisions/139): no body takes every torrent with missing
+// files, {"hashes": [...]} only those, and an empty list is a client error rather than "all".
+func TestHandleTorrentsRedownloadMissing(t *testing.T) {
+	setup := func(t *testing.T) (*Server, *torrents.FakeBackend) {
+		t.Helper()
+		lib := t.TempDir()
+		backend := torrents.NewFakeBackend()
+		backend.LibraryRoot = lib
+		for _, h := range []string{hashA, hashB} {
+			if err := backend.SetPlacement(torrents.PlacementRequest{Hash: h, SeriesDir: "Show", Kind: torrents.PlacementEpisode, Season: 1}); err != nil {
+				t.Fatal(err)
+			}
+			p, err := backend.PlaceFiles(h, []string{h[:4] + ".mkv"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.AddCompleted(h, p.SeriesDir)
+			if err := backend.FinalizePlacement(h); err != nil {
+				t.Fatal(err)
+			}
+			// Never written: the file is missing, as after a replaced library folder.
+		}
+		configs := files.DefaultConfig()
+		configs.CompletedAnimePath = lib
+		configs.LibraryMode = files.LibraryModeDirect
+		configs.MinFreeDiskGB = 0
+		return &Server{Torrents: backend, FileManager: &mockFileManager{configs: configs}}, backend
+	}
+	post := func(server *Server, body string) *httptest.ResponseRecorder {
+		var req *http.Request
+		if body == "" {
+			req = httptest.NewRequest(http.MethodPost, "/api/v1/torrents/redownload-missing", nil)
+		} else {
+			req = httptest.NewRequest(http.MethodPost, "/api/v1/torrents/redownload-missing", strings.NewReader(body))
+		}
+		w := httptest.NewRecorder()
+		handleTorrentsRedownloadMissing(server)(w, req)
+		return w
+	}
+	redownloaded := func(t *testing.T, w *httptest.ResponseRecorder) float64 {
+		t.Helper()
+		var response SuccessResponse
+		if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := response.Data.(map[string]interface{})
+		n, _ := data["redownloaded"].(float64)
+		return n
+	}
+
+	t.Run("no body takes every torrent with missing files", func(t *testing.T) {
+		server, backend := setup(t)
+		w := post(server, "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+		}
+		if n := redownloaded(t, w); n != 2 || len(backend.RedownloadCalls()) != 2 {
+			t.Fatalf("redownloaded = %v, calls %v", n, backend.RedownloadCalls())
+		}
+	})
+	t.Run("hashes narrows it", func(t *testing.T) {
+		server, backend := setup(t)
+		w := post(server, `{"hashes":["`+hashB+`"]}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body %s", w.Code, w.Body.String())
+		}
+		if calls := backend.RedownloadCalls(); redownloaded(t, w) != 1 || len(calls) != 1 || calls[0] != hashB {
+			t.Fatalf("only %s may go, calls %v", hashB, calls)
+		}
+	})
+	t.Run("an empty list is rejected, not read as all", func(t *testing.T) {
+		server, backend := setup(t)
+		w := post(server, `{"hashes":[]}`)
+		if w.Code != http.StatusBadRequest || len(backend.RedownloadCalls()) != 0 {
+			t.Fatalf("status = %d, calls %v", w.Code, backend.RedownloadCalls())
+		}
+	})
+	t.Run("bad JSON and GET are rejected", func(t *testing.T) {
+		server, _ := setup(t)
+		if w := post(server, `{`); w.Code != http.StatusBadRequest {
+			t.Fatalf("bad JSON: status = %d", w.Code)
+		}
+		w := httptest.NewRecorder()
+		handleTorrentsRedownloadMissing(server)(w, httptest.NewRequest(http.MethodGet, "/api/v1/torrents/redownload-missing", nil))
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("GET: status = %d", w.Code)
+		}
+	})
+}

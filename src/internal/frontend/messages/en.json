@@ -382,8 +382,66 @@
   "downloads_bulk_prioritized": "{count} prioritized",
   "downloads_group_prioritize": "Prioritize every torrent of {name}",
   "downloads_queue_position": "Queued #{position}",
-  "downloads_files_missing": "File deleted outside the app",
-  "downloads_files_missing_detail": "File deleted outside the app. It won't be downloaded again; delete or redownload the episode here to tidy up.",
+  "downloads_files_missing": "File not found",
+  "downloads_files_missing_detail": "File not found. It won't be downloaded again on its own; use \"Redownload missing files\" or delete the episode here.",
+  "downloads_missing_count": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} torrent has files not found",
+        "count=*": "{count} torrents have files not found"
+      }
+    }
+  ],
+  "downloads_redownload_missing": "Redownload missing files",
+  "downloads_redownload_missing_confirm": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Redownload {count}",
+        "count=*": "Redownload {count}"
+      }
+    }
+  ],
+  "downloads_redownload_missing_hint": "Untick any torrent you want to leave as it is. The ticked ones download their missing files again, into the same place.",
+  "downloads_redownload_missing_done": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Redownloading {count} torrent",
+        "count=*": "Redownloading {count} torrents"
+      }
+    }
+  ],
+  "downloads_redownload_missing_no_space": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} torrent skipped: not enough disk space",
+        "count=*": "{count} torrents skipped: not enough disk space"
+      }
+    }
+  ],
   "downloads_bulk_delete": "Delete",
   "downloads_deselect_all": "Deselect all",
   "downloads_bulk_none": "No selected torrent needed this action",

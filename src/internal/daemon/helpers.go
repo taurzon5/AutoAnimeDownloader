@@ -121,7 +121,7 @@ func HandleTorrentFailure(hash string, cause error, backend torrents.TorrentBack
 	if backend != nil {
 		if p, ok := backend.Placement(hash); ok && PlacedFilesMissing(p) {
 			logger.Logger.Warn().Str("hash", hash).Str("series_dir", p.SeriesDir).
-				Msg("A library file of this torrent was deleted outside the app; it stays stopped and is not downloaded again")
+				Msg("A library file of this torrent was deleted outside the app; it stays stopped until the user picks Redownload missing files")
 			return
 		}
 	}

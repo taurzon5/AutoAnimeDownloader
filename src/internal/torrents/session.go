@@ -1,6 +1,7 @@
 package torrents
 
 import (
+	"bytes"
 	"encoding/base32"
 	"encoding/hex"
 	"fmt"
@@ -102,6 +103,64 @@ func libraryRootOf(savePath string) string {
 	return filepath.Dir(savePath)
 }
 
+// stopAndWait stops a torrent and waits until rain reports it stopped (its files closed).
+func stopAndWait(t *torrent.Torrent) error {
+	if err := t.Stop(); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(finalizeStopTimeout)
+	for t.Stats().Status != torrent.Stopped {
+		if time.Now().After(deadline) {
+			return fmt.Errorf("did not stop within %s", finalizeStopTimeout)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return nil
+}
+
+// RedownloadPlacement downloads a finished direct-mode torrent's missing files again, into the
+// same paths (decisions/139). The torrent is removed from rain keeping its data (placedStorage
+// leaves the files and the placement alone), the placement is reopened so Open may create the
+// missing files (as .part again in part mode), and the same .torrent is added back. The fresh
+// torrent has no stored bitfield, so it verifies what is on disk, reuses the files still there
+// and fetches only what is gone; organize runs again on its completion.
+//
+// Not a restart of the same torrent, nor rain's Verify: both leave rain trusting the old
+// complete state, and an empty recreated file can pass as finished (decisions/140).
+func (s *Session) RedownloadPlacement(hash string) error {
+	if s.placements == nil {
+		return fmt.Errorf("torrent %s is not a direct-mode torrent", hash)
+	}
+	t := s.ses.GetTorrent(hash)
+	if t == nil {
+		return fmt.Errorf("torrent %s not found", hash)
+	}
+	if _, ok := s.placements.get(hash); !ok {
+		return fmt.Errorf("torrent %s has no placement", hash)
+	}
+	metainfo, err := t.Torrent()
+	if err != nil {
+		return fmt.Errorf("torrent %s has no metadata to add back: %w", hash, err)
+	}
+	if err := s.ses.RemoveTorrent(hash, true); err != nil {
+		return fmt.Errorf("failed to remove torrent %s for the redownload: %w", hash, err)
+	}
+	// After the removal: no instance of this torrent is left to open files under the reopened state.
+	if err := s.placements.reopen(hash); err != nil {
+		return err
+	}
+	t, err = s.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		// A pass may have re-added the hash from its magnet in the gap; that torrent is fresh too.
+		if t = s.ses.GetTorrent(hash); t == nil {
+			return fmt.Errorf("failed to add torrent %s back: %w", hash, err)
+		}
+	}
+	s.armListener(t)
+	logger.Logger.Info().Str("hash", hash).Msg("Redownloading the missing files of a direct-mode torrent")
+	return nil
+}
+
 // finalizeStopTimeout bounds how long FinalizePlacement waits for rain to close a torrent's
 // files. rain's Stop is asynchronous: "stopping" lasts until the stop announce reaches the
 // trackers, up to ~5s.
@@ -133,21 +192,18 @@ func (s *Session) FinalizePlacement(hash string) error {
 	if t == nil {
 		return fmt.Errorf("torrent %s not found", hash)
 	}
-	if !completedFromStats(t.Stats()) {
+	// Complete by the bitfield AND settled: right after a start rain still reports the old
+	// bitfield while it allocates and verifies, and renaming then would give a still-empty .part
+	// its final name. Organize retries (decisions/140).
+	st := t.Stats()
+	if !completedFromStats(st) || (st.Status != torrent.Seeding && st.Status != torrent.Stopped) {
 		return fmt.Errorf("torrent %s is not complete yet", hash)
 	}
 
 	wasRunning := t.Stats().Status != torrent.Stopped
 	if wasRunning {
-		if err := t.Stop(); err != nil {
+		if err := stopAndWait(t); err != nil {
 			return fmt.Errorf("failed to stop torrent %s for the rename: %w", hash, err)
-		}
-		deadline := time.Now().Add(finalizeStopTimeout)
-		for t.Stats().Status != torrent.Stopped {
-			if time.Now().After(deadline) {
-				return fmt.Errorf("torrent %s did not stop within %s", hash, finalizeStopTimeout)
-			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 

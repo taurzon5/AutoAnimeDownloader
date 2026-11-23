@@ -280,6 +280,28 @@ func (s *placementStore) setKept(hash string, kept bool) error {
 	return nil
 }
 
+// reopen clears Completed: the placement's missing files may be written again (the bulk
+// "redownload missing files"). A hash with no placement is an error.
+func (s *placementStore) reopen(hash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok {
+		return fmt.Errorf("torrent %s has no placement", hash)
+	}
+	if !p.Completed {
+		return nil
+	}
+	p.Completed = false
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		p.Completed = true
+		s.byID[hash] = p
+		return err
+	}
+	return nil
+}
+
 // ownerOf returns the hash of the placement that claims path (final or .part name), or "".
 func (s *placementStore) ownerOf(path string) string {
 	s.mu.Lock()

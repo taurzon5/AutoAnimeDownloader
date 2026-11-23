@@ -434,8 +434,66 @@
   ],
   "downloads_group_prioritize": "Priorizar todos os torrents de {name}",
   "downloads_queue_position": "Na fila #{position}",
-  "downloads_files_missing": "Arquivo apagado fora do app",
-  "downloads_files_missing_detail": "Arquivo apagado fora do app. Ele não será baixado de novo; apague ou baixe o episódio de novo por aqui para organizar.",
+  "downloads_files_missing": "Arquivo não encontrado",
+  "downloads_files_missing_detail": "Arquivo não encontrado. Ele não será baixado de novo sozinho; use \"Baixar arquivos faltando\" ou apague o episódio por aqui.",
+  "downloads_missing_count": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} torrent tem arquivos não encontrados",
+        "count=*": "{count} torrents têm arquivos não encontrados"
+      }
+    }
+  ],
+  "downloads_redownload_missing": "Baixar arquivos faltando",
+  "downloads_redownload_missing_confirm": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Baixar {count}",
+        "count=*": "Baixar {count}"
+      }
+    }
+  ],
+  "downloads_redownload_missing_hint": "Desmarque os torrents que quer deixar como estão. Os marcados baixam de novo os arquivos que faltam, no mesmo lugar.",
+  "downloads_redownload_missing_done": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Baixando de novo {count} torrent",
+        "count=*": "Baixando de novo {count} torrents"
+      }
+    }
+  ],
+  "downloads_redownload_missing_no_space": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} torrent ignorado: falta espaço em disco",
+        "count=*": "{count} torrents ignorados: falta espaço em disco"
+      }
+    }
+  ],
   "downloads_bulk_delete": "Excluir",
   "downloads_deselect_all": "Limpar seleção",
   "downloads_bulk_none": "Nenhum torrent selecionado precisava dessa ação",

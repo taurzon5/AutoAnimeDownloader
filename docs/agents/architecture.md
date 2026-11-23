@@ -123,6 +123,7 @@ Key endpoints:
 | `POST` | `/api/v1/notifications/webhooks/preview` | `handleNotificationWebhookPreview` | `endpoint_notifications.go` — renders the preset in the BODY (the unsaved form) with the test fire's sample values; sends nothing and reads no config |
 | `POST` | `/api/v1/notifications/webhooks/{name}/test` | `handleNotificationWebhookTest` | `endpoint_notifications.go` |
 | `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` |
+| `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/resume` | `handleTorrentResume` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/announce` | `handleTorrentAnnounce` | `endpoint_torrents.go` |
@@ -674,7 +675,11 @@ placed video paths; deletion is `Remove(hash, false)`, which reaches `placedStor
 ([decisions/137](decisions/137-direct-mode-deletes-through-the-torrent-and-keep.md)).
 A finished placement's missing file is never recreated: `Open` returns `ErrPlacedFileMissing`
 and the torrent stays stopped, the deleted-outside-the-app warning
-([decisions/139](decisions/139-a-direct-mode-file-deleted-outside-the-app-is.md)).
+([decisions/139](decisions/139-a-direct-mode-file-deleted-outside-the-app-is.md)). The way back is
+`Session.RedownloadPlacement`, which removes the torrent (keep data) and adds the same `.torrent`
+back: never `Start()` or `Verify()` a finished torrent to re-fetch files, rain trusts its old
+complete state and an empty file passes as finished
+([decisions/140](decisions/140-redownloading-missing-files-adds-the-same-torrent.md)).
 `TorrentInfo.DataDir` of a placed torrent is its **series folder**, not a folder holding the
 torrent's raw paths: anything joining `DataDir` with a `FileInfo.Path` must go through
 `Placement.Files` instead (`api.videoCodecOf` does).

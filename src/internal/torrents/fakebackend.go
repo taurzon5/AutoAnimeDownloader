@@ -46,6 +46,8 @@ type FakeBackend struct {
 	DirectMode bool
 	// placements is the in-memory placement store (never persisted).
 	placements *placementStore
+	// redownloadCalls records every RedownloadPlacement(hash).
+	redownloadCalls []string
 	// KeepErr, if set, is returned by SetPlacementKept (a failed save of the placements).
 	KeepErr error
 	// LibraryRoot is what placements resolve against. Empty = the parent of the last Ensure path,
@@ -280,6 +282,31 @@ func (f *FakeBackend) Placement(hash string) (Placement, bool) {
 		return Placement{}, false
 	}
 	return p.Resolve(f.libraryRoot()), true
+}
+
+// RedownloadPlacement reopens the placement and marks the torrent downloading again, as the real
+// session does once it has added the torrent back.
+func (f *FakeBackend) RedownloadPlacement(hash string) error {
+	if err := f.placementStore().reopen(hash); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.torrents[hash]
+	if !ok {
+		return fmt.Errorf("fake: torrent %s not found", hash)
+	}
+	t.Completed = false
+	t.Status = "downloading"
+	f.redownloadCalls = append(f.redownloadCalls, hash)
+	return nil
+}
+
+// RedownloadCalls returns the hashes passed to RedownloadPlacement, in order.
+func (f *FakeBackend) RedownloadCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.redownloadCalls...)
 }
 
 func (f *FakeBackend) Placements() []Placement {

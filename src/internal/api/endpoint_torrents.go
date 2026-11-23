@@ -8,6 +8,7 @@ import (
 	"AutoAnimeDownloader/src/internal/torrents"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -52,7 +53,7 @@ type TorrentResponse struct {
 	EtaSeconds       *int64 `json:"eta_seconds" example:"240"`
 	SeededForSeconds int64  `json:"seeded_for_seconds" example:"3600"`
 	// FilesMissing marks a finished direct-mode torrent whose library file was deleted outside
-	// the app. It is not downloaded again; this flag is the only warning (decisions/139).
+	// the app. It is not downloaded again on its own; this flag is the only warning (decisions/139).
 	FilesMissing bool `json:"files_missing,omitempty" example:"false"`
 }
 
@@ -347,6 +348,51 @@ func handleTorrentsPrioritize(server *Server) http.HandlerFunc {
 		}
 
 		JSONSuccess(w, http.StatusOK, nil)
+	}
+}
+
+// RedownloadMissingRequest is the optional body of the bulk "redownload missing files".
+type RedownloadMissingRequest struct {
+	// Hashes narrows it to these torrents (the user unticked the others in the dialog). Omitted
+	// means every torrent with missing files; an empty list is rejected.
+	Hashes []string `json:"hashes" example:"0123456789abcdef0123456789abcdef01234567"`
+}
+
+// handleTorrentsRedownloadMissing is the bulk "redownload missing files" (decisions/139): every
+// finished direct-mode torrent whose library files are gone downloads them again into the same
+// paths. Answers {redownloaded, skipped_no_space}; a torrent that failed to restart makes it a
+// 500 after the others went.
+func handleTorrentsRedownloadMissing(server *Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only POST method is allowed")
+			return
+		}
+		var req RedownloadMissingRequest
+		if r.ContentLength != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+				JSONError(w, http.StatusBadRequest, "INVALID_BODY", "Invalid JSON body")
+				return
+			}
+			if req.Hashes != nil && len(req.Hashes) == 0 {
+				JSONError(w, http.StatusBadRequest, "INVALID_BODY", "At least one hash is required when hashes is given")
+				return
+			}
+		}
+		configs, err := server.FileManager.LoadConfigs()
+		if err != nil {
+			JSONInternalError(w, err)
+			return
+		}
+		// The records only give the disk guard the sizes of queued torrents; like GET /status, an
+		// unreadable file doesn't block the action.
+		saved, _ := server.FileManager.LoadSavedEpisodes()
+		result, err := daemon.RedownloadMissingFiles(configs, server.Torrents, saved, req.Hashes)
+		if err != nil {
+			JSONInternalError(w, err)
+			return
+		}
+		JSONSuccess(w, http.StatusOK, result)
 	}
 }
 

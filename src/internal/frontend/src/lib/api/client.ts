@@ -596,6 +596,20 @@ export async function prioritizeTorrents(hashes: string[]): Promise<void> {
   return apiRequest<void>('POST', '/torrents/prioritize', { hashes })
 }
 
+/** What the bulk "redownload missing files" did. */
+export interface RedownloadMissingResult {
+  redownloaded: number
+  skipped_no_space: number
+}
+
+/**
+ * Downloads again the missing files of finished direct-mode torrents (decisions/139): the given
+ * hashes, or every such torrent when none are given.
+ */
+export async function redownloadMissingFiles(hashes?: string[]): Promise<RedownloadMissingResult> {
+  return apiRequest<RedownloadMissingResult>('POST', '/torrents/redownload-missing', hashes ? { hashes } : undefined)
+}
+
 export async function announceTorrent(hash: string): Promise<void> {
   return apiRequest<void>('POST', `/torrents/${hash}/announce`)
 }

@@ -115,6 +115,14 @@ func TestClientMethodsHitExpectedPaths(t *testing.T) {
 		{"PrioritizeTorrents", http.MethodPost, "/api/v1/torrents/prioritize", nil, `{"hashes":["aaa","bbb"]}`, "null", func(c *Client) error {
 			return c.PrioritizeTorrents([]string{"aaa", "bbb"})
 		}},
+		{"RedownloadMissingFiles", http.MethodPost, "/api/v1/torrents/redownload-missing", nil, `{"hashes":["aaa"]}`, `{"redownloaded":1,"skipped_no_space":0}`, func(c *Client) error {
+			_, err := c.RedownloadMissingFiles([]string{"aaa"})
+			return err
+		}},
+		{"RedownloadMissingFiles (all)", http.MethodPost, "/api/v1/torrents/redownload-missing", nil, "", `{"redownloaded":2,"skipped_no_space":0}`, func(c *Client) error {
+			_, err := c.RedownloadMissingFiles(nil)
+			return err
+		}},
 		{"DeleteTorrent", http.MethodDelete, "/api/v1/torrents/deadbeef", map[string]string{"keep_data": "true", "block": "true"}, "", "null", func(c *Client) error {
 			return c.DeleteTorrent("deadbeef", true, true)
 		}},

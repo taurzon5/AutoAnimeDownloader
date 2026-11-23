@@ -156,6 +156,9 @@ type TorrentBackend interface {
 	Placement(hash string) (Placement, bool)
 	// Placements returns every placement, resolved like Placement (the daemon's orphan sweep).
 	Placements() []Placement
+	// RedownloadPlacement fetches a finished direct-mode torrent's missing files again, into the
+	// same paths (the bulk "redownload missing files", decisions/139).
+	RedownloadPlacement(hash string) error
 	// FinalizePlacement renames a completed placed torrent's .part files to their final names and
 	// marks the placement completed (only the mark, without part files). Idempotent.
 	FinalizePlacement(hash string) error

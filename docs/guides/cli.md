@@ -159,7 +159,14 @@ autoanimedownloader torrents prioritize HASH
 autoanimedownloader torrents prioritize HASH1 HASH2
 autoanimedownloader torrents delete HASH --yes
 autoanimedownloader torrents delete HASH --yes --keep-data --block
+autoanimedownloader torrents redownload-missing
+autoanimedownloader torrents redownload-missing HASH1 HASH2
 ```
+
+`redownload-missing` hits `POST /torrents/redownload-missing`: every finished direct-mode torrent
+whose library files were deleted outside the app (or whose library folder was replaced) downloads
+them again into the same paths — or only the hashes given, sent as `{"hashes":[…]}`. A torrent whose missing files don't fit on disk is skipped and
+counted.
 
 One hash on `prioritize` hits `POST /torrents/{hash}/prioritize`. Two or more hits
 `POST /torrents/prioritize` with `{"hashes":[…]}` in the order given.

@@ -302,3 +302,191 @@ func TestDirectMode_DeletedFinishedFileIsNotDownloadedAgain(t *testing.T) {
 		t.Fatalf("the torrent's error must name the missing file, got %v", err)
 	}
 }
+
+// The bulk "redownload missing files" (decisions/139): a finished torrent whose file was deleted
+// is fetched again into the same path, and the recreated, still-empty file never passes as the
+// old finished download — not even across a restart before the first piece arrives.
+func TestDirectMode_RedownloadPlacementFetchesTheDeletedFileAgain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens two real torrent sessions")
+	}
+	video := randomBytes(t, 50*1024)
+	metainfo, hash := makeTorrent(t, "[Grp] Show - 09", []testFile{{path: []string{"[Grp] Show - 09.mkv"}, data: video}})
+
+	seedDir := t.TempDir()
+	content := filepath.Join(seedDir, hash, "[Grp] Show - 09")
+	if err := os.MkdirAll(content, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(content, "[Grp] Show - 09.mkv"), video, 0644); err != nil {
+		t.Fatal(err)
+	}
+	seeder, err := newSession(seedDir, filepath.Join(t.TempDir(), "seed.db"), sessionOptions{disableDHT: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seeder.Close()
+	st, err := seeder.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the seeder to verify", 30*time.Second, func() bool { return st.Stats().Status == torrent.Seeding })
+
+	lib := t.TempDir()
+	store := newPlacementStore(filepath.Join(t.TempDir(), placementsFileName))
+	if _, err := store.register(PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1, PartFiles: true}); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "session.db")
+	leech, err := newSession(filepath.Join(lib, ".torrents"), dbPath, sessionOptions{disableDHT: true, placements: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lt, err := leech.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := fmt.Sprintf("127.0.0.1:%d", st.Port())
+	if err := lt.AddPeer(peer); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the first download", 60*time.Second, func() bool { return lt.Stats().Status == torrent.Seeding })
+	if err := leech.FinalizePlacement(hash); err != nil {
+		t.Fatal(err)
+	}
+
+	final := filepath.Join(lib, "Show", "Season 01", "[Grp] Show - 09.mkv")
+	if err := os.Remove(final); err != nil {
+		t.Fatal(err)
+	}
+	if err := leech.RedownloadPlacement(hash); err != nil {
+		t.Fatal(err)
+	}
+
+	// No peer yet, and the daemon restarts before the first piece: the recreated, empty .part
+	// must not count as the old complete download (rain's stored bitfield said "all pieces").
+	settled := func(what string, tt *torrent.Torrent) {
+		t.Helper()
+		waitFor(t, what, 30*time.Second, func() bool {
+			s := tt.Stats().Status
+			return s == torrent.Downloading || s == torrent.Seeding
+		})
+		if ls := tt.Stats(); ls.Pieces.Have != 0 || ls.Status == torrent.Seeding {
+			t.Fatalf("%s: the empty .part must not pass as finished, got status %v with %d pieces", what, ls.Status, ls.Pieces.Have)
+		}
+	}
+	lt = leech.ses.GetTorrent(hash)
+	if lt == nil {
+		t.Fatal("the torrent must be back in the session")
+	}
+	settled("the redownload to start", lt)
+	if err := leech.Close(); err != nil {
+		t.Fatal(err)
+	}
+	leech, err = newSession(filepath.Join(lib, ".torrents"), dbPath, sessionOptions{disableDHT: true, placements: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leech.Close()
+	lt = leech.ses.GetTorrent(hash)
+	if lt == nil {
+		t.Fatal("the torrent must survive the restart")
+	}
+	settled("the redownload to start after a restart", lt)
+
+	if err := lt.AddPeer(peer); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the missing file to download again", 60*time.Second, func() bool {
+		data, err := os.ReadFile(final + partSuffix)
+		return err == nil && bytes.Equal(data, video) && lt.Stats().Status == torrent.Seeding
+	})
+	if err := leech.FinalizePlacement(hash); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(final)
+	if err != nil || !bytes.Equal(got, video) {
+		t.Fatalf("the file must be back at the same path with the torrent's bytes (err %v)", err)
+	}
+}
+
+// A bulk redownload adds the torrents back to rain, which starts each at once: the queue must
+// still hold them to max_concurrent_downloads (decisions/041), like any other add.
+func TestSessionManager_RedownloadPlacementRespectsTheQueue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens a real torrent session")
+	}
+	m, _, _ := newTestManager(t)
+	lib := t.TempDir()
+	m.SetDirectMode(true)
+	m.SetMaxActiveDownloads(1)
+	if _, err := m.Ensure(filepath.Join(lib, ".torrents")); err != nil {
+		t.Fatal(err)
+	}
+
+	var hashes, finals []string
+	for _, ep := range []string{"01", "02"} {
+		name := "[Grp] Show - " + ep
+		video := randomBytes(t, 40*1024)
+		metainfo, hash := makeTorrent(t, name, []testFile{{path: []string{name + ".mkv"}, data: video}})
+		if err := m.SetPlacement(PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1}); err != nil {
+			t.Fatal(err)
+		}
+		// The finished file is already in the library under its planned name (the map is set here,
+		// or planning would see the file and pick a collision name): rain verifies it and seeds.
+		p, _ := m.placements.get(hash)
+		p.Files = []PlacedFile{{Torrent: name + "/" + name + ".mkv", Path: filepath.Join("Show", "Season 01", name+".mkv")}}
+		if err := m.placements.update(p); err != nil {
+			t.Fatal(err)
+		}
+		final := filepath.Join(lib, "Show", "Season 01", name+".mkv")
+		if err := os.MkdirAll(filepath.Dir(final), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(final, video, 0644); err != nil {
+			t.Fatal(err)
+		}
+		tt, err := m.session.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, "the torrent to verify its file", 30*time.Second, func() bool { return tt.Stats().Status == torrent.Seeding })
+		if err := m.FinalizePlacement(hash); err != nil {
+			t.Fatal(err)
+		}
+		hashes = append(hashes, hash)
+		finals = append(finals, final)
+	}
+	for _, f := range finals {
+		if err := os.Remove(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, h := range hashes {
+		if err := m.RedownloadPlacement(h); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// No peers, so neither finishes: exactly one may hold the download slot.
+	running := func() (active, waiting int) {
+		for _, ti := range m.List() {
+			switch ti.Status {
+			case StatusQueued:
+				waiting++
+			case StatusStopped:
+			default:
+				active++
+			}
+		}
+		return
+	}
+	waitFor(t, "the queue to settle", 30*time.Second, func() bool {
+		a, w := running()
+		return a == 1 && w == 1
+	})
+	time.Sleep(500 * time.Millisecond)
+	if a, w := running(); a != 1 || w != 1 {
+		t.Fatalf("max_concurrent_downloads 1: want 1 active and 1 queued, got %d and %d", a, w)
+	}
+}

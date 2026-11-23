@@ -1,11 +1,13 @@
-# 139. A direct-mode file deleted outside the app is reported and never downloaded again
+# 139. A direct-mode file deleted outside the app is reported and not downloaded again on its own
 
 **Location:** `internal/torrents/placement.go` — `ErrPlacedFileMissing`, the `p.Completed` check in
 `placedStorage.Open`; `Session.FinalizePlacement` (marks an in-place placement `Completed` too);
 `internal/daemon/helpers.go` — the early return in `HandleTorrentFailure`; `internal/daemon/jobs.go` —
 the early return in `organizeTorrent`; `internal/daemon/verification.go` — `libraryMissingItem`;
-`internal/daemon/placement.go` — `PlacedFilesMissing`; `internal/api/endpoint_torrents.go` —
-`TorrentResponse.FilesMissing`; frontend `routes/Downloads.svelte` (the note on the torrent row).
+`internal/daemon/placement.go` — `PlacedFilesMissing`, `RedownloadMissingFiles`;
+`internal/api/endpoint_torrents.go` — `TorrentResponse.FilesMissing`,
+`handleTorrentsRedownloadMissing`; frontend `routes/Downloads.svelte` (the note on the torrent row,
+the "Redownload missing files" strip) and `components/RedownloadMissingDialog.svelte`.
 Pinned by `TestDirectMode_DeletedFinishedFileIsNotDownloadedAgain` (real rain session),
 `TestPlacedStorage_OpenRefusesToRecreateADeletedFinishedFile`,
 `TestHandleTorrentFailure_LeavesADeletedFilesTorrentAlone` and
@@ -13,7 +15,8 @@ Pinned by `TestDirectMode_DeletedFinishedFileIsNotDownloadedAgain` (real rain se
 
 **What it looks like:** a finished torrent that is missing its file is left stopped with an error.
 The failure handler sees the error and does nothing: no drop, no re-add, no `download_failed`.
-The only sign is one quiet line on that torrent's row in Downloads.
+The only warning is one quiet line on that torrent's row in Downloads; getting the file back is
+the user's click.
 
 **Why it's right:** in direct mode the library file **is** the torrent's data. When the user
 deletes an episode outside the app — from Jellyfin, a file manager — rain, on the next session
@@ -31,11 +34,22 @@ nothing else.**
   else". The episode's records stay, so the pass doesn't see it as missing either.
 - **The warning, on the torrent itself, and minor.** `GET /torrents` sets `files_missing` on a
   finished placement missing any of its files (`PlacedFilesMissing`), and the torrent's row in
-  Downloads shows one muted line, "File deleted outside the app — not downloaded again". The user
-  asked for it there and for no major warning: no report problem, no banner, no webhook. A report
-  problem was tried first and dropped — it also fed `episode_stuck`, the "something else".
+  Downloads shows one muted line, "File not found". The user asked for it there and for no major
+  warning: no report problem, no banner, no webhook. A report problem was tried first and dropped
+  — it also fed `episode_stuck`, the "something else". The strip above the list (a count and the
+  "Redownload missing files" button, muted like the toolbar, not alert-coloured) is the action,
+  not a second warning.
 - **The way out is the app.** Deleting or redownloading the episode from the web UI or CLI goes
-  through the torrent: the removal tolerates the missing file and forgets the placement.
+  through the torrent: the removal tolerates the missing file and forgets the placement. Or
+  "Redownload missing files" fetches the files again into the same paths, for the torrents the
+  user leaves ticked.
+
+**Amendment (see [#140](140-redownloading-missing-files-adds-the-same-torrent.md)):** the bulk
+"Redownload missing files" is the way out for many torrents at once, a replaced library folder
+above all. A quiet strip above the Downloads list opens a dialog listing every torrent with
+missing files, all ticked; the user unticks the ones to leave alone. It is the user's click, never
+automatic, so "nothing else" still holds. How it re-fetches (the torrent is added back to rain, not
+restarted) and why are in #140.
 
 **A replaced or vanished library folder is the same case.** The swap check
 ([#34](034-a-download-folder-swap-is-detected-by-a-dual.md)) still clears the records'
@@ -51,4 +65,4 @@ row.
 **Don't "fix" by:** letting `Open` create the missing file "so the torrent keeps seeding" (that is
 the re-download); dropping or re-adding the stopped torrent in `HandleTorrentFailure`; raising the
 warning anywhere louder (a report problem, a banner, `download_failed`, `episode_stuck`); deleting
-the episode's records automatically.
+the episode's records automatically; running "Redownload missing files" on its own.

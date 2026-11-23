@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"AutoAnimeDownloader/src/internal/anilist"
@@ -304,4 +306,73 @@ func PlacedFilesMissing(p torrents.Placement) bool {
 		}
 	}
 	return false
+}
+
+// RedownloadResult is what RedownloadMissingFiles did.
+type RedownloadResult struct {
+	// Redownloaded is how many torrents were restarted to fetch their missing files.
+	Redownloaded int `json:"redownloaded" example:"3"`
+	// SkippedNoSpace is how many were left as they were because their missing files don't fit
+	// (the disk guard, min_free_disk_gb).
+	SkippedNoSpace int `json:"skipped_no_space" example:"0"`
+}
+
+// RedownloadMissingFiles is the bulk "redownload missing files": every finished direct-mode
+// torrent whose library files are gone (deleted outside the app, or the library folder was
+// replaced) downloads them again into the same paths. It is the user's explicit action — nothing
+// automatic ever does this (decisions/139). The disk guard counts each torrent's missing bytes on
+// top of what the session's downloads still have to write (decisions/101); a torrent that doesn't
+// fit is skipped, not half-started. saved is the episode records, for the sizes of queued
+// torrents without metadata.
+//
+// only narrows it to those hashes (the user unticked some in the dialog); empty means every
+// torrent with missing files.
+func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBackend, saved []files.EpisodeStruct, only []string) (RedownloadResult, error) {
+	var result RedownloadResult
+	var errs []error
+	reserved := newDiskBudget(backend.List(), saved).reserved
+	wanted := make(map[string]bool, len(only))
+	for _, h := range only {
+		wanted[strings.ToLower(h)] = true
+	}
+	for _, p := range backend.Placements() {
+		if len(wanted) > 0 && !wanted[p.Hash] {
+			continue
+		}
+		if _, inSession := backend.Get(p.Hash); !inSession || !PlacedFilesMissing(p) {
+			continue
+		}
+		missing := missingBytes(backend, p)
+		if err := checkDiskSpace(configs, missing, reserved); err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Redownload missing files: not enough disk space for this torrent")
+			result.SkippedNoSpace++
+			continue
+		}
+		if err := backend.RedownloadPlacement(p.Hash); err != nil {
+			errs = append(errs, fmt.Errorf("torrent %s: %w", p.Hash, err))
+			continue
+		}
+		reserved += missing
+		result.Redownloaded++
+	}
+	return result, errors.Join(errs...)
+}
+
+// missingBytes sums the sizes of a placement's files that are gone, from the torrent's file list.
+func missingBytes(backend torrents.TorrentBackend, p torrents.Placement) int64 {
+	list, err := backend.Files(p.Hash)
+	if err != nil {
+		return 0
+	}
+	sizes := make(map[string]int64, len(list))
+	for _, f := range list {
+		sizes[f.Path] = f.Size
+	}
+	var total int64
+	for _, f := range p.Files {
+		if _, err := statFile(f.Path); err != nil {
+			total += sizes[f.Torrent]
+		}
+	}
+	return total
 }

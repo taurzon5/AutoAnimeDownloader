@@ -10,5 +10,10 @@ The web UI keeps its dialog. The API does not grow a confirmation parameter. An 
 on stdin, and changing API defaults to match the web dialog would change the UI's "unchecked means
 false" contract too.
 
+**Not destructive, so no `--yes`:** `torrents redownload-missing`
+([#140](140-redownloading-missing-files-adds-the-same-torrent.md)) deletes nothing — it removes
+torrents from rain keeping their data and adds them back to fetch files that are already gone. The
+web UI's dialog there is for unticking torrents, not a confirmation.
+
 **Don't "fix" by:** prompting when stdin is not a TTY, defaulting `--yes` on in scripts, or adding
 `confirm=true` to the API.

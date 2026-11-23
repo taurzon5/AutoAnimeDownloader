@@ -16,6 +16,7 @@
     prioritizeTorrent,
     prioritizeTorrents,
     announceTorrent,
+    redownloadMissingFiles,
     deleteTorrent,
     removeStandaloneAnime,
     type TorrentInfo,
@@ -43,6 +44,7 @@
   import Loading from "../components/Loading.svelte";
   import DownloadsToolbar from "../components/DownloadsToolbar.svelte";
   import TorrentDeleteDialog from "../components/TorrentDeleteDialog.svelte";
+  import RedownloadMissingDialog from "../components/RedownloadMissingDialog.svelte";
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -397,6 +399,31 @@
     await load();
   }
 
+  // Direct mode: torrents whose library files are gone (deleted outside the app, or the library
+  // folder was replaced). Nothing re-fetches them on its own; this is the user's one way to,
+  // all at once (decisions/139).
+  $: missingTorrents = torrents.filter((t) => t.files_missing);
+  $: missingCount = missingTorrents.length;
+  let redownloadBusy = false;
+  let redownloadDialogOpen = false;
+
+  // The dialog lists them all ticked; the user can untick some. Nothing ticked: nothing to do.
+  async function handleRedownloadMissing(hashes: string[]) {
+    redownloadDialogOpen = false;
+    if (hashes.length === 0) return;
+    redownloadBusy = true;
+    try {
+      const result = await redownloadMissingFiles(hashes);
+      if (result.redownloaded > 0) toast.success(m.downloads_redownload_missing_done({ count: result.redownloaded }));
+      if (result.skipped_no_space > 0) toast.error(m.downloads_redownload_missing_no_space({ count: result.skipped_no_space }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m.downloads_toast_action_error());
+    } finally {
+      redownloadBusy = false;
+    }
+    await load();
+  }
+
   async function handleBulkAnnounce(scope: TorrentInfo[] | null = null) {
     const result = await runBulk(bulkTargets(scope), announceTorrent);
     reportBulk(result, m.downloads_bulk_announced);
@@ -571,6 +598,22 @@
     </div>
   {:else}
     <section class="rounded-card border border-default bg-card">
+      <!-- Quiet on purpose, like the per-row note: one muted line, shown only while some torrent
+           has files not found. -->
+      {#if missingCount > 0}
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-default px-4.5 py-2" data-testid="missing-files-bar">
+          <span class="text-[12px] text-subtle">{$locale && m.downloads_missing_count({ count: missingCount })}</span>
+          <Button variant="ghost" disabled={redownloadBusy} on:click={() => (redownloadDialogOpen = true)}>
+            {$locale && m.downloads_redownload_missing()}
+          </Button>
+        </div>
+      {/if}
+      <RedownloadMissingDialog
+        bind:open={redownloadDialogOpen}
+        torrents={missingTorrents}
+        on:confirm={(e) => handleRedownloadMissing(e.detail.hashes)}
+        on:cancel={() => (redownloadDialogOpen = false)}
+      />
       <DownloadsToolbar
         query={viewState.query}
         preset={activePreset}
@@ -849,8 +892,9 @@
                       {/if}
                     </p>
                     <!-- Direct mode: the library file is the torrent's data, and one deleted outside
-                         the app is not downloaded again (decisions/139). This line is the whole
-                         warning, kept quiet on purpose — the same weight as the size line. -->
+                         the app is not downloaded again on its own (decisions/139). This line is the
+                         warning, kept quiet on purpose — the same weight as the size line; the strip
+                         above the list is only the way to "Redownload missing files". -->
                     {#if t.files_missing}
                       <p
                         class="mt-0.5 truncate text-[12px] text-subtle"

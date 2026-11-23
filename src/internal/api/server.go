@@ -127,6 +127,7 @@ func (s *Server) SetupRoutes() *http.ServeMux {
 	// batch route: Go 1.22+ gives a literal segment precedence over a wildcard, and no info
 	// hash is the string "prioritize" anyway (they are 40 hex chars).
 	apiMux.HandleFunc("/api/v1/torrents/prioritize", handleTorrentsPrioritize(s))
+	apiMux.HandleFunc("/api/v1/torrents/redownload-missing", handleTorrentsRedownloadMissing(s))
 	apiMux.HandleFunc("/api/v1/torrents/{hash}", handleTorrentDelete(s))
 	apiMux.HandleFunc("/api/v1/torrents/{hash}/pause", handleTorrentPause(s))
 	apiMux.HandleFunc("/api/v1/torrents/{hash}/resume", handleTorrentResume(s))

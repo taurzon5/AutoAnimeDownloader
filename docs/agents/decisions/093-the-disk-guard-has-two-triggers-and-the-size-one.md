@@ -1,8 +1,9 @@
 # 93. The disk guard has two triggers, and the size one still applies with `min_free_disk_gb = 0`
 
 **Location:** `daemon/helpers.go` (`checkDiskSpace`, `DiskLow`), called in `daemon/episodes.go`
-(`attemptDownloadWithRetries`, once before the loop and once per candidate) and in
-`daemon/manual_download.go` (`addAndPrioritize`). `GET /status` `disk_low` is `DiskLow`.
+(`attemptDownloadWithRetries`, once before the loop and once per candidate), in
+`daemon/manual_download.go` (`addAndPrioritize`) and in `daemon/placement.go`
+(`RedownloadMissingFiles`, once per torrent). `GET /status` `disk_low` is `DiskLow`.
 
 `checkDiskSpace` receives `torrentSizeBytes` and refuses for two different reasons:
 

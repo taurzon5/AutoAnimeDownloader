@@ -45,6 +45,12 @@ func torrentsCommand() *cli.Command {
 				Action:    handleTorrentPrioritize,
 			},
 			{
+				Name:      "redownload-missing",
+				Usage:     "Download again the missing files of finished direct-mode torrents (files deleted outside the app); all of them, or only the hashes given",
+				ArgsUsage: "[hash…]",
+				Action:    handleTorrentsRedownloadMissing,
+			},
+			{
 				Name:      "delete",
 				Usage:     "Delete a torrent",
 				ArgsUsage: "<hash>",
@@ -65,6 +71,23 @@ func handleTorrents() error {
 		return mapClientError(err)
 	}
 	return printValue(list, "No torrents found")
+}
+
+func handleTorrentsRedownloadMissing(c *cli.Context) error {
+	result, err := getClient().RedownloadMissingFiles(c.Args().Slice())
+	if err != nil {
+		return mapClientError(err)
+	}
+	if outputJSON {
+		outputJSONResponse(result)
+		return nil
+	}
+	fmt.Printf("Redownloading %d torrent(s)", result.Redownloaded)
+	if result.SkippedNoSpace > 0 {
+		fmt.Printf("; %d skipped for lack of disk space", result.SkippedNoSpace)
+	}
+	fmt.Println()
+	return nil
 }
 
 func handleTorrentFiles(c *cli.Context) error {

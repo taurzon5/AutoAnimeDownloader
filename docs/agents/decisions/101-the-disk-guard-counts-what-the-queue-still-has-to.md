@@ -38,6 +38,13 @@ downloads everything it holds.
 **Manual downloads pass `reservedBytes = 0`** (`manual_download.go`): a magnet the user pastes is
 their call, and its size is usually unknown anyway.
 
+**Amendment (see [#140](140-redownloading-missing-files-adds-the-same-torrent.md)):** a third,
+user-triggered caller: `daemon.RedownloadMissingFiles` (the bulk "Redownload missing files")
+starts from `newDiskBudget(...).reserved`, so it does count what the session still has to write,
+then adds each started torrent's missing bytes as it goes. It does not use `reserve`: its budget is
+its own, not shared with a pass running at the same moment, which is the same race manual
+downloads accept. Its sizes are the missing files', not the whole torrent's.
+
 **Don't "fix" by:** summing reservations per record instead of per hash (a pack would count once
 per episode); checking free space alone in `packsThatFit`; or splitting `reserve` into a check and a
 separate count (the parallel animes would race between the two).

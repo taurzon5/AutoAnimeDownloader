@@ -355,6 +355,21 @@ func (c *Client) PrioritizeTorrent(hash string) error {
 	return c.send(http.MethodPost, "/api/v1/torrents/"+hash+"/prioritize", nil, nil)
 }
 
+// RedownloadMissingFiles fetches again the missing files of finished direct-mode torrents: the
+// given hashes, or all of them when none are given. Slow: each torrent is removed from rain and
+// added back in turn, and a library folder that was replaced may hold hundreds.
+func (c *Client) RedownloadMissingFiles(hashes []string) (*daemon.RedownloadResult, error) {
+	var result daemon.RedownloadResult
+	var body interface{}
+	if len(hashes) > 0 {
+		body = RedownloadMissingRequest{Hashes: hashes}
+	}
+	if err := c.sendSlow(http.MethodPost, "/api/v1/torrents/redownload-missing", body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (c *Client) PrioritizeTorrents(hashes []string) error {
 	return c.send(http.MethodPost, "/api/v1/torrents/prioritize", PrioritizeRequest{Hashes: hashes}, nil)
 }
