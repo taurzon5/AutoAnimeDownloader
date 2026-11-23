@@ -29,4 +29,10 @@ path when rain opens them. Moving the library and re-pointing the config at it t
 every direct-mode torrent seeding, exactly like the hardlink case above. The swap check itself is
 unchanged: the marker still lives in `<library>/.torrents`.
 
+**Amendment (see [#139](139-a-direct-mode-file-deleted-outside-the-app-is.md)):** in direct mode the recreated session does not re-download a
+finished torrent's files from a replaced or vanished library: the placement storage refuses to
+recreate a completed placement's missing file, the torrent stops, organize leaves it alone (no
+LibraryPaths, no completion webhook) and the Downloads row shows the files missing. Torrents added
+in hardlink mode are re-downloaded as described above, and `library_missing` says which applies.
+
 **Don't "fix" by:** returning the flag from `Ensure` instead of the latch (see above); replacing the markers with inode comparison (`syscall.Stat_t.Ino` does not exist on Windows); treating a marker-read error as "it vanished" (a permission failure would start wiping library records — that is why `readRootID` only swallows `IsNotExist`); cleaning `LibraryPaths` on every pass instead of only on a swap (that really would be the #29 violation); ~~dropping the marker rename in `MigrateSavePath`~~ (the migration was removed on 2026-08-24 — see #31; if it comes back, the marker rename becomes mandatory again for the same reason).

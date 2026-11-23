@@ -335,6 +335,8 @@ export interface TorrentInfo {
   peers_total: number
   eta_seconds: number | null
   seeded_for_seconds: number
+  /** A finished direct-mode torrent whose library file was deleted outside the app. */
+  files_missing?: boolean
 }
 
 /** A file inside a torrent. */

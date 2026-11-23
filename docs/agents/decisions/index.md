@@ -149,3 +149,4 @@ do not edit by hand.
 - [**#136** — Direct mode places a torrent before the add and freezes its file map at the first prepare](136-direct-mode-places-a-torrent-before-the-add-and.md)
 - [**#137** — Direct mode deletes through the torrent, and keep forever spares only direct-mode torrents](137-direct-mode-deletes-through-the-torrent-and-keep.md)
 - [**#138** — Direct mode numbers seasons along the TV PREQUEL chain and pins a series to its first folder](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)
+- [**#139** — A direct-mode file deleted outside the app is reported and never downloaded again](139-a-direct-mode-file-deleted-outside-the-app-is.md)

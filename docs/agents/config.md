@@ -101,9 +101,10 @@ seeding. Torrents added in hardlink mode keep downloading and seeding in `.torre
 switch.
 
 Deleting: from the app (web UI or CLI), a direct-mode episode's torrent is removed with its files
-(and the folders they leave empty). A file deleted by hand, outside the app, while its torrent is
-still in the session is downloaded again the next time the session opens — the file is the
-torrent's data. A failed download whose episode was then fetched from another release leaves no
+(and the folders they leave empty). A file deleted by hand, outside the app (from Jellyfin, a file
+manager), is **not** downloaded again: its torrent stays stopped and its row in Downloads shows a quiet "file
+deleted outside the app" note, nothing else
+([decisions/139](decisions/139-a-direct-mode-file-deleted-outside-the-app-is.md)). A failed download whose episode was then fetched from another release leaves no
 garbage: the end-of-pass sweep deletes files no torrent and no episode record points at any more.
 
 `completed_anime_path` is still required and still the library root; `Config.DownloadPath()` still
@@ -181,7 +182,7 @@ System; a new message preset starts with the episode events plus the system ones
 | `season_complete` | Library | a finished anime (AniList status `FINISHED`) has every episode you haven't watched in the library; once per anime, ever |
 | `unwatched_backlog` | Library | the next episode to watch (progress + 1) has been in the library for 30 days; says how many unwatched episodes and how much space they take. Once per anime and progress — watching one and stopping again restarts the 30 days from that episode's download date |
 | `leftover_files` | Library | weekly digest, while files you are done with are still in the library after the check's own cleanup: episodes at or below progress − `watched_episodes_to_keep`, and animes that left every download status. One line per anime with its size; the title carries the total of the lines that webhook gets (a webhook filtered by account counts only its animes). Skipped on a check where some list account failed to answer |
-| `library_missing` | System | the library folder vanished or was replaced (unmounted drive); everything in it will be downloaded again |
+| `library_missing` | System | the library folder vanished or was replaced (unmounted drive); everything in it will be downloaded again — except torrents added in direct mode, which stop and show their files missing ([decisions/139](decisions/139-a-direct-mode-file-deleted-outside-the-app-is.md)) |
 | `check_failing` | System | checks have aborted for ≥ 30 min and ≥ 2 passes in a row (setup incomplete doesn't count); once per run of failures, and again with `{{reason}}` = `recovered` on the first pass that finishes. `{{reason}}` is otherwise the pass error code |
 | `update_available` | System | a newer release is on GitHub (`check_for_updates`); once per version. `{{version}}` and `{{url}}` (the release page) are filled only here |
 | `disk_low` | System | two levels, each once until space is freed (free > its floor × 1.25): `{{reason}}` = `warning` when free space drops under 2 × `min_free_disk_gb` (5 % of the volume with the policy at 0), `blocked` when a pass refused downloads for lack of space. A disk that goes straight from fine to full sends `blocked` only |

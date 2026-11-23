@@ -51,6 +51,9 @@ type TorrentResponse struct {
 	// EtaSeconds is null when unknown or infinite.
 	EtaSeconds       *int64 `json:"eta_seconds" example:"240"`
 	SeededForSeconds int64  `json:"seeded_for_seconds" example:"3600"`
+	// FilesMissing marks a finished direct-mode torrent whose library file was deleted outside
+	// the app. It is not downloaded again; this flag is the only warning (decisions/139).
+	FilesMissing bool `json:"files_missing,omitempty" example:"false"`
 }
 
 // handleTorrents returns a live snapshot of every torrent in the embedded client — progress,
@@ -83,7 +86,11 @@ func handleTorrents(server *Server) http.HandlerFunc {
 
 		out := make([]TorrentResponse, 0, len(list))
 		for _, t := range list {
-			out = append(out, buildTorrentResponse(t, byHash[t.Hash]))
+			resp := buildTorrentResponse(t, byHash[t.Hash])
+			if p, placed := server.Torrents.Placement(t.Hash); placed {
+				resp.FilesMissing = daemon.PlacedFilesMissing(p)
+			}
+			out = append(out, resp)
 		}
 
 		// Deterministic order: unfinished torrents first (that is what the user opened the

@@ -235,3 +235,70 @@ func TestDirectMode_RealTransferLandsInTheLibrary(t *testing.T) {
 		t.Fatal("the placement must be forgotten with the data")
 	}
 }
+
+// A finished direct-mode file deleted outside the app is not downloaded again on the next session
+// open: the torrent stops with an error and the file stays absent (decisions/139).
+func TestDirectMode_DeletedFinishedFileIsNotDownloadedAgain(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens real torrent sessions")
+	}
+	video := randomBytes(t, 40*1024)
+	metainfo, hash := makeTorrent(t, "[Grp] Show - 07", []testFile{{path: []string{"[Grp] Show - 07.mkv"}, data: video}})
+
+	lib := t.TempDir()
+	dataDir := t.TempDir()
+	final := filepath.Join(lib, "Show", "Season 01", "[Grp] Show - 07.mkv")
+	if err := os.MkdirAll(filepath.Dir(final), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(final, video, 0644); err != nil {
+		t.Fatal(err)
+	}
+	store := newPlacementStore(filepath.Join(dataDir, placementsFileName))
+	if _, err := store.register(PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1}); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := store.get(hash)
+	p.Files = []PlacedFile{{Torrent: "[Grp] Show - 07/[Grp] Show - 07.mkv", Path: "Show/Season 01/[Grp] Show - 07.mkv"}}
+	p.Completed = true
+	if err := store.update(p); err != nil {
+		t.Fatal(err)
+	}
+
+	open := func() *Session {
+		s, err := newSession(filepath.Join(lib, ".torrents"), filepath.Join(dataDir, "session.db"), sessionOptions{disableDHT: true, placements: store})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s1 := open()
+	t1, err := s1.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the existing file to verify and seed", 30*time.Second, func() bool { return t1.Stats().Status == torrent.Seeding })
+	if err := s1.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(final); err != nil {
+		t.Fatal(err)
+	}
+	s2 := open()
+	defer s2.Close()
+	t2 := s2.ses.GetTorrent(hash)
+	if t2 == nil {
+		t.Fatal("the torrent must come back from resume")
+	}
+	waitFor(t, "the torrent to stop on the missing file", 30*time.Second, func() bool {
+		st := t2.Stats()
+		return st.Status == torrent.Stopped && st.Error != nil
+	})
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatalf("the deleted file must not be recreated: %v", err)
+	}
+	if err := t2.Stats().Error; !strings.Contains(err.Error(), ErrPlacedFileMissing.Error()) {
+		t.Fatalf("the torrent's error must name the missing file, got %v", err)
+	}
+}

@@ -318,8 +318,12 @@ func (f *FakeBackend) libraryRoot() string {
 func (f *FakeBackend) FinalizePlacement(hash string) error {
 	store := f.placementStore()
 	p, ok := store.get(hash)
-	if !ok || !p.PartFiles || p.Completed {
+	if !ok || p.Completed {
 		return nil
+	}
+	if !p.PartFiles {
+		p.Completed = true
+		return store.update(p)
 	}
 	if err := finalizeFiles(p.Resolve(f.libraryRoot())); err != nil {
 		return err

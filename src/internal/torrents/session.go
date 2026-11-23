@@ -109,15 +109,21 @@ const finalizeStopTimeout = 20 * time.Second
 
 // FinalizePlacement gives a completed direct-mode torrent's .part files their final names. The
 // torrent is stopped first so no file is open during the rename (Windows refuses to rename an
-// open file), then started again to keep seeding from the final names. Idempotent: a placement
-// without part files, or already completed, returns at once.
+// open file), then started again to keep seeding from the final names. A placement without part
+// files is only marked completed: from then on a missing file is one deleted outside the app
+// (decisions/139). Idempotent: an already completed placement returns at once.
 func (s *Session) FinalizePlacement(hash string) error {
 	if s.placements == nil {
 		return nil
 	}
 	stored, ok := s.placements.get(hash)
-	if !ok || !stored.PartFiles || stored.Completed {
+	if !ok || stored.Completed {
 		return nil
+	}
+	if !stored.PartFiles {
+		// Nothing to rename; the mark is what lets Open tell a deleted file from one not written yet.
+		stored.Completed = true
+		return s.placements.update(stored)
 	}
 	p := stored.Resolve(s.libraryRoot)
 	if len(p.Files) == 0 {

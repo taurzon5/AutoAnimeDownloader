@@ -2,6 +2,7 @@ package torrents
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -513,5 +514,33 @@ func TestPlacementStore_ReRegisterRefreshesCreatedAt(t *testing.T) {
 	}
 	if time.Since(again.CreatedAt) > time.Minute {
 		t.Fatalf("re-registering must refresh CreatedAt, got %v", again.CreatedAt)
+	}
+}
+
+// A finished torrent's file deleted outside the app is not recreated (rain would download it
+// again): Open fails with ErrPlacedFileMissing. Before completion a missing file is normal.
+func TestPlacedStorage_OpenRefusesToRecreateADeletedFinishedFile(t *testing.T) {
+	_, ps, lib := newPlaced(t, false, "ep.mkv")
+	file := filepath.Join(lib, "Show", "Season 01", "ep.mkv")
+
+	f, _, err := ps.Open("ep.mkv", 4)
+	if err != nil {
+		t.Fatalf("an unfinished torrent creates its files: %v", err)
+	}
+	_ = f.Close()
+
+	p, _ := ps.store.get(testHash)
+	p.Completed = true
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ps.Open("ep.mkv", 4); !errors.Is(err, ErrPlacedFileMissing) {
+		t.Fatalf("a deleted finished file must not be recreated, got %v", err)
+	}
+	if _, err := os.Stat(file); !os.IsNotExist(err) {
+		t.Fatal("nothing may be created")
 	}
 }

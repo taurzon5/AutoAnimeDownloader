@@ -126,7 +126,7 @@ func (m *SessionManager) ensure(savePath string) (bool, error) {
 		switch {
 		case swapped:
 			logger.Logger.Warn().Str("save_path", savePath).
-				Msg("The download folder was moved, trashed or replaced; recreating the torrent session so the files are redownloaded at the configured path")
+				Msg("The download folder was moved, trashed or replaced; recreating the torrent session so the files are redownloaded at the configured path (direct-mode torrents stop instead, decisions/139)")
 		case m.savePath != savePath:
 			logger.Logger.Info().Str("old", m.savePath).Str("new", savePath).Msg("Download path changed, recreating torrent session")
 		case modeChanged:

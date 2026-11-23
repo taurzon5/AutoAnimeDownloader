@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -476,5 +477,109 @@ func TestPruneOrphanPlacements_KeptPlacements(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("kept files must never be deleted: %v", err)
 		}
+	}
+}
+
+// The torrent of a deleted file stops with an error; the failure handler leaves it alone — no
+// drop, no re-add, no webhook (decisions/139).
+func TestHandleTorrentFailure_LeavesADeletedFilesTorrentAlone(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	path := placedOnDisk(t, backend, configs, directHash, 1)
+	if _, err := backend.Add(directMagnet); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.FinalizePlacement(directHash); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := backend.Placement(directHash); !p.Completed {
+		t.Fatal("an in-place placement must be marked completed by finalize")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	fm := &failingFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeNumber: 1, EpisodeHash: directHash, DirectLibrary: true, LibraryPaths: []string{path}}}}
+
+	HandleTorrentFailure(directHash, torrents.ErrPlacedFileMissing, backend, fm)
+
+	if _, ok := backend.Get(directHash); !ok {
+		t.Error("the torrent must stay in the session")
+	}
+	if _, removed := backend.RemovedKeepData[directHash]; removed {
+		t.Error("the torrent must not be removed")
+	}
+}
+
+// Open refuses ANY missing file of a finished placement, so the check behind the flag, the failure
+// handler and organize must cover every file too: a deleted subtitle alone stops the torrent.
+func TestPlacedFilesMissing_CoversEveryFile(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := backend.PlaceFiles(directHash, []string{"R/ep01.mkv", "R/ep01.ass"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range p.Files {
+		if err := os.MkdirAll(filepath.Dir(f.Path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f.Path, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := backend.FinalizePlacement(directHash); err != nil {
+		t.Fatal(err)
+	}
+	p, _ = backend.Placement(directHash)
+	if PlacedFilesMissing(p) {
+		t.Fatal("nothing is missing yet")
+	}
+	if err := os.Remove(p.Files[1].Path); err != nil { // the subtitle
+		t.Fatal(err)
+	}
+	if !PlacedFilesMissing(p) {
+		t.Fatal("a deleted subtitle must count: Open refuses it too")
+	}
+}
+
+// A finished torrent whose files are gone (the library folder was replaced) is not organized
+// again: no LibraryPaths for files that don't exist, no completion webhook.
+func TestOrganizeTorrent_LeavesAFinishedTorrentWithMissingFilesAlone(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	path := placedOnDisk(t, backend, configs, directHash, 1)
+	if err := backend.FinalizePlacement(directHash); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := backend.Placement(directHash)
+	backend.AddCompleted(directHash, p.SeriesDir)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show", EpisodeNumber: 1}}, configs: configs}
+
+	if ok := organizeTorrent(directHash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, configs); !ok {
+		t.Fatal("the job is done: there is nothing to retry")
+	}
+	if len(fm.upserted) != 0 || len(fm.saved[0].LibraryPaths) != 0 {
+		t.Fatalf("no library paths may be recorded for missing files, got %+v", fm.saved[0])
+	}
+}
+
+func TestLibraryMissingItem_SaysWhatHappensInEachMode(t *testing.T) {
+	if got := libraryMissingItem("/lib", 3, false).Text; !strings.Contains(got, "3 episodes will be downloaded again") {
+		t.Errorf("hardlink mode re-downloads, got %q", got)
+	}
+	if got := libraryMissingItem("/lib", 3, true).Text; !strings.Contains(got, "not downloaded again") {
+		t.Errorf("direct mode does not, got %q", got)
 	}
 }

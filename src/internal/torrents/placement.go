@@ -41,6 +41,11 @@ const (
 	PlacementPack = "pack"
 )
 
+// ErrPlacedFileMissing is what Open returns for a finished torrent whose library file is gone:
+// deleted outside the app. Recreating it would make rain download it again; the user asked for a
+// warning and nothing else (decisions/139), so the torrent stops with this error instead.
+var ErrPlacedFileMissing = errors.New("library file of a finished torrent is missing")
+
 // placementsFileName is where the placements live, next to session.db, for the same reason as
 // queue.json: it is torrent-client state and must follow the resume database.
 const placementsFileName = "placements.json"
@@ -86,8 +91,9 @@ type Placement struct {
 	PlacementRequest
 	// Files is empty until rain prepares the torrent (its metadata arrived).
 	Files []PlacedFile `json:"files,omitempty"`
-	// Completed is set by FinalizePlacement once every .part file got its final name. Without
-	// PartFiles it is never needed: files have their final names from the start.
+	// Completed is set by FinalizePlacement when the torrent finished: after every .part file got
+	// its final name, or right away without PartFiles. From then on a missing file is one deleted
+	// outside the app, and Open refuses to recreate it (ErrPlacedFileMissing).
 	Completed bool `json:"completed,omitempty"`
 	// CreatedAt is when the placement was registered. The daemon's orphan sweep leaves young
 	// placements alone: between SetPlacement and the add, a placement has no torrent yet.
@@ -483,6 +489,9 @@ func (ps *placedStorage) Open(name string, size int64) (storage.File, bool, erro
 		// again, while the finished data sits right there under its final name.
 		if path != f.Path && !pathExists(path) && pathExists(f.Path) {
 			path = f.Path
+		}
+		if p.Completed && !pathExists(path) {
+			return nil, false, fmt.Errorf("%w: %s", ErrPlacedFileMissing, path)
 		}
 		return openFile(path, size, ps.perm)
 	}

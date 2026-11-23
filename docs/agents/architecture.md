@@ -667,6 +667,9 @@ There is no hardlink anywhere in direct mode: organize (`daemon.organizeTorrent`
 renames the `.part` files (`FinalizePlacement`, which stops and restarts the torrent) and records the
 placed video paths; deletion is `Remove(hash, false)`, which reaches `placedStorage.Remove`
 ([decisions/137](decisions/137-direct-mode-deletes-through-the-torrent-and-keep.md)).
+A finished placement's missing file is never recreated: `Open` returns `ErrPlacedFileMissing`
+and the torrent stays stopped, the deleted-outside-the-app warning
+([decisions/139](decisions/139-a-direct-mode-file-deleted-outside-the-app-is.md)).
 `TorrentInfo.DataDir` of a placed torrent is its **series folder**, not a folder holding the
 torrent's raw paths: anything joining `DataDir` with a `FileInfo.Path` must go through
 `Placement.Files` instead (`api.videoCodecOf` does).

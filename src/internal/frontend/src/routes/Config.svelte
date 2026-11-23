@@ -49,6 +49,7 @@
     hintMalUsernames: m.config_hint_mal_usernames(),
     labelCompletedPath: m.config_label_completed_path(),
     hintCompletedPath: m.config_hint_completed_path(),
+    hintCompletedPathDirect: m.config_hint_completed_path_direct(),
     labelDeleteWatched: m.config_label_delete_watched(),
     labelWatchedKeep: m.config_label_watched_keep(),
     hintWatchedKeep: m.config_hint_watched_keep(),
@@ -582,7 +583,7 @@
               <Input
                 id="completed_anime_path"
                 label={T && T.labelCompletedPath || ""}
-                subtitle={T && T.hintCompletedPath || ""}
+                subtitle={(T && (config.library_mode === "direct" ? T.hintCompletedPathDirect : T.hintCompletedPath)) || ""}
                 type="text"
                 bind:value={config.completed_anime_path}
                 placeholder="/path/to/completed"

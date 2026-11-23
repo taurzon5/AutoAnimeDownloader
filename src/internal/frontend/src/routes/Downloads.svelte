@@ -848,6 +848,18 @@
                         {formatPercent(t.progress, fmtLocale)} · {formatBytes(t.bytes_completed, fmtLocale)} / {formatBytes(t.bytes_total, fmtLocale)}
                       {/if}
                     </p>
+                    <!-- Direct mode: the library file is the torrent's data, and one deleted outside
+                         the app is not downloaded again (decisions/139). This line is the whole
+                         warning, kept quiet on purpose — the same weight as the size line. -->
+                    {#if t.files_missing}
+                      <p
+                        class="mt-0.5 truncate text-[12px] text-subtle"
+                        data-testid="files-missing"
+                        title={$locale && m.downloads_files_missing_detail()}
+                      >
+                        {$locale && m.downloads_files_missing()}
+                      </p>
+                    {/if}
                   </div>
 
                   <div class="min-w-0 font-mono text-[12px] text-subtle">

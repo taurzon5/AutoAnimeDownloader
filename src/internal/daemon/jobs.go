@@ -352,6 +352,13 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 			return false
 		}
 		placement, _ = backend.Placement(hash)
+		// Finished and its files are gone (deleted outside the app, or the library folder was
+		// replaced): nothing to organize and nothing to announce — no LibraryPaths, no webhook
+		// (decisions/139).
+		if PlacedFilesMissing(placement) {
+			logger.Logger.Warn().Str("hash", hash).Msg("Organize: the torrent's library files are missing; leaving it as is")
+			return true
+		}
 		placedPaths = placement.VideoPaths()
 		if len(placedPaths) == 0 {
 			logger.Logger.Warn().Str("hash", hash).Msg("Organize: the placed torrent has no video files")

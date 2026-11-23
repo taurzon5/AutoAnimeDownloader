@@ -156,8 +156,8 @@ type TorrentBackend interface {
 	Placement(hash string) (Placement, bool)
 	// Placements returns every placement, resolved like Placement (the daemon's orphan sweep).
 	Placements() []Placement
-	// FinalizePlacement renames a completed placed torrent's .part files to their final names.
-	// Idempotent; a no-op for a placement without part files or one already finalized.
+	// FinalizePlacement renames a completed placed torrent's .part files to their final names and
+	// marks the placement completed (only the mark, without part files). Idempotent.
 	FinalizePlacement(hash string) error
 	// ForgetPlacement drops a placement whose torrent is gone and whose files the caller deleted
 	// itself (a released torrent). Removing a placed torrent with keepData=false forgets it already.

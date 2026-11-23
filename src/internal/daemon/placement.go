@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -284,4 +285,23 @@ func pruneOrphanPlacements(backend torrents.TorrentBackend, saved []files.Episod
 		}
 		logger.Logger.Info().Str("hash", p.Hash).Str("series_dir", p.SeriesDir).Msg("Deleted the files of an abandoned direct-mode download")
 	}
+}
+
+// statFile is os.Stat, swappable in tests.
+var statFile = os.Stat
+
+// PlacedFilesMissing reports whether a finished placement is missing any of its files — video,
+// subtitle, anything: exactly the files placedStorage.Open refuses to recreate (decisions/139).
+// The torrents list flags its torrent with it, and the failure handler and organize leave such a
+// torrent alone.
+func PlacedFilesMissing(p torrents.Placement) bool {
+	if !p.Completed || !filepath.IsAbs(p.SeriesDir) {
+		return false
+	}
+	for _, f := range p.Files {
+		if _, err := statFile(p.DiskPath(f)); err != nil {
+			return true
+		}
+	}
+	return false
 }

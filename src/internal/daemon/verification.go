@@ -132,7 +132,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		cleared := clearLibraryPathsAfterRootSwap(fileManager, configs.CompletedAnimePath)
 		// Even with 0 cleared: an empty library that vanished is still a folder that vanished, and an
 		// unmounted drive is worth knowing about before the redownloads fill the disk underneath it.
-		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared))
+		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared, configs.IsDirectMode()))
 	}
 
 	// downloadedTorrents is an in-memory snapshot of the embedded client (cheap, no I/O).
@@ -423,11 +423,17 @@ func clearLibraryPathsAfterRootSwap(fileManager FileManagerInterface, completedP
 	logger.Logger.Warn().
 		Int("episodes", len(stale)).
 		Str("completed_anime_path", completedPath).
-		Msg("Root swap: the library folder is gone, cleared the stale library links; episodes will be redownloaded and reorganized at the configured path")
+		Msg("Root swap: the library folder is gone, cleared the stale library links; hardlink-mode episodes will be redownloaded at the configured path, direct-mode torrents stop with their files missing")
 	return len(stale)
 }
 
-func libraryMissingItem(completedPath string, cleared int) notifications.Episode {
+// libraryMissingItem words the library_missing alert. In direct mode the files lived in the library
+// itself, and their torrents stop instead of downloading again (decisions/139); torrents added
+// in hardlink mode still download again.
+func libraryMissingItem(completedPath string, cleared int, direct bool) notifications.Episode {
+	if direct {
+		return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. Torrents written straight to it stop and show their files missing; they are not downloaded again.", completedPath)}
+	}
 	return notifications.Episode{Text: fmt.Sprintf("%s is gone or was replaced. %s will be downloaded again.", completedPath, plural(cleared, "episode"))}
 }
 
