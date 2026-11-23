@@ -115,6 +115,9 @@ func placementRequest(configs *files.Config, hash string, target torrentTarget) 
 		SeriesName: seriesName,
 		SeriesID:   seriesID(target),
 		PartFiles:  configs.UsePartFiles(),
+		// Frozen into the placement: changing the setting later only affects new torrents
+		// (decisions/141).
+		IncompleteRoot: configs.StagingPath(),
 	}
 	switch {
 	case target.anime.Media.Format == anilist.MediaFormatMovie:
@@ -289,6 +292,113 @@ func pruneOrphanPlacements(backend torrents.TorrentBackend, saved []files.Episod
 	}
 }
 
+// resumeTorrentsWaitingForStaging starts again the FINISHED torrents that stopped because their
+// incomplete folder was gone (decisions/141), once it is back. Unfinished ones need nothing: the
+// download queue starts every stopped incomplete torrent on its own.
+func resumeTorrentsWaitingForStaging(backend torrents.TorrentBackend) {
+	for _, t := range backend.List() {
+		if !t.Completed || t.Status != torrents.StatusStopped || !errors.Is(t.StopError, torrents.ErrIncompleteFolderUnavailable) {
+			continue
+		}
+		p, ok := backend.Placement(t.Hash)
+		if !ok || p.IncompleteRoot == "" || !dirExists(p.IncompleteRoot) {
+			continue
+		}
+		if err := backend.Resume(t.Hash); err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", t.Hash).Msg("Failed to restart a torrent whose incomplete folder is back")
+			continue
+		}
+		logger.Logger.Info().Str("hash", t.Hash).Msg("The incomplete downloads folder is back; restarted the torrent")
+	}
+}
+
+// adoptMovedStaging follows a moved incomplete folder (decisions/141): an unfinished staging
+// torrent whose frozen root is gone, while its <hash> folder sits in the configured incomplete_path,
+// is re-pointed there — the user moved the folder and changed the setting, as with a moved library
+// (decisions/034). The torrent is added back, so rain re-checks the moved files before trusting
+// them. One whose files are nowhere to be found waits for its root to come back, and the pass says
+// so in the log.
+func adoptMovedStaging(backend torrents.TorrentBackend, staging string) {
+	for _, p := range backend.Placements() {
+		if p.Completed || p.IncompleteRoot == "" || p.IncompleteRoot == staging || dirExists(p.IncompleteRoot) {
+			continue
+		}
+		if staging != "" && dirExists(filepath.Join(staging, p.Hash)) {
+			if err := backend.MovePlacementStaging(p.Hash, staging); err != nil {
+				logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Failed to follow a moved incomplete downloads folder")
+				continue
+			}
+			logger.Logger.Info().Str("hash", p.Hash).Str("incomplete_path", staging).Msg("Found a download in the moved incomplete folder; it continues from there")
+			continue
+		}
+		logger.Logger.Warn().Str("hash", p.Hash).Str("incomplete_path", p.IncompleteRoot).
+			Msg("The incomplete folder this download was started in is gone; it waits for it to come back")
+	}
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// pruneStagingLeftovers removes what torrents left in the incomplete folders (decisions/141): a
+// <hash> folder whose placement is gone, or is Completed (moved; a crash or a failed cleanup came
+// between the switch and the removal). A Kept placement's folder stays (its files are the user's,
+// a re-add resumes into them), and so does any unfinished one's, whatever root it was registered
+// with: a folder the user moved holds that torrent's data until adoptMovedStaging re-points it.
+// Only folders named like an infohash are touched, and only after orphanPlacementGrace since they
+// last changed. The roots are the configured incomplete_path and every root a placement points at.
+func pruneStagingLeftovers(backend torrents.TorrentBackend, staging string, now time.Time) {
+	roots := map[string]bool{}
+	if staging != "" {
+		roots[staging] = true
+	}
+	byHash := map[string]torrents.Placement{}
+	for _, p := range backend.Placements() {
+		byHash[p.Hash] = p
+		if p.IncompleteRoot != "" {
+			roots[p.IncompleteRoot] = true
+		}
+	}
+	for root := range roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() || !isInfoHash(e.Name()) {
+				continue
+			}
+			if p, ok := byHash[e.Name()]; ok && (p.Kept || !p.Completed) {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil || now.Sub(info.ModTime()) < orphanPlacementGrace {
+				continue
+			}
+			dir := filepath.Join(root, e.Name())
+			if err := os.RemoveAll(dir); err != nil {
+				logger.Logger.Warn().Err(err).Str("hash", e.Name()).Msg("Failed to delete a leftover in the incomplete downloads folder")
+				continue
+			}
+			logger.Logger.Info().Str("hash", e.Name()).Msg("Deleted a leftover in the incomplete downloads folder")
+		}
+	}
+}
+
+// isInfoHash reports whether name is a v1 infohash as the session writes it: 40 lowercase hex.
+func isInfoHash(name string) bool {
+	if len(name) != 40 {
+		return false
+	}
+	for _, c := range name {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // statFile is os.Stat, swappable in tests.
 var statFile = os.Stat
 
@@ -330,7 +440,7 @@ type RedownloadResult struct {
 func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBackend, saved []files.EpisodeStruct, only []string) (RedownloadResult, error) {
 	var result RedownloadResult
 	var errs []error
-	reserved := newDiskBudget(backend.List(), saved).reserved
+	budget := newDiskBudget(backend.List(), saved)
 	wanted := make(map[string]bool, len(only))
 	for _, h := range only {
 		wanted[strings.ToLower(h)] = true
@@ -343,16 +453,16 @@ func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBacke
 			continue
 		}
 		missing := missingBytes(backend, p)
-		if err := checkDiskSpace(configs, missing, reserved); err != nil {
+		if err := budget.check(configs, missing); err != nil {
 			logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Redownload missing files: not enough disk space for this torrent")
 			result.SkippedNoSpace++
 			continue
 		}
-		if err := backend.RedownloadPlacement(p.Hash); err != nil {
+		if err := backend.RedownloadPlacement(p.Hash, configs.StagingPath()); err != nil {
 			errs = append(errs, fmt.Errorf("torrent %s: %w", p.Hash, err))
 			continue
 		}
-		reserved += missing
+		budget.add(missing)
 		result.Redownloaded++
 	}
 	return result, errors.Join(errs...)

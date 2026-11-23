@@ -2,6 +2,7 @@ package torrents
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -123,9 +124,19 @@ func (f *FakeBackend) List() []TorrentInfo {
 	defer f.mu.Unlock()
 	out := make([]TorrentInfo, 0, len(f.torrents))
 	for _, t := range f.torrents {
-		out = append(out, *t)
+		out = append(out, f.withStagedLocked(*t))
 	}
 	return out
+}
+
+// withStagedLocked sets Staged like SessionManager.markStaged. f.mu is held.
+func (f *FakeBackend) withStagedLocked(t TorrentInfo) TorrentInfo {
+	if f.placements != nil {
+		if p, ok := f.placements.get(t.Hash); ok && p.IncompleteRoot != "" && !p.Completed {
+			t.Staged = true
+		}
+	}
+	return t
 }
 
 func (f *FakeBackend) Get(hash string) (TorrentInfo, bool) {
@@ -135,7 +146,7 @@ func (f *FakeBackend) Get(hash string) (TorrentInfo, bool) {
 	if !ok {
 		return TorrentInfo{}, false
 	}
-	return *t, true
+	return f.withStagedLocked(*t), true
 }
 
 // Remove drops the torrent. Removing a hash that is not in the session is NOT an error,
@@ -286,8 +297,8 @@ func (f *FakeBackend) Placement(hash string) (Placement, bool) {
 
 // RedownloadPlacement reopens the placement and marks the torrent downloading again, as the real
 // session does once it has added the torrent back.
-func (f *FakeBackend) RedownloadPlacement(hash string) error {
-	if err := f.placementStore().reopen(hash); err != nil {
+func (f *FakeBackend) RedownloadPlacement(hash, incompleteRoot string) error {
+	if err := f.placementStore().reopen(hash, incompleteRoot); err != nil {
 		return err
 	}
 	f.mu.Lock()
@@ -348,6 +359,25 @@ func (f *FakeBackend) FinalizePlacement(hash string) error {
 	if !ok || p.Completed {
 		return nil
 	}
+	if p.IncompleteRoot != "" {
+		// Staging: the files move from the incomplete folder into the library (the fake renames;
+		// the real session copies across drives, decisions/141).
+		r := p.Resolve(f.libraryRoot())
+		for _, pf := range r.Files {
+			if pathExists(pf.Path) {
+				continue
+			}
+			if err := os.MkdirAll(filepath.Dir(pf.Path), 0755); err != nil {
+				return err
+			}
+			if err := os.Rename(r.StagingPath(pf), pf.Path); err != nil {
+				return err
+			}
+		}
+		_ = os.RemoveAll(r.StagingDir())
+		p.Completed = true
+		return store.update(p)
+	}
 	if !p.PartFiles {
 		p.Completed = true
 		return store.update(p)
@@ -357,6 +387,10 @@ func (f *FakeBackend) FinalizePlacement(hash string) error {
 	}
 	p.Completed = true
 	return store.update(p)
+}
+
+func (f *FakeBackend) MovePlacementStaging(hash, root string) error {
+	return f.placementStore().setIncompleteRoot(hash, root)
 }
 
 func (f *FakeBackend) ForgetPlacement(hash string) error {
@@ -448,6 +482,15 @@ func (f *FakeBackend) AddPaused(hash, name string, piecesHave, piecesTotal uint3
 		PiecesHave:  piecesHave,
 		PiecesTotal: piecesTotal,
 		Completed:   completed,
+	}
+}
+
+// SetStopError sets the error a torrent stopped with (TorrentInfo.StopError).
+func (f *FakeBackend) SetStopError(hash string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.torrents[hash]; ok {
+		t.StopError = err
 	}
 }
 

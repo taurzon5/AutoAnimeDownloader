@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { passErrorMessage } from '../../src/lib/domain/passError.js'
 
-const KNOWN = ['anilist', 'mal', 'setup', 'library', 'torrent_backend', 'config', 'storage']
+const KNOWN = ['anilist', 'mal', 'setup', 'library', 'library_unwritable', 'incomplete_folder', 'torrent_backend', 'config', 'storage']
 
 describe('passErrorMessage', () => {
   it('gives each known cause its own sentence', () => {

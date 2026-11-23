@@ -56,6 +56,14 @@ type TorrentInfo struct {
 	// the queue, but it never starts on its own, so publishing a number that predicts nothing
 	// is worse than publishing none).
 	QueuePosition int
+	// MoveProgress (0–1) is how far the copy from the incomplete folder into the library is, while
+	// Status is "moving" (decisions/141). 0 otherwise.
+	MoveProgress float64
+	// Staged marks a direct-mode torrent whose files are still in the incomplete folder: not moved
+	// into the library yet. The disk guard counts its full size against the library volume.
+	Staged bool
+	// StopError is the error rain stopped the torrent with, nil when it stopped (or runs) cleanly.
+	StopError error
 }
 
 // FileInfo is a file inside a torrent.
@@ -157,10 +165,17 @@ type TorrentBackend interface {
 	// Placements returns every placement, resolved like Placement (the daemon's orphan sweep).
 	Placements() []Placement
 	// RedownloadPlacement fetches a finished direct-mode torrent's missing files again, into the
-	// same paths (the bulk "redownload missing files", decisions/139).
-	RedownloadPlacement(hash string) error
-	// FinalizePlacement renames a completed placed torrent's .part files to their final names and
-	// marks the placement completed (only the mark, without part files). Idempotent.
+	// same paths (the bulk "redownload missing files", decisions/139). incompleteRoot is the
+	// incomplete folder configured now ("" for none): the missing files stage there
+	// (decisions/141).
+	RedownloadPlacement(hash, incompleteRoot string) error
+	// MovePlacementStaging re-points an unfinished staging torrent at root, the incomplete folder
+	// it was moved to (decisions/141). The torrent finds its files there on its next start.
+	MovePlacementStaging(hash, root string) error
+	// FinalizePlacement gives a completed placed torrent's files their final library paths and
+	// marks the placement completed: it renames .part files, or moves the files of a staging
+	// torrent from the incomplete folder into the library (decisions/141), or only sets the mark.
+	// Idempotent.
 	FinalizePlacement(hash string) error
 	// ForgetPlacement drops a placement whose torrent is gone and whose files the caller deleted
 	// itself (a released torrent). Removing a placed torrent with keepData=false forgets it already.

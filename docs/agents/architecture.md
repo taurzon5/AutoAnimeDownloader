@@ -93,7 +93,7 @@ Key endpoints:
 
 | Method | Endpoint | Handler func | File |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/status` | `handleStatus` | `endpoint_status.go` — the `disk_low` threshold lives **only** on the server. It is the add-gate for a torrent of size 0: `free - reserved` against `min_free_disk_gb` (`daemon.DiskLow`), so the Status banner cannot disagree with what the daemon will refuse ([decisions/093](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)). The AniList state is written by **any** call (a pass or a frontend poll), because they all go through `sendAnilistRequest` — decisions/065 and decisions/066. `anilist.cache_saved_at` is filled in on **read**, not when the state is written: it's not a fact about AniList, it's what the banner uses to say how old the cache on screen is. `pending_crash_at` (mtime of `crash-pending.log`, `null` when there is none) is what makes the web UI offer the report screen after a crash. `latest_version`/`latest_version_url` come from `updates.Latest()` (memory, no request on read) and drive the update badge next to the version in `NavRail`/`MoreMenu` (`UpdateBadge.svelte`), read once when the shell mounts |
+| `GET` | `/api/v1/status` | `handleStatus` | `endpoint_status.go` — the `disk_low` threshold lives **only** on the server. It is the add-gate for a torrent of size 0: `free - reserved` against `min_free_disk_gb` (`daemon.DiskLow`), so the Status banner cannot disagree with what the daemon will refuse ([decisions/093](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)). The AniList state is written by **any** call (a pass or a frontend poll), because they all go through `sendAnilistRequest` — decisions/065 and decisions/066. `anilist.cache_saved_at` is filled in on **read**, not when the state is written: it's not a fact about AniList, it's what the banner uses to say how old the cache on screen is. `pending_crash_at` (mtime of `crash-pending.log`, `null` when there is none) is what makes the web UI offer the report screen after a crash. `latest_version`/`latest_version_url` come from `updates.Latest()` (memory, no request on read) and drive the update badge next to the version in `NavRail`/`MoreMenu` (`UpdateBadge.svelte`), read once when the shell mounts. `incomplete_disk_total`/`incomplete_disk_free` describe the `incomplete_path` drive, only when it is set and not the library's filesystem; `disk_low` covers both drives ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
 | `GET` | `/api/v1/last-check` | `handleLastCheck` | `endpoint_last_check.go` — memory only. `problems` (should have downloaded and did not) and `limits` (the config doing what it was configured to do). When `pass_error` is set both lists come empty, because `SetLastCheckError` clears the report (decisions/082). A manual download stays out: that path returns the error on its own HTTP response |
 | `GET/PUT` | `/api/v1/config` | `handleConfig` | `endpoint_config.go` |
 | `GET` | `/api/v1/config/priorities/defaults` | `handlePriorityDefaults` | `endpoint_priorities.go` |
@@ -122,7 +122,7 @@ Key endpoints:
 | `DELETE` | `/api/v1/diagnostics/crash` | `handleDiagnosticsCrash` | `endpoint_diagnostics.go` — moves `crash-pending.log` to `crashes/`. Idempotent; answers the usual 200 envelope, not 204, because `apiRequest` always parses the body |
 | `POST` | `/api/v1/notifications/webhooks/preview` | `handleNotificationWebhookPreview` | `endpoint_notifications.go` — renders the preset in the BODY (the unsaved form) with the test fire's sample values; sends nothing and reads no config |
 | `POST` | `/api/v1/notifications/webhooks/{name}/test` | `handleNotificationWebhookTest` | `endpoint_notifications.go` |
-| `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` |
+| `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
 | `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/resume` | `handleTorrentResume` | `endpoint_torrents.go` |
@@ -680,6 +680,15 @@ and the torrent stays stopped, the deleted-outside-the-app warning
 back: never `Start()` or `Verify()` a finished torrent to re-fetch files, rain trusts its old
 complete state and an empty file passes as finished
 ([decisions/140](decisions/140-redownloading-missing-files-adds-the-same-torrent.md)).
+With `incomplete_path` a placement stages (`IncompleteRoot`): its files download into
+`<incomplete_path>/<hash>/` and `FinalizePlacement` moves them into the library. The copy is
+`SessionManager.copyStaged`, **outside** `m.mu` (a copy of minutes under it would freeze every
+`List`); only the switch (stop, rename `.aad-moving` → final, `Completed`, start) runs in
+`Session.finalizeStaged` under the lock. Copies run one at a time (`moveTracker`). The staging root
+is never created (`ErrIncompleteFolderUnavailable`): don't `MkdirAll` it, and don't drop a torrent
+stopped with that error ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)). `staging.go` holds all of it; there is no
+separate mover package. A moved incomplete folder is followed by `daemon.adoptMovedStaging`, and
+`pruneStagingLeftovers` never removes an unfinished torrent's folder, whatever root it names.
 `TorrentInfo.DataDir` of a placed torrent is its **series folder**, not a folder holding the
 torrent's raw paths: anything joining `DataDir` with a `FileInfo.Path` must go through
 `Placement.Files` instead (`api.videoCodecOf` does).

@@ -15,6 +15,10 @@ export function passErrorMessage(code: string): string {
       return m.passerror_setup()
     case 'library':
       return m.passerror_library()
+    case 'library_unwritable':
+      return m.passerror_library_unwritable()
+    case 'incomplete_folder':
+      return m.passerror_incomplete_folder()
     case 'torrent_backend':
       return m.passerror_torrent_backend()
     case 'config':

@@ -10,6 +10,10 @@
 only torrents without a placement (added in hardlink mode) use it. Direct-mode validation and the
 per-pass gate probe that the library is writable instead of probing hardlinks.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** `incomplete_path` is not `save_path` back. It is optional, direct mode
+only, and only holds downloads until they finish; the seeding copy still lives where this entry
+says (the library in direct mode). `DownloadPath()` is unchanged.
+
 **Don't "fix" by:** reintroducing `save_path` as a config field or environment variable; removing the guard that makes `DeleteEmptyFolders` skip `.torrents`.
 
 **Amendment (2026-08-24): the migration was REMOVED.** `daemon.MigrateSavePath`, the

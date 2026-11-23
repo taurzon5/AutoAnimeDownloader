@@ -544,3 +544,145 @@ func TestPlacedStorage_OpenRefusesToRecreateADeletedFinishedFile(t *testing.T) {
 		t.Fatal("nothing may be created")
 	}
 }
+
+// A staging placement writes under <IncompleteRoot>/<hash>/, by the final name, never .part, and
+// never creates the root itself (decisions/141).
+func TestPlacedStorage_StagingWritesInTheIncompleteFolder(t *testing.T) {
+	_, ps, lib := newPlaced(t, true, "ep.mkv")
+	staging := t.TempDir()
+	p, _ := ps.store.get(testHash)
+	p.IncompleteRoot = staging
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	writeThrough(t, ps, "ep.mkv")
+	if _, err := os.Stat(filepath.Join(staging, testHash, "Show", "Season 01", "ep.mkv")); err != nil {
+		t.Fatalf("the file must be staged by its final name: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(lib, "Show", "Season 01", "ep.mkv"+partSuffix)); err == nil {
+		t.Fatal("nothing may be written to the library while staging")
+	}
+
+	gone := filepath.Join(t.TempDir(), "unmounted")
+	p.IncompleteRoot = gone
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ps.Open("ep.mkv", 4); !errors.Is(err, ErrIncompleteFolderUnavailable) {
+		t.Fatalf("a missing root must stop the torrent, got %v", err)
+	}
+	if _, err := os.Stat(gone); err == nil {
+		t.Fatal("the incomplete folder must never be created")
+	}
+}
+
+// A placement not finished yet takes a whole file already at the final path (a crash after the
+// move's renames, a redownload reusing the library) instead of staging it again (decisions/141).
+func TestPlacedStorage_OpenPrefersAWholeFinalFile(t *testing.T) {
+	_, ps, lib := newPlaced(t, true, "ep.mkv")
+	staging := t.TempDir()
+	p, _ := ps.store.get(testHash)
+	p.IncompleteRoot = staging
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	final := filepath.Join(lib, "Show", "Season 01", "ep.mkv")
+	if err := os.MkdirAll(filepath.Dir(final), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(final, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	f, exists, err := ps.Open("ep.mkv", 4)
+	if err != nil || !exists {
+		t.Fatalf("Open must use the whole final file: exists=%v err=%v", exists, err)
+	}
+	_ = f.Close()
+	if _, err := os.Stat(filepath.Join(staging, testHash)); err == nil {
+		t.Fatal("nothing may be staged for a file already whole in the library")
+	}
+
+	// A file of another size at the final path is not this torrent's finished data.
+	if err := os.WriteFile(final, []byte("xx"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err = ps.Open("ep.mkv", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if _, err := os.Stat(filepath.Join(staging, testHash, "Show", "Season 01", "ep.mkv")); err != nil {
+		t.Fatalf("a wrong-size final file must not be used: %v", err)
+	}
+}
+
+func TestRemovePlacedFiles_RemovesStagedFilesAndCopies(t *testing.T) {
+	lib, staging := t.TempDir(), t.TempDir()
+	p := Placement{
+		PlacementRequest: PlacementRequest{Hash: testHash, SeriesDir: "Show", Kind: PlacementEpisode, IncompleteRoot: staging},
+		Files:            []PlacedFile{{Torrent: "ep.mkv", Path: filepath.Join("Show", "Season 01", "ep.mkv")}},
+	}.Resolve(lib)
+	staged := p.StagingPath(p.Files[0])
+	moving := p.Files[0].Path + movingSuffix
+	for _, path := range []string{staged, moving} {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RemovePlacedFiles(p); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(staging, testHash), moving} {
+		if _, err := os.Stat(path); err == nil {
+			t.Errorf("%s must be removed", path)
+		}
+	}
+	if _, err := os.Stat(staging); err != nil {
+		t.Error("the incomplete folder itself must stay")
+	}
+}
+
+func TestMoveTracker_OverlaysMovingProgress(t *testing.T) {
+	mt := newMoveTracker()
+	st := &moveState{total: 200, cancel: func() {}}
+	st.done.Store(50)
+	mt.byHash["aaa"] = st
+	got := mt.overlay([]TorrentInfo{{Hash: "aaa", Status: "seeding"}, {Hash: "bbb", Status: "seeding"}})
+	if got[0].Status != StatusMoving || got[0].MoveProgress != 0.25 {
+		t.Errorf("the copying torrent must show moving at 25%%, got %+v", got[0])
+	}
+	if got[1].Status != "seeding" || got[1].MoveProgress != 0 {
+		t.Errorf("other torrents must be untouched, got %+v", got[1])
+	}
+}
+
+// A copy that fails part-way through a pack removes every .aad-moving file it made, the whole
+// ones too: nothing half-moved may stay in the library (decisions/141).
+func TestCopyStagedFiles_FailureLeavesNoCopies(t *testing.T) {
+	lib, staging := t.TempDir(), t.TempDir()
+	p := Placement{
+		PlacementRequest: PlacementRequest{Hash: testHash, SeriesDir: "Show", Kind: PlacementPack, IncompleteRoot: staging},
+		Files: []PlacedFile{
+			{Torrent: "Pack/01.mkv", Path: filepath.Join("Show", "01.mkv")},
+			{Torrent: "Pack/02.mkv", Path: filepath.Join("Show", "02.mkv")},
+		},
+	}.Resolve(lib)
+	first := p.StagingPath(p.Files[0])
+	if err := os.MkdirAll(filepath.Dir(first), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(first, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// The second staged file is missing: the copy fails after the first one went through.
+	sizes := map[string]int64{"Pack/01.mkv": 4, "Pack/02.mkv": 4}
+	if err := copyStagedFiles(context.Background(), p, sizes, nil); err == nil {
+		t.Fatal("a missing staged file must fail the copy")
+	}
+	if _, err := os.Stat(p.Files[0].Path + movingSuffix); err == nil {
+		t.Fatal("the first file's copy must be removed when the move fails")
+	}
+}

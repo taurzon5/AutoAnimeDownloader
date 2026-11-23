@@ -54,6 +54,17 @@ const placementsFileName = "placements.json"
 // media server skips it: ".part" is no video extension.
 const partSuffix = ".part"
 
+// movingSuffix marks a library file being copied in from the staging folder (decisions/141). It
+// only gets its final name by a rename once the copy is whole and synced, so a final name in the
+// library always holds a complete file.
+const movingSuffix = ".aad-moving"
+
+// ErrIncompleteFolderUnavailable is what Open returns when a staging torrent's incomplete folder
+// is gone (its drive unmounted). The folder is never created here: on an unmounted drive that would
+// write the download onto the system disk under the mount point (decisions/141). The torrent stops
+// with this error, and the download queue starts it again on its next pass.
+var ErrIncompleteFolderUnavailable = errors.New("the incomplete downloads folder is unavailable")
+
 // PlacementRequest is what the daemon decides about a torrent before adding it.
 type PlacementRequest struct {
 	// Hash is the torrent's info hash (rain's torrent id).
@@ -73,8 +84,14 @@ type PlacementRequest struct {
 	// torrent's video file, e.g. "Frieren - S01E05". Only applied when the torrent holds exactly
 	// one video file; everything else keeps its raw name.
 	RenameVideo string `json:"rename_video,omitempty"`
-	// PartFiles writes "<name>.part" until FinalizePlacement renames the files.
+	// PartFiles writes "<name>.part" until FinalizePlacement renames the files. Ignored while the
+	// placement stages (IncompleteRoot): staged files keep their final names.
 	PartFiles bool `json:"part_files,omitempty"`
+	// IncompleteRoot, when set, is the absolute staging folder the torrent downloads into: its files
+	// live at <IncompleteRoot>/<hash>/<library-relative path> until FinalizePlacement moves them into
+	// the library (decisions/141). Frozen with the rest of the placement; "" writes straight to the
+	// library.
+	IncompleteRoot string `json:"incomplete_root,omitempty"`
 }
 
 // PlacedFile is one torrent file and where it lives.
@@ -104,6 +121,9 @@ type Placement struct {
 	// deletes its files. Re-adding the same hash resumes into them; from then on the torrent follows
 	// the usual removal rules, like any other.
 	Kept bool `json:"kept,omitempty"`
+	// root is the library root Resolve joined the paths to; StagingPath needs the relative path
+	// back. Never stored.
+	root string
 }
 
 // Resolve returns the placement with SeriesDir and every file path joined to root. Everything
@@ -114,6 +134,7 @@ func (p Placement) Resolve(root string) Placement {
 		return p
 	}
 	out := p
+	out.root = root
 	out.SeriesDir = filepath.Join(root, p.SeriesDir)
 	out.Files = make([]PlacedFile, len(p.Files))
 	for i, f := range p.Files {
@@ -122,13 +143,40 @@ func (p Placement) Resolve(root string) Placement {
 	return out
 }
 
-// DiskPath is where a placed file is on disk right now: its .part name while the placement
-// writes part files and has not been finalized.
+// DiskPath is where a placed file is on disk right now: its final path once the placement is
+// finalized; before that, its staging path when the placement stages, else its .part name when it
+// writes part files. (placedStorage.Open also takes a whole file already at the final path.)
 func (p Placement) DiskPath(f PlacedFile) string {
-	if p.PartFiles && !p.Completed {
+	switch {
+	case p.Completed:
+		return f.Path
+	case p.IncompleteRoot != "":
+		return p.StagingPath(f)
+	case p.PartFiles:
 		return f.Path + partSuffix
 	}
 	return f.Path
+}
+
+// StagingDir is the torrent's own folder inside its staging root, "" when it doesn't stage.
+// Everything it stages is below it, so cleaning up is removing this one folder.
+func (p Placement) StagingDir() string {
+	if p.IncompleteRoot == "" || p.Hash == "" {
+		return ""
+	}
+	return filepath.Join(p.IncompleteRoot, p.Hash)
+}
+
+// StagingPath is where f downloads while the placement stages: its library-relative path below
+// StagingDir, under its final name — never .part (decisions/141).
+func (p Placement) StagingPath(f PlacedFile) string {
+	rel := f.Path
+	if p.root != "" {
+		if r, err := filepath.Rel(p.root, f.Path); err == nil {
+			rel = r
+		}
+	}
+	return filepath.Join(p.StagingDir(), rel)
 }
 
 // VideoPaths returns the final paths of the placement's video files, sorted. These are what a
@@ -281,8 +329,11 @@ func (s *placementStore) setKept(hash string, kept bool) error {
 }
 
 // reopen clears Completed: the placement's missing files may be written again (the bulk
-// "redownload missing files"). A hash with no placement is an error.
-func (s *placementStore) reopen(hash string) error {
+// "redownload missing files"). It also takes incompleteRoot, the incomplete folder configured now:
+// a redownload is a new download, and the files that are gone stage like any other
+// (decisions/141); the ones still in the library are reused in place. A hash with no placement is
+// an error.
+func (s *placementStore) reopen(hash, incompleteRoot string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.byID[hash]
@@ -292,11 +343,32 @@ func (s *placementStore) reopen(hash string) error {
 	if !p.Completed {
 		return nil
 	}
+	prev := p
 	p.Completed = false
+	p.IncompleteRoot = incompleteRoot
 	s.byID[hash] = p
 	if err := s.saveLocked(); err != nil {
-		p.Completed = true
-		s.byID[hash] = p
+		s.byID[hash] = prev
+		return err
+	}
+	return nil
+}
+
+// setIncompleteRoot re-points an unfinished staging placement at root: the user moved the
+// incomplete folder and changed incomplete_path (decisions/141). A finished one, or a hash
+// without a placement, is an error.
+func (s *placementStore) setIncompleteRoot(hash, root string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok || p.Completed || p.IncompleteRoot == "" {
+		return fmt.Errorf("torrent %s has no unfinished staging placement", hash)
+	}
+	prev := p
+	p.IncompleteRoot = root
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		s.byID[hash] = prev
 		return err
 	}
 	return nil
@@ -418,6 +490,17 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
+// hasSize reports whether path is a regular file of exactly size bytes.
+func hasSize(path string, size int64) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.Mode().IsRegular() && fi.Size() == size
+}
+
+func isDir(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && fi.IsDir()
+}
+
 // placementProvider is the storage.Provider direct mode installs in rain. A torrent with a
 // placement gets placedStorage; one without (added in hardlink mode, before the switch) keeps
 // the layout rain's own file storage gives it, <fallbackDir>/<id>, so switching modes never
@@ -504,18 +587,25 @@ func (ps *placedStorage) Open(name string, size int64) (storage.File, bool, erro
 		if f.Torrent != name {
 			continue
 		}
-		path := p.DiskPath(f)
-		// A crash between FinalizePlacement's rename and its save leaves the final name on disk
-		// with the placement still "not completed". Opening the missing .part would create an
-		// empty file: rain sees a missing file, re-checks the whole torrent and downloads that file
-		// again, while the finished data sits right there under its final name.
-		if path != f.Path && !pathExists(path) && pathExists(f.Path) {
-			path = f.Path
+		if p.Completed {
+			if !pathExists(f.Path) {
+				return nil, false, fmt.Errorf("%w: %s", ErrPlacedFileMissing, f.Path)
+			}
+			return openFile(f.Path, size, ps.perm)
 		}
-		if p.Completed && !pathExists(path) {
-			return nil, false, fmt.Errorf("%w: %s", ErrPlacedFileMissing, path)
+		// Not finished, but a whole file is already at the final path: a crash between the
+		// finalize's rename (of a .part, or of a copy from staging) and its save, or a redownload
+		// reusing what is still in the library (decisions/140). It is this torrent's — planning
+		// never maps onto a file it doesn't own. Opening the .part or staging name instead would
+		// create an empty file and download the finished data again.
+		if hasSize(f.Path, size) {
+			return openFile(f.Path, size, ps.perm)
 		}
-		return openFile(path, size, ps.perm)
+		// The staging root itself is never created, only the folders below it (decisions/141).
+		if p.IncompleteRoot != "" && !isDir(p.IncompleteRoot) {
+			return nil, false, fmt.Errorf("%w: %s", ErrIncompleteFolderUnavailable, p.IncompleteRoot)
+		}
+		return openFile(p.DiskPath(f), size, ps.perm)
 	}
 	return nil, false, fmt.Errorf("torrent %s has no placed file for %q", ps.hash, name)
 }
@@ -562,9 +652,16 @@ func RemovePlacedFiles(p Placement) error {
 		return fmt.Errorf("placement %s is not resolved against a library yet", p.Hash)
 	}
 	stopAt := filepath.Dir(p.SeriesDir)
+	// Staged files first: the torrent's own folder in the staging root (decisions/141). The root is
+	// never touched, and an unreachable one simply has nothing to remove.
+	if dir := p.StagingDir(); dir != "" {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("failed to delete the staged files in %s: %w", dir, err)
+		}
+	}
 	dirs := map[string]bool{}
 	for _, f := range p.Files {
-		paths := []string{f.Path, f.Path + partSuffix}
+		paths := []string{f.Path, f.Path + partSuffix, f.Path + movingSuffix}
 		if nyaa.IsVideoFile(f.Path) {
 			paths = append(paths, strings.TrimSuffix(f.Path, filepath.Ext(f.Path))+".nfo")
 		}

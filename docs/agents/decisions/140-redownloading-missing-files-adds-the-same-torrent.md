@@ -56,6 +56,9 @@ complete bitfield; otherwise a still-empty `.part` could get its final name. Org
 missing bytes. A torrent that doesn't fit is skipped, keeps its `Completed` placement (nothing
 recreates its file) and is counted in `skipped_no_space`.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** `reopen` also takes the incomplete folder configured now: files still in
+the library are reused in place, the missing ones stage and move like any download.
+
 **Don't "fix" by:** going back to `Start()` or `Verify()` on the same torrent; dropping the
 queue's enforce after the add; dropping the
 `Seeding`/`Stopped` check in `FinalizePlacement`; letting the bulk action run on its own (a pass,

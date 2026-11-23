@@ -55,6 +55,9 @@ type TorrentResponse struct {
 	// FilesMissing marks a finished direct-mode torrent whose library file was deleted outside
 	// the app. It is not downloaded again on its own; this flag is the only warning (decisions/139).
 	FilesMissing bool `json:"files_missing,omitempty" example:"false"`
+	// MoveProgress (0–1) is how far the copy from the incomplete folder into the library is; only
+	// present while status is "moving" (decisions/141).
+	MoveProgress *float64 `json:"move_progress,omitempty" example:"0.42"`
 }
 
 // handleTorrents returns a live snapshot of every torrent in the embedded client — progress,
@@ -127,6 +130,10 @@ func buildTorrentResponse(t torrents.TorrentInfo, eps []files.EpisodeStruct) Tor
 		PeersTotal:       t.PeersTotal,
 		EtaSeconds:       t.ETASeconds,
 		SeededForSeconds: t.SeededForSeconds,
+	}
+	if t.Status == torrents.StatusMoving {
+		progress := t.MoveProgress
+		resp.MoveProgress = &progress
 	}
 
 	// Pausing a torrent frees rain's piece data (torrent_stop.go's closeData nils t.pieces),

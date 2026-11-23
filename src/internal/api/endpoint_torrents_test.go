@@ -975,3 +975,20 @@ func TestHandleTorrentsRedownloadMissing(t *testing.T) {
 		}
 	})
 }
+
+// A torrent being copied from the incomplete folder into the library reports "moving" with its
+// progress; any other torrent has no move_progress at all (decisions/141).
+func TestBuildTorrentResponse_MoveProgressOnlyWhileMoving(t *testing.T) {
+	moving := buildTorrentResponse(torrents.TorrentInfo{Hash: hashA, Status: torrents.StatusMoving, MoveProgress: 0.42, Completed: true}, nil)
+	if moving.MoveProgress == nil || *moving.MoveProgress != 0.42 || moving.Status != "moving" {
+		t.Fatalf("a moving torrent must carry its progress, got %+v", moving)
+	}
+	seeding := buildTorrentResponse(torrents.TorrentInfo{Hash: hashB, Status: "seeding", Completed: true}, nil)
+	if seeding.MoveProgress != nil {
+		t.Fatalf("move_progress must be absent outside a move, got %v", *seeding.MoveProgress)
+	}
+	data, _ := json.Marshal(seeding)
+	if strings.Contains(string(data), "move_progress") {
+		t.Fatalf("move_progress must be omitted from the JSON, got %s", data)
+	}
+}

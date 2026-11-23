@@ -98,6 +98,8 @@ export const baseConfig = {
     library_mode: "hardlink",
     auto_delete_downloads: false,
     incomplete_files: "part",
+    incomplete_path: "",
+    incomplete_min_free_disk_gb: 10,
     episode_numbering: "season",
     min_free_disk_gb: 10,
     delete_watched_episodes: false,

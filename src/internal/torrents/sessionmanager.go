@@ -56,6 +56,9 @@ type SessionManager struct {
 	placements        *placementStore
 	directMode        bool
 	sessionDirectMode bool
+	// moves runs the copies of finished staging torrents into the library (decisions/141). It
+	// lives on the manager, outside m.mu: a copy takes minutes.
+	moves *moveTracker
 }
 
 // queue.mu is taken BEFORE m.mu (queue.enforce calls List/pause/resume). Every exported
@@ -81,6 +84,7 @@ func NewSessionManager(dbPath string) *SessionManager {
 	// is torrent-client state, and it has to follow the database.
 	m.queue.load(filepath.Join(filepath.Dir(dbPath), queueFileName))
 	m.placements = newPlacementStore(filepath.Join(filepath.Dir(dbPath), placementsFileName))
+	m.moves = newMoveTracker()
 	return m
 }
 
@@ -263,7 +267,17 @@ func (m *SessionManager) List() []TorrentInfo {
 	if infos == nil {
 		return nil
 	}
-	return m.queue.markQueued(infos)
+	return m.moves.overlay(m.markStaged(m.queue.markQueued(infos)))
+}
+
+// markStaged sets Staged on the torrents whose files are still in the incomplete folder.
+func (m *SessionManager) markStaged(infos []TorrentInfo) []TorrentInfo {
+	for i := range infos {
+		if p, ok := m.placements.get(infos[i].Hash); ok && p.IncompleteRoot != "" && !p.Completed {
+			infos[i].Staged = true
+		}
+	}
+	return infos
 }
 
 // list is the raw snapshot, without the queue's status rewrite. enforce reads through it:
@@ -290,10 +304,12 @@ func (m *SessionManager) Get(hash string) (TorrentInfo, bool) {
 	if !ok {
 		return TorrentInfo{}, false
 	}
-	return m.queue.markQueued([]TorrentInfo{info})[0], true
+	return m.moves.overlay(m.markStaged(m.queue.markQueued([]TorrentInfo{info})))[0], true
 }
 
 func (m *SessionManager) Remove(hash string, keepData bool) error {
+	// A copy into the library still running would keep writing next to files being deleted.
+	m.moves.cancel(hash)
 	m.mu.RLock()
 	err := error(nil)
 	if m.session == nil {
@@ -434,14 +450,14 @@ func (m *SessionManager) Placement(hash string) (Placement, bool) {
 // queue then pauses what exceeds max_concurrent_downloads (decisions/041). Per torrent, not once
 // after a bulk run: a replaced library folder can mean hundreds in one click, and they must not
 // all start together while the loop runs (decisions/140).
-func (m *SessionManager) RedownloadPlacement(hash string) error {
+func (m *SessionManager) RedownloadPlacement(hash, incompleteRoot string) error {
 	err := func() error {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
 		if m.session == nil {
 			return ErrSessionNotReady
 		}
-		return m.session.RedownloadPlacement(hash)
+		return m.session.RedownloadPlacement(hash, incompleteRoot)
 	}()
 	if err != nil {
 		return err
@@ -462,13 +478,80 @@ func (m *SessionManager) Placements() []Placement {
 	return out
 }
 
+// FinalizePlacement finishes a placed torrent. For a staging one it copies the files into the
+// library first WITHOUT m.mu: the copy takes minutes for a big pack on a USB disk, and a writer
+// waiting on m.mu (Ensure) would block every List behind it — the web UI would freeze. Only the
+// short switch runs under the lock (decisions/141).
 func (m *SessionManager) FinalizePlacement(hash string) error {
+	copied := false
+	if p, ok := m.placements.get(hash); ok && !p.Completed && p.IncompleteRoot != "" {
+		if err := m.copyStaged(hash); err != nil {
+			return err
+		}
+		copied = true
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if m.session == nil {
 		return ErrSessionNotReady
 	}
-	return m.session.FinalizePlacement(hash)
+	return m.session.finalizePlacement(hash, copied)
+}
+
+// copyStaged is the copy phase of finishing a staging torrent. The lock is only held to check
+// that the torrent is complete and to read its file sizes.
+func (m *SessionManager) copyStaged(hash string) error {
+	m.mu.RLock()
+	if m.session == nil {
+		m.mu.RUnlock()
+		return ErrSessionNotReady
+	}
+	var sizes map[string]int64
+	var err error
+	if t := m.session.ses.GetTorrent(hash); t == nil {
+		err = fmt.Errorf("torrent %s not found", hash)
+	} else {
+		sizes, err = settledFileSizes(t, hash)
+	}
+	root := m.session.libraryRoot
+	m.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	p, ok := m.placements.get(hash)
+	if !ok || p.Completed {
+		return nil
+	}
+	if err := m.moves.run(hash, p.Resolve(root), sizes); err != nil {
+		return fmt.Errorf("failed to copy torrent %s into the library: %w", hash, err)
+	}
+	return nil
+}
+
+// CancelMoves stops every copy into the library, running or to come. The daemon calls it first on
+// shutdown: the job queue's Stop waits for the organize job in progress, and a copy of a big pack
+// would hold the shutdown for minutes. A cancelled copy starts over on the next organize.
+func (m *SessionManager) CancelMoves() {
+	m.moves.cancelAll()
+}
+
+// MovePlacementStaging needs the session: the torrent is added back so rain re-checks the moved
+// files (Session.MovePlacementStaging). Like RedownloadPlacement, the queue then holds it to
+// max_concurrent_downloads.
+func (m *SessionManager) MovePlacementStaging(hash, root string) error {
+	err := func() error {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		if m.session == nil {
+			return ErrSessionNotReady
+		}
+		return m.session.MovePlacementStaging(hash, root)
+	}()
+	if err != nil {
+		return err
+	}
+	m.queue.enforce(m)
+	return nil
 }
 
 func (m *SessionManager) ForgetPlacement(hash string) error {

@@ -196,6 +196,14 @@ type Config struct {
 	// Season NN folder is named. "season" (default) continues the season's numbering (Part 2
 	// episode 1 = S02E13); "entry" keeps the AniList entry's own numbers plus a part tag.
 	EpisodeNumbering string `json:"episode_numbering"`
+	// IncompletePath (direct mode only): an existing folder on a fast drive where torrents download
+	// before their files move into the library, so a library on a slow or SMR disk only ever takes
+	// one sequential write per file (decisions/141). Empty = off: torrents write straight to the
+	// library. The app never creates this folder (ProbeIncompleteFolder).
+	IncompletePath string `json:"incomplete_path"`
+	// IncompleteMinFreeDiskGB is MinFreeDiskGB for the IncompletePath volume, in GiB. Only checked
+	// when that folder is on another filesystem than the library.
+	IncompleteMinFreeDiskGB int `json:"incomplete_min_free_disk_gb"`
 }
 
 // Library modes and the direct-mode option values.
@@ -220,6 +228,15 @@ func (c *Config) IsDirectMode() bool {
 // (decisions/137).
 func (c *Config) LiftsEpisodeLimit() bool {
 	return c.IsDirectMode() && !c.AutoDeleteDownloads
+}
+
+// StagingPath is where new torrents download before moving into the library: IncompletePath in
+// direct mode, "" otherwise (hardlink mode never stages, decisions/141).
+func (c *Config) StagingPath() string {
+	if !c.IsDirectMode() {
+		return ""
+	}
+	return c.IncompletePath
 }
 
 // UsePartFiles reports whether direct mode writes incomplete files under a .part name.
@@ -313,16 +330,17 @@ func DefaultConfig() *Config {
 		CheckForUpdates:         true,
 		// DeleteWatchedEpisodes comes on by default: with no slack the episode disappears as soon as it's
 		// marked watched. Two forgive "I marked it by mistake" and "I wanted to rewatch".
-		WatchedEpisodesToKeep: 2,
-		ExcludedLists:         []string{},
-		DownloadStatuses:      []string{"CURRENT", "REPEATING"},
-		DownloadMediaStatuses: []string{"RELEASING", "FINISHED"},
-		DeleteStatuses:        []string{},
-		Notifications:         NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
-		Priorities:            nyaa.DefaultPriorities(),
-		LibraryMode:           LibraryModeHardlink,
-		IncompleteFiles:       IncompleteFilesPart,
-		EpisodeNumbering:      EpisodeNumberingSeason,
+		WatchedEpisodesToKeep:   2,
+		ExcludedLists:           []string{},
+		DownloadStatuses:        []string{"CURRENT", "REPEATING"},
+		DownloadMediaStatuses:   []string{"RELEASING", "FINISHED"},
+		DeleteStatuses:          []string{},
+		Notifications:           NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
+		Priorities:              nyaa.DefaultPriorities(),
+		LibraryMode:             LibraryModeHardlink,
+		IncompleteFiles:         IncompleteFilesPart,
+		IncompleteMinFreeDiskGB: 10,
+		EpisodeNumbering:        EpisodeNumberingSeason,
 	}
 }
 

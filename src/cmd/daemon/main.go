@@ -314,6 +314,9 @@ func main() {
 		}
 	}()
 	defer jobQueue.Stop()
+	// Runs before jobQueue.Stop (LIFO): an organize job copying a big pack from the incomplete
+	// folder into the library would hold the shutdown for minutes. It starts over next time.
+	defer torrentManager.CancelMoves()
 
 	// Create the session at startup when the config is already complete, so seeding resumes
 	// with the process and is independent of the daemon loop (stopping the loop from the

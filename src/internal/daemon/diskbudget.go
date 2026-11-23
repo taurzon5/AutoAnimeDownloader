@@ -20,7 +20,14 @@ import (
 type diskBudget struct {
 	mu       sync.Mutex
 	reserved int64
-	counted  map[string]bool
+	// staged and stagedPending exist for the incomplete folder (decisions/141), and only count
+	// when it is on another filesystem than the library. staged is what that folder's volume
+	// still has to take: what staging torrents still have to download, plus what this pass adds.
+	// stagedPending is the library volume's extra: the bytes staging torrents hold that have not
+	// moved into the library yet (every byte of them lands there).
+	staged        int64
+	stagedPending int64
+	counted       map[string]bool
 }
 
 // newDiskBudget reserves what each incomplete torrent of the session still has to write. A torrent
@@ -41,6 +48,10 @@ func newDiskBudget(session []torrents.TorrentInfo, saved []files.EpisodeStruct) 
 	for _, t := range session {
 		b.counted[t.Hash] = true
 		if t.Completed {
+			// Finished but still in the incomplete folder: all of it is yet to land in the library.
+			if t.Staged {
+				b.stagedPending += t.BytesTotal
+			}
 			continue
 		}
 		total := t.BytesTotal
@@ -54,6 +65,10 @@ func newDiskBudget(session []torrents.TorrentInfo, saved []files.EpisodeStruct) 
 			written = max(written, total*int64(t.PiecesHave)/int64(t.PiecesTotal))
 		}
 		b.reserved += max(total-written, 0)
+		if t.Staged {
+			b.staged += max(total-written, 0)
+			b.stagedPending += min(written, total)
+		}
 	}
 	return b
 }
@@ -62,11 +77,20 @@ func newDiskBudget(session []torrents.TorrentInfo, saved []files.EpisodeStruct) 
 // reserving it. For the choices made before any add: packsThatFit and the report.
 func (b *diskBudget) check(configs *files.Config, sizeBytes int64) error {
 	if b == nil {
-		return checkDiskSpace(configs, sizeBytes, 0)
+		return checkBudgetSpace(configs, sizeBytes, 0, 0, 0)
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return checkDiskSpace(configs, sizeBytes, b.reserved)
+	return checkBudgetSpace(configs, sizeBytes, b.reserved, b.staged, b.stagedPending)
+}
+
+// add counts sizeBytes as written by a torrent started outside reserve (the bulk "redownload
+// missing files"): on the library, and on the incomplete folder when it stages.
+func (b *diskBudget) add(sizeBytes int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.reserved += sizeBytes
+	b.staged += sizeBytes
 }
 
 // reserve counts the candidate's size if it fits, and returns how to give it back when the add
@@ -74,7 +98,7 @@ func (b *diskBudget) check(configs *files.Config, sizeBytes int64) error {
 // pack — fits for free: adding it again writes nothing new.
 func (b *diskBudget) reserve(configs *files.Config, tr nyaa.TorrentResult) (undo func(), err error) {
 	if b == nil {
-		return func() {}, checkDiskSpace(configs, tr.Size, 0)
+		return func() {}, checkBudgetSpace(configs, tr.Size, 0, 0, 0)
 	}
 	key := budgetKey(tr.MagnetLink)
 
@@ -83,16 +107,18 @@ func (b *diskBudget) reserve(configs *files.Config, tr nyaa.TorrentResult) (undo
 	if b.counted[key] {
 		return func() {}, nil
 	}
-	if err := checkDiskSpace(configs, tr.Size, b.reserved); err != nil {
+	if err := checkBudgetSpace(configs, tr.Size, b.reserved, b.staged, b.stagedPending); err != nil {
 		return nil, err
 	}
 	b.counted[key] = true
 	b.reserved += tr.Size
+	b.staged += tr.Size
 	return func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		delete(b.counted, key)
 		b.reserved -= tr.Size
+		b.staged -= tr.Size
 	}, nil
 }
 

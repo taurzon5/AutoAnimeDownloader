@@ -127,7 +127,7 @@ func stopAndWait(t *torrent.Torrent) error {
 //
 // Not a restart of the same torrent, nor rain's Verify: both leave rain trusting the old
 // complete state, and an empty recreated file can pass as finished (decisions/140).
-func (s *Session) RedownloadPlacement(hash string) error {
+func (s *Session) RedownloadPlacement(hash, incompleteRoot string) error {
 	if s.placements == nil {
 		return fmt.Errorf("torrent %s is not a direct-mode torrent", hash)
 	}
@@ -138,15 +138,42 @@ func (s *Session) RedownloadPlacement(hash string) error {
 	if _, ok := s.placements.get(hash); !ok {
 		return fmt.Errorf("torrent %s has no placement", hash)
 	}
+	// After the removal: no instance of this torrent is left to open files under the reopened state.
+	if err := s.readd(t, func() error { return s.placements.reopen(hash, incompleteRoot) }); err != nil {
+		return err
+	}
+	logger.Logger.Info().Str("hash", hash).Msg("Redownloading the missing files of a direct-mode torrent")
+	return nil
+}
+
+// MovePlacementStaging re-points an unfinished staging torrent at root, the incomplete folder the
+// user moved it to (decisions/141), and adds the torrent back so rain checks the moved files: a
+// folder copied while the torrent was still writing is older than rain's saved progress, and a
+// plain start would trust that progress and later move stale bytes into the library as finished.
+// A hash not in the session only gets the new root (its next add starts fresh anyway).
+func (s *Session) MovePlacementStaging(hash, root string) error {
+	if s.placements == nil {
+		return fmt.Errorf("torrent %s is not a direct-mode torrent", hash)
+	}
+	t := s.ses.GetTorrent(hash)
+	if t == nil {
+		return s.placements.setIncompleteRoot(hash, root)
+	}
+	return s.readd(t, func() error { return s.placements.setIncompleteRoot(hash, root) })
+}
+
+// readd removes t from rain keeping its data, runs between, and adds the same .torrent back. The
+// fresh torrent has no stored bitfield, so it verifies every file it finds (decisions/140).
+func (s *Session) readd(t *torrent.Torrent, between func() error) error {
+	hash := t.InfoHash().String()
 	metainfo, err := t.Torrent()
 	if err != nil {
 		return fmt.Errorf("torrent %s has no metadata to add back: %w", hash, err)
 	}
 	if err := s.ses.RemoveTorrent(hash, true); err != nil {
-		return fmt.Errorf("failed to remove torrent %s for the redownload: %w", hash, err)
+		return fmt.Errorf("failed to remove torrent %s to add it back: %w", hash, err)
 	}
-	// After the removal: no instance of this torrent is left to open files under the reopened state.
-	if err := s.placements.reopen(hash); err != nil {
+	if err := between(); err != nil {
 		return err
 	}
 	t, err = s.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
@@ -157,7 +184,6 @@ func (s *Session) RedownloadPlacement(hash string) error {
 		}
 	}
 	s.armListener(t)
-	logger.Logger.Info().Str("hash", hash).Msg("Redownloading the missing files of a direct-mode torrent")
 	return nil
 }
 
@@ -172,12 +198,21 @@ const finalizeStopTimeout = 20 * time.Second
 // files is only marked completed: from then on a missing file is one deleted outside the app
 // (decisions/139). Idempotent: an already completed placement returns at once.
 func (s *Session) FinalizePlacement(hash string) error {
+	return s.finalizePlacement(hash, false)
+}
+
+// finalizePlacement is FinalizePlacement; copied says a staging torrent's files were already
+// copied into the library (SessionManager does that outside its lock, decisions/141).
+func (s *Session) finalizePlacement(hash string, copied bool) error {
 	if s.placements == nil {
 		return nil
 	}
 	stored, ok := s.placements.get(hash)
 	if !ok || stored.Completed {
 		return nil
+	}
+	if stored.IncompleteRoot != "" {
+		return s.finalizeStaged(stored, copied)
 	}
 	if !stored.PartFiles {
 		// Nothing to rename; the mark is what lets Open tell a deleted file from one not written yet.
@@ -433,6 +468,7 @@ func toInfo(t *torrent.Torrent) TorrentInfo {
 		ETASeconds:       eta,
 		SeededForSeconds: int64(st.SeededFor.Seconds()),
 		AddedAt:          t.AddedAt(),
+		StopError:        st.Error,
 	}
 }
 

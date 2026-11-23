@@ -1,7 +1,9 @@
 import * as m from '../i18n/messages.js'
 
 // Slugs emitted by the backend (src/internal/torrents/status.go, statusSlug()) plus 'queued',
-// which the download queue writes itself (queue.markQueued), not the rain enum. Same list as
+// which the download queue writes itself (queue.markQueued), and 'moving', a finished torrent
+// being copied from the incomplete folder into the library (torrents.StatusMoving) — neither is
+// the rain enum. Same list as
 // src/lib/utils/torrentFilters.ts (KNOWN_STATUSES) — duplicated here only as an array of
 // values because that file doesn't export it; don't invent slugs beyond these.
 export const STATUS_SLUGS = [
@@ -13,6 +15,7 @@ export const STATUS_SLUGS = [
   'downloading',
   'seeding',
   'stopping',
+  'moving',
 ] as const
 
 /** Translated label for a torrent status. Used by Downloads.svelte and DownloadsToolbar.svelte. */
@@ -34,6 +37,8 @@ export function statusLabel(status: string): string {
       return m.downloads_status_seeding()
     case 'stopping':
       return m.downloads_status_stopping()
+    case 'moving':
+      return m.downloads_status_moving()
     default:
       return m.downloads_status_unknown()
   }

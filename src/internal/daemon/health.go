@@ -182,12 +182,22 @@ const (
 // that goes straight from fine to full fires "blocked" only — the warning would be stale news in the
 // same push (decisions/127).
 func trackDiskLow(cfg *files.Config, total, free uint64, blockedEpisodes int) {
-	if cfg == nil || cfg.CompletedAnimePath == "" || total == 0 {
+	if cfg == nil {
 		return
 	}
-	minFree := float64(cfg.MinFreeDiskGB) * float64(giB)
+	trackVolumeDiskLow(cfg, cfg.CompletedAnimePath, cfg.MinFreeDiskGB, total, free, blockedEpisodes)
+}
+
+// trackVolumeDiskLow is trackDiskLow for one volume: path and its floor in GiB. With the incomplete
+// folder on another drive the alert follows the tighter of the two (diskAlertVolume), so a full
+// staging drive is not reported as a full library (decisions/141).
+func trackVolumeDiskLow(cfg *files.Config, path string, minFreeGB int, total, free uint64, blockedEpisodes int) {
+	if path == "" || total == 0 {
+		return
+	}
+	minFree := float64(minFreeGB) * float64(giB)
 	warnFloor := minFree * diskWarningFactor
-	if cfg.MinFreeDiskGB <= 0 {
+	if minFreeGB <= 0 {
 		warnFloor = float64(total) * diskWarningShareOff
 	}
 	freeF := float64(free)
@@ -199,11 +209,11 @@ func trackDiskLow(cfg *files.Config, total, free uint64, blockedEpisodes int) {
 		switch {
 		case blockedEpisodes > 0 && !d.Blocked:
 			d.Blocked, d.Warning = true, true
-			it := diskBlockedItem(cfg.CompletedAnimePath, free, blockedEpisodes)
+			it := diskBlockedItem(path, free, blockedEpisodes)
 			item = &it
 		case blockedEpisodes == 0 && freeF < warnFloor && !d.Warning:
 			d.Warning = true
-			it := diskWarningItem(cfg, free)
+			it := diskWarningItem(path, minFreeGB, free)
 			item = &it
 		}
 		if d.Blocked && blockedEpisodes == 0 && freeF > minFree*diskRearmFactor {
@@ -219,15 +229,35 @@ func trackDiskLow(cfg *files.Config, total, free uint64, blockedEpisodes int) {
 	}
 }
 
-func diskWarningItem(cfg *files.Config, free uint64) notifications.Episode {
+func diskWarningItem(path string, minFreeGB int, free uint64) notifications.Episode {
 	stop := "once a torrent no longer fits"
-	if cfg.MinFreeDiskGB > 0 {
-		stop = fmt.Sprintf("below %d GB", cfg.MinFreeDiskGB)
+	if minFreeGB > 0 {
+		stop = fmt.Sprintf("below %d GB", minFreeGB)
 	}
 	return notifications.Episode{
 		Reason: notifications.DiskWarning,
-		Text:   fmt.Sprintf("Only %s free on %s; new downloads stop %s.", notifications.Gigabytes(free), cfg.CompletedAnimePath, stop),
+		Text:   fmt.Sprintf("Only %s free on %s; new downloads stop %s.", notifications.Gigabytes(free), path, stop),
 	}
+}
+
+// diskAlertVolume picks the volume the disk_low alert talks about: the library, or the incomplete
+// folder's drive when it is a separate one with less room left above its own floor.
+func diskAlertVolume(cfg *files.Config) (path string, minFreeGB int, total, free uint64, err error) {
+	path, minFreeGB = cfg.CompletedAnimePath, cfg.MinFreeDiskGB
+	total, free, err = diskSpace(path)
+	staging := cfg.StagingPath()
+	if staging == "" || sameFilesystem(staging, path) {
+		return path, minFreeGB, total, free, err
+	}
+	sTotal, sFree, sErr := diskSpace(staging)
+	if sErr != nil {
+		return path, minFreeGB, total, free, err
+	}
+	headroom := func(free uint64, floorGB int) int64 { return int64(free) - int64(floorGB)*giB }
+	if err != nil || headroom(sFree, cfg.IncompleteMinFreeDiskGB) < headroom(free, minFreeGB) {
+		return staging, cfg.IncompleteMinFreeDiskGB, sTotal, sFree, nil
+	}
+	return path, minFreeGB, total, free, nil
 }
 
 func diskBlockedItem(path string, free uint64, waiting int) notifications.Episode {
@@ -280,8 +310,8 @@ type passAlerts struct {
 
 func alertsAfterPass(cfg *files.Config, in passAlerts) {
 	// A statfs error skips the disk alert silently — same reasoning as checkDiskSpace.
-	if total, free, err := diskSpace(cfg.CompletedAnimePath); err == nil {
-		trackDiskLow(cfg, total, free, diskFullEpisodes(in.problems))
+	if path, floor, total, free, err := diskAlertVolume(cfg); err == nil {
+		trackVolumeDiskLow(cfg, path, floor, total, free, diskFullEpisodes(in.problems))
 	}
 
 	library := libraryIndex(in.saved)

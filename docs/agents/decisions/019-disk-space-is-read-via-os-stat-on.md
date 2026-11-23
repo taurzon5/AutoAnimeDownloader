@@ -10,4 +10,8 @@
 
 > **Amendment (see #31):** disk space is now measured on `CompletedAnimePath`, not the legacy `save_path` field. Since the download directory is derived from `CompletedAnimePath` (`Config.DownloadPath`), the two are always on the same filesystem by construction, so measuring the library path also correctly reports free space for downloads-in-progress.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** with `incomplete_path` on another drive, downloads are written there
+first, so that drive is stat'ed too (`checkBudgetSpace`, `GET /status` `incomplete_disk_*`, the
+`disk_low` alert's `diskAlertVolume`). `CompletedAnimePath` still covers everything else.
+
 **Don't "fix" by:** trying to route disk stats through the torrent library — it has no such API, and `CompletedAnimePath` is on the same filesystem as the download directory the daemon writes to.

@@ -23,6 +23,8 @@ func TestPassErrorCode(t *testing.T) {
 		{"mal inside anilist", fmt.Errorf("%w: %w", errCauseAnilist, fmt.Errorf("%w: boom", errCauseMAL)), PassErrMAL},
 		{"incomplete setup", fmt.Errorf("%w: missing folder", errCauseSetup), PassErrSetup},
 		{"library without hardlink", fmt.Errorf("%w: %w", errCauseLibrary, errors.New("cross-device link")), PassErrLibrary},
+		{"direct-mode library not writable", fmt.Errorf("%w: %w", errCauseLibraryUnwritable, errors.New("permission denied")), PassErrLibraryUnwritable},
+		{"incomplete folder gone", fmt.Errorf("%w: %w", errCauseIncomplete, errors.New("no such file")), PassErrIncomplete},
 		{"torrent client", fmt.Errorf("%w: not initialized", errCauseTorrent), PassErrTorrent},
 		{"app data", fmt.Errorf("%w: %w", errCauseStorage, errors.New("episodes.json corrupted")), PassErrStorage},
 		{"unreadable config", fmt.Errorf("%w: %w", errCauseConfig, errors.New("permission denied")), PassErrConfig},

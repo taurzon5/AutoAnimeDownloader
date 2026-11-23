@@ -10,5 +10,4 @@ remain in git history. The decisions that came out of them live in
 | [subtitle-language-filter](2026-08-24-subtitle-language-filter-design.md) | Designed, not implemented — no fixed release ([backlog](../../backlog/subtitle-language-filter.md)) |
 | [dashboard-recent-shelf](2026-10-23-dashboard-recent-shelf-design.md) | Designed, not implemented — `v2.12.0` ([TODO](../../TODO.md)) |
 | [direct-library-mode](2026-11-22-direct-library-mode-design.md) | PR 1 of 4 implemented (direct mode, one root); PRs 2–4 not started — no fixed release |
-| [incomplete-download-folder](2026-11-23-incomplete-download-folder-design.md) | Designed, not implemented — open questions for the user; no fixed release |
 
