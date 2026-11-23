@@ -147,6 +147,9 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		// unmounted drive is worth knowing about before the redownloads fill the disk underneath it.
 		notifications.Notify(configs, notifications.LibraryMissing, libraryMissingItem(configs.CompletedAnimePath, cleared, configs.IsDirectMode()))
 	}
+	// Outside the direct-mode branch: placements made in direct mode keep staging after a switch
+	// back. After Ensure: following a moved folder adds the torrent back to the session.
+	adoptMovedStaging(backend, configs.StagingPath())
 	resumeTorrentsWaitingForStaging(backend)
 
 	// downloadedTorrents is an in-memory snapshot of the embedded client (cheap, no I/O).

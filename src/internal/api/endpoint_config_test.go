@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -514,7 +516,43 @@ func TestHandleUpdateConfig(t *testing.T) {
 		}
 	})
 
+	// The incomplete folder (decisions/141) must already exist and sit apart from the library; hardlink
+	// mode ignores it, so a stale value never blocks a save there.
+	t.Run("PUT validates the incomplete folder in direct mode only", func(t *testing.T) {
+		lib := t.TempDir()
+		for _, tc := range []struct {
+			name       string
+			mode       string
+			incomplete string
+			want       int
+		}{
+			{"an existing folder elsewhere", files.LibraryModeDirect, t.TempDir(), http.StatusOK},
+			{"a missing folder", files.LibraryModeDirect, filepath.Join(t.TempDir(), "unmounted"), http.StatusBadRequest},
+			{"a relative path", files.LibraryModeDirect, "incomplete", http.StatusBadRequest},
+			{"inside the library", files.LibraryModeDirect, lib, http.StatusBadRequest},
+			{"hardlink mode ignores it", files.LibraryModeHardlink, filepath.Join(t.TempDir(), "unmounted"), http.StatusOK},
+		} {
+			config := files.Config{
+				CompletedAnimePath:  lib,
+				CheckInterval:       10,
+				MaxEpisodesPerAnime: 12,
+				LibraryMode:         tc.mode,
+				IncompletePath:      tc.incomplete,
+			}
+			jsonData, _ := json.Marshal(config)
+			w := httptest.NewRecorder()
+			handleUpdateConfig(&Server{State: state, FileManager: mockFM})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+			if w.Code != tc.want {
+				t.Errorf("%s: got %d, want %d: %s", tc.name, w.Code, tc.want, w.Body.String())
+			}
+		}
+		if _, err := os.Stat(filepath.Join(lib, "unmounted")); err == nil {
+			t.Error("validation must never create the incomplete folder")
+		}
+	})
+
 	for _, bad := range []files.Config{
+		{IncompleteMinFreeDiskGB: -1},
 		{LibraryMode: "copy"},
 		{IncompleteFiles: "tmp"},
 		{EpisodeNumbering: "absolute"},

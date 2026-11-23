@@ -23,6 +23,11 @@ was replaced). `HandleTorrentFailure` returns early for it — log only, no drop
 dropping it would make the next pass re-add the hash, which is the re-download the user ruled out.
 The "don't go back to log-only" rule still holds for every other failure.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** a second torrent is NOT dropped: one stopped with
+`ErrIncompleteFolderUnavailable` (its incomplete folder's drive is gone). A re-add would fail the
+same way; the queue starts it again every pass and it resumes once the folder is back. Log-only
+holds for that error alone.
+
 **Don't "fix" by:** adding a speculative per-hash blacklist with a TTL. That is the correct fix *if* the re-add churn is ever observed to be a real problem, but it introduces new state to persist, expire, and expose in the UI (otherwise a permanently blacklisted episode becomes the new silent failure). Build it against a real report, not preemptively. Also don't go back to log-only in `onFailed`.
 
 **Amendment (2026-09-07): the re-add RESUMES, it does not start over.** The original version always

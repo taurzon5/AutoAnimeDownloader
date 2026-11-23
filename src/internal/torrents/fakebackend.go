@@ -389,6 +389,10 @@ func (f *FakeBackend) FinalizePlacement(hash string) error {
 	return store.update(p)
 }
 
+func (f *FakeBackend) MovePlacementStaging(hash, root string) error {
+	return f.placementStore().setIncompleteRoot(hash, root)
+}
+
 func (f *FakeBackend) ForgetPlacement(hash string) error {
 	return f.placementStore().forget(hash)
 }
@@ -478,6 +482,15 @@ func (f *FakeBackend) AddPaused(hash, name string, piecesHave, piecesTotal uint3
 		PiecesHave:  piecesHave,
 		PiecesTotal: piecesTotal,
 		Completed:   completed,
+	}
+}
+
+// SetStopError sets the error a torrent stopped with (TorrentInfo.StopError).
+func (f *FakeBackend) SetStopError(hash string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.torrents[hash]; ok {
+		t.StopError = err
 	}
 }
 

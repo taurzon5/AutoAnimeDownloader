@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -488,5 +489,196 @@ func TestSessionManager_RedownloadPlacementRespectsTheQueue(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if a, w := running(); a != 1 || w != 1 {
 		t.Fatalf("max_concurrent_downloads 1: want 1 active and 1 queued, got %d and %d", a, w)
+	}
+}
+
+// A staging torrent downloads into the incomplete folder by its final name, and finalizing moves
+// it into the library, where it keeps seeding: a new peer downloads it from the library copy
+// (decisions/141). Both the copy (another drive) and the hard link (same filesystem) paths.
+func TestDirectMode_StagedDownloadMovesIntoTheLibrary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens real torrent sessions")
+	}
+	for _, tc := range []struct {
+		name  string
+		links bool
+	}{{"copy", false}, {"hard link", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !tc.links {
+				linkFile = func(string, string) error { return errors.New("another drive") }
+				t.Cleanup(func() { linkFile = os.Link })
+			}
+			video := randomBytes(t, 50*1024)
+			name := "[Grp] Show - 03"
+			metainfo, hash := makeTorrent(t, name, []testFile{{path: []string{name + ".mkv"}, data: video}})
+
+			seedDir := t.TempDir()
+			content := filepath.Join(seedDir, hash, name)
+			if err := os.MkdirAll(content, 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(content, name+".mkv"), video, 0644); err != nil {
+				t.Fatal(err)
+			}
+			seeder, err := newSession(seedDir, filepath.Join(t.TempDir(), "seed.db"), sessionOptions{disableDHT: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := seeder.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, "the seeder to verify", 30*time.Second, func() bool { return st.Stats().Status == torrent.Seeding })
+
+			lib, staging := t.TempDir(), t.TempDir()
+			store := newPlacementStore(filepath.Join(t.TempDir(), placementsFileName))
+			req := PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1, PartFiles: true, IncompleteRoot: staging}
+			if _, err := store.register(req); err != nil {
+				t.Fatal(err)
+			}
+			leech, err := newSession(filepath.Join(lib, ".torrents"), filepath.Join(t.TempDir(), "session.db"), sessionOptions{disableDHT: true, placements: store})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer leech.Close()
+			lt, err := leech.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := lt.AddPeer(fmt.Sprintf("127.0.0.1:%d", st.Port())); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, "the download", 60*time.Second, func() bool { return lt.Stats().Status == torrent.Seeding })
+
+			final := filepath.Join(lib, "Show", "Season 01", name+".mkv")
+			staged := filepath.Join(staging, hash, "Show", "Season 01", name+".mkv")
+			if got, err := os.ReadFile(staged); err != nil || !bytes.Equal(got, video) {
+				t.Fatalf("the download must land in the incomplete folder by its final name (err %v)", err)
+			}
+			for _, path := range []string{final, final + partSuffix} {
+				if _, err := os.Stat(path); err == nil {
+					t.Fatalf("nothing may reach the library before the move: %s", path)
+				}
+			}
+
+			if err := leech.FinalizePlacement(hash); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(final); err != nil || !bytes.Equal(got, video) {
+				t.Fatalf("the file must be in the library with the torrent's bytes (err %v)", err)
+			}
+			if _, err := os.Stat(filepath.Join(staging, hash)); err == nil {
+				t.Fatal("the staged copy must be cleaned up")
+			}
+			if _, err := os.Stat(final + movingSuffix); err == nil {
+				t.Fatal("no .aad-moving file may stay behind")
+			}
+			if p, _ := store.get(hash); !p.Completed {
+				t.Fatal("the placement must be completed after the move")
+			}
+			waitFor(t, "seeding again", 30*time.Second, func() bool { return lt.Stats().Status == torrent.Seeding })
+
+			// The original seeder leaves; a new peer can only get the file from the library copy.
+			if err := seeder.Close(); err != nil {
+				t.Fatal(err)
+			}
+			peer2, err := newSession(t.TempDir(), filepath.Join(t.TempDir(), "peer2.db"), sessionOptions{disableDHT: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer peer2.Close()
+			p2, err := peer2.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := p2.AddPeer(fmt.Sprintf("127.0.0.1:%d", lt.Port())); err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, "a new peer to download from the library copy", 60*time.Second, func() bool { return p2.Stats().Status == torrent.Seeding })
+		})
+	}
+}
+
+// Following a moved incomplete folder re-checks the moved files: a copy older than rain's saved
+// progress (moved while the torrent was writing) must be repaired, not trusted (decisions/141).
+func TestDirectMode_MovedStagingIsRechecked(t *testing.T) {
+	if testing.Short() {
+		t.Skip("opens real torrent sessions")
+	}
+	video := randomBytes(t, 64*1024)
+	name := "[Grp] Show - 04"
+	metainfo, hash := makeTorrent(t, name, []testFile{{path: []string{name + ".mkv"}, data: video}})
+	seedDir := t.TempDir()
+	content := filepath.Join(seedDir, hash, name)
+	if err := os.MkdirAll(content, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(content, name+".mkv"), video, 0644); err != nil {
+		t.Fatal(err)
+	}
+	seeder, err := newSession(seedDir, filepath.Join(t.TempDir(), "seed.db"), sessionOptions{disableDHT: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seeder.Close()
+	st, err := seeder.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the seeder to verify", 30*time.Second, func() bool { return st.Stats().Status == torrent.Seeding })
+
+	lib, oldRoot, newRoot := t.TempDir(), t.TempDir(), t.TempDir()
+	store := newPlacementStore(filepath.Join(t.TempDir(), placementsFileName))
+	if _, err := store.register(PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1, IncompleteRoot: oldRoot}); err != nil {
+		t.Fatal(err)
+	}
+	leech, err := newSession(filepath.Join(lib, ".torrents"), filepath.Join(t.TempDir(), "session.db"), sessionOptions{disableDHT: true, placements: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leech.Close()
+	lt, err := leech.ses.AddTorrent(bytes.NewReader(metainfo), &torrent.AddTorrentOptions{ID: hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := fmt.Sprintf("127.0.0.1:%d", st.Port())
+	if err := lt.AddPeer(peer); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the download", 60*time.Second, func() bool { return lt.Stats().Status == torrent.Seeding })
+	if err := stopAndWait(lt); err != nil {
+		t.Fatal(err)
+	}
+
+	// The user moves the folder; the copy is stale: one block never made it.
+	rel := filepath.Join(hash, "Show", "Season 01", name+".mkv")
+	stale := append([]byte(nil), video...)
+	copy(stale[20*1024:], make([]byte, 16*1024))
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(newRoot, rel)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newRoot, rel), stale, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(oldRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := leech.MovePlacementStaging(hash, newRoot); err != nil {
+		t.Fatal(err)
+	}
+	lt = leech.ses.GetTorrent(hash)
+	if lt == nil {
+		t.Fatal("the torrent must be back in the session")
+	}
+	if err := lt.AddPeer(peer); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the stale block to be fetched again", 60*time.Second, func() bool {
+		data, err := os.ReadFile(filepath.Join(newRoot, rel))
+		return err == nil && bytes.Equal(data, video) && lt.Stats().Status == torrent.Seeding
+	})
+	if p, _ := store.get(hash); p.IncompleteRoot != newRoot {
+		t.Fatalf("the placement must point at the new folder, got %q", p.IncompleteRoot)
 	}
 }

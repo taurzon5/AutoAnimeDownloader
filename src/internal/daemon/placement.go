@@ -301,10 +301,7 @@ func resumeTorrentsWaitingForStaging(backend torrents.TorrentBackend) {
 			continue
 		}
 		p, ok := backend.Placement(t.Hash)
-		if !ok || p.IncompleteRoot == "" {
-			continue
-		}
-		if info, err := os.Stat(p.IncompleteRoot); err != nil || !info.IsDir() {
+		if !ok || p.IncompleteRoot == "" || !dirExists(p.IncompleteRoot) {
 			continue
 		}
 		if err := backend.Resume(t.Hash); err != nil {
@@ -315,12 +312,42 @@ func resumeTorrentsWaitingForStaging(backend torrents.TorrentBackend) {
 	}
 }
 
+// adoptMovedStaging follows a moved incomplete folder (decisions/141): an unfinished staging
+// torrent whose frozen root is gone, while its <hash> folder sits in the configured incomplete_path,
+// is re-pointed there — the user moved the folder and changed the setting, as with a moved library
+// (decisions/034). The torrent is added back, so rain re-checks the moved files before trusting
+// them. One whose files are nowhere to be found waits for its root to come back, and the pass says
+// so in the log.
+func adoptMovedStaging(backend torrents.TorrentBackend, staging string) {
+	for _, p := range backend.Placements() {
+		if p.Completed || p.IncompleteRoot == "" || p.IncompleteRoot == staging || dirExists(p.IncompleteRoot) {
+			continue
+		}
+		if staging != "" && dirExists(filepath.Join(staging, p.Hash)) {
+			if err := backend.MovePlacementStaging(p.Hash, staging); err != nil {
+				logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Failed to follow a moved incomplete downloads folder")
+				continue
+			}
+			logger.Logger.Info().Str("hash", p.Hash).Str("incomplete_path", staging).Msg("Found a download in the moved incomplete folder; it continues from there")
+			continue
+		}
+		logger.Logger.Warn().Str("hash", p.Hash).Str("incomplete_path", p.IncompleteRoot).
+			Msg("The incomplete folder this download was started in is gone; it waits for it to come back")
+	}
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 // pruneStagingLeftovers removes what torrents left in the incomplete folders (decisions/141): a
-// <hash> folder whose placement is gone, is Completed (moved; a crash or a failed cleanup came
-// between the switch and the removal), or now stages under another root. A Kept placement's folder
-// stays (its files are the user's), and so does one still staging there. Only folders named like
-// an infohash are touched, and only after orphanPlacementGrace since they last changed. The roots
-// are the configured incomplete_path and every root a placement still points at.
+// <hash> folder whose placement is gone, or is Completed (moved; a crash or a failed cleanup came
+// between the switch and the removal). A Kept placement's folder stays (its files are the user's,
+// a re-add resumes into them), and so does any unfinished one's, whatever root it was registered
+// with: a folder the user moved holds that torrent's data until adoptMovedStaging re-points it.
+// Only folders named like an infohash are touched, and only after orphanPlacementGrace since they
+// last changed. The roots are the configured incomplete_path and every root a placement points at.
 func pruneStagingLeftovers(backend torrents.TorrentBackend, staging string, now time.Time) {
 	roots := map[string]bool{}
 	if staging != "" {
@@ -342,7 +369,7 @@ func pruneStagingLeftovers(backend torrents.TorrentBackend, staging string, now 
 			if !e.IsDir() || !isInfoHash(e.Name()) {
 				continue
 			}
-			if p, ok := byHash[e.Name()]; ok && (p.Kept || (!p.Completed && p.IncompleteRoot == root)) {
+			if p, ok := byHash[e.Name()]; ok && (p.Kept || !p.Completed) {
 				continue
 			}
 			info, err := e.Info()

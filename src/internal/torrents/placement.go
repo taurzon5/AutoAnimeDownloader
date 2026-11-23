@@ -354,6 +354,26 @@ func (s *placementStore) reopen(hash, incompleteRoot string) error {
 	return nil
 }
 
+// setIncompleteRoot re-points an unfinished staging placement at root: the user moved the
+// incomplete folder and changed incomplete_path (decisions/141). A finished one, or a hash
+// without a placement, is an error.
+func (s *placementStore) setIncompleteRoot(hash, root string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok || p.Completed || p.IncompleteRoot == "" {
+		return fmt.Errorf("torrent %s has no unfinished staging placement", hash)
+	}
+	prev := p
+	p.IncompleteRoot = root
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		s.byID[hash] = prev
+		return err
+	}
+	return nil
+}
+
 // ownerOf returns the hash of the placement that claims path (final or .part name), or "".
 func (s *placementStore) ownerOf(path string) string {
 	s.mu.Lock()

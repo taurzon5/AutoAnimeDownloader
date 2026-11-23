@@ -39,6 +39,7 @@ const KNOWN_STATUSES = [
   'downloading',
   'seeding',
   'stopping',
+  'moving',
 ]
 
 export const DEFAULT_VIEW_STATE: ViewState = {

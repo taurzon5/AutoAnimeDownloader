@@ -19,6 +19,13 @@ func ProbeWritable(dir string) error {
 	}
 	probe := filepath.Join(dir, ".aad_write_probe")
 	if err := os.WriteFile(probe, []byte("aad"), 0644); err != nil {
+		// A full disk is a reachable library: the disk guard refuses the downloads, and the pass
+		// has to run to free space (pruning, deletions). Aborting it would leave the app stuck
+		// full (decisions/048).
+		if isDiskFull(err) {
+			_ = os.Remove(probe)
+			return nil
+		}
 		return fmt.Errorf("the library folder %s is not writable: %w", dir, err)
 	}
 	_ = os.Remove(probe)
@@ -49,6 +56,12 @@ func ProbeIncompleteFolder(dir, library string) error {
 	}
 	probe := filepath.Join(dir, ".aad_write_probe")
 	if err := os.WriteFile(probe, []byte("aad"), 0644); err != nil {
+		// A full drive is still a reachable folder: the disk guard refuses the downloads, and the
+		// pass has to run to clean up (decisions/048).
+		if isDiskFull(err) {
+			_ = os.Remove(probe)
+			return nil
+		}
 		return fmt.Errorf("the incomplete downloads folder %s is not writable: %w", dir, err)
 	}
 	_ = os.Remove(probe)

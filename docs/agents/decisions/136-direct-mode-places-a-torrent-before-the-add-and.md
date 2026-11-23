@@ -56,6 +56,15 @@ And finishing a download stops the torrent and starts it again.
   rain trusts its bitfield only when no file is missing (`torrent_allocation.go`), so it would
   re-check the torrent and download the whole file again while the data sits under its final name.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** the placement also freezes `IncompleteRoot`, the staging folder, when
+`incomplete_path` is set. It is the one absolute path a placement stores (it sits outside the
+library, so "relative to the library" can't hold it), and only two places re-point it: `reopen`
+(a redownload takes the current setting) and `adoptMovedStaging` (the user moved the folder; the
+torrent is added back so rain re-checks the files). `Open`'s crash branch became one rule for any placement not yet
+`Completed`: a whole file at the final path is used there; otherwise the staging path, the `.part`
+name or the final name. `FinalizePlacement` of a staging placement copies the files into the
+library instead of renaming `.part` files.
+
 **Don't "fix" by:** recomputing the map on load "so a renamed anime moves too" (moves a seeding
 file); storing absolute paths; letting a second `SetPlacement` overwrite the first; opening an existing destination as-is;
 installing `CustomStorage` unconditionally (hardlink mode would stop being what it was) or dropping

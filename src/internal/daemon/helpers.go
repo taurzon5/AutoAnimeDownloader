@@ -77,7 +77,8 @@ func DiskLow(configs *files.Config, session []torrents.TorrentInfo, saved []file
 // a full disk, and turning it into "stop downloading everything" is worse than the risk the guard
 // covers.
 func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64) error {
-	// Same volume as the download directory, by construction (see Config.DownloadPath).
+	// The library volume, which holds the download directory by construction
+	// (Config.DownloadPath). The incomplete folder's drive is checkBudgetSpace's.
 	return checkVolumeSpace(configs.CompletedAnimePath, configs.MinFreeDiskGB, torrentSizeBytes, reservedBytes)
 }
 
@@ -89,7 +90,7 @@ func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64
 // its own floor, incomplete_min_free_disk_gb.
 func checkBudgetSpace(configs *files.Config, torrentSizeBytes, reservedBytes, stagedBytes, stagedPendingBytes int64) error {
 	staging := configs.StagingPath()
-	if staging == "" || files.SameFilesystem(staging, configs.CompletedAnimePath) {
+	if staging == "" || sameFilesystem(staging, configs.CompletedAnimePath) {
 		return checkDiskSpace(configs, torrentSizeBytes, reservedBytes)
 	}
 	if err := checkDiskSpace(configs, torrentSizeBytes, reservedBytes+stagedPendingBytes); err != nil {
@@ -97,6 +98,9 @@ func checkBudgetSpace(configs *files.Config, torrentSizeBytes, reservedBytes, st
 	}
 	return checkVolumeSpace(staging, configs.IncompleteMinFreeDiskGB, torrentSizeBytes, stagedBytes)
 }
+
+// sameFilesystem is files.SameFilesystem, swappable in tests (their temp folders share one disk).
+var sameFilesystem = files.SameFilesystem
 
 // checkVolumeSpace is the guard on one volume: path's filesystem must take torrentSizeBytes on
 // top of reservedBytes, and keep minFreeGB GiB after that.

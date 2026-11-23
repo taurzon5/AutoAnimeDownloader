@@ -83,6 +83,10 @@
     hintAutoDeleteDownloads: m.config_hint_auto_delete_downloads(),
     labelPartFiles: m.config_label_part_files(),
     hintPartFiles: m.config_hint_part_files(),
+    labelIncompletePath: m.config_label_incomplete_path(),
+    hintIncompletePath: m.config_hint_incomplete_path(),
+    labelIncompleteMinFree: m.config_label_incomplete_min_free_disk(),
+    hintIncompleteMinFree: m.config_hint_incomplete_min_free_disk(),
     labelSeasonNumbering: m.config_label_season_numbering(),
     hintSeasonNumbering: m.config_hint_season_numbering(),
     labelExcludedList: m.config_label_excluded_list(),
@@ -158,6 +162,8 @@
     library_mode: "hardlink",
     auto_delete_downloads: false,
     incomplete_files: "part",
+    incomplete_path: "",
+    incomplete_min_free_disk_gb: 10,
     episode_numbering: "season",
     disable_seeding: false,
     check_for_updates: true,
@@ -360,6 +366,11 @@
       group: "library" as GroupId,
       ok: config.min_free_disk_gb >= 0,
       message: m.config_val_min_free_disk,
+    },
+    {
+      group: "library" as GroupId,
+      ok: (config.incomplete_min_free_disk_gb ?? 0) >= 0,
+      message: m.config_val_incomplete_min_free_disk,
     },
   ];
 
@@ -660,6 +671,35 @@
                 />
                 <p class="text-caption text-subtle">{T && T.hintPartFiles}</p>
               </div>
+
+              <!-- Staging (decisions/141): downloads on a fast drive, moved into the library
+                   when finished. The daemon validates the folder on save (it must exist; the app
+                   never creates it). -->
+              <div class="p-4.5">
+                <Input
+                  id="incomplete_path"
+                  label={(T && T.labelIncompletePath) || ""}
+                  subtitle={(T && T.hintIncompletePath) || ""}
+                  type="text"
+                  bind:value={config.incomplete_path}
+                  placeholder="/mnt/nvme/aad-incomplete"
+                />
+              </div>
+
+              {#if config.incomplete_path}
+                <div class="p-4.5">
+                  <Input
+                    id="incomplete_min_free_disk_gb"
+                    label={(T && T.labelIncompleteMinFree) || ""}
+                    subtitle={(T && T.hintIncompleteMinFree) || ""}
+                    type="number"
+                    bind:value={config.incomplete_min_free_disk_gb}
+                    min="0"
+                    inline={true}
+                    suffix="GiB"
+                  />
+                </div>
+              {/if}
 
               <div class="space-y-1.5 p-4.5">
                 <Toggle

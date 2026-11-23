@@ -11,6 +11,12 @@ The probe aborts the pass instead of merely warning: downloading episodes that p
 **Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** in direct mode the same gate runs `files.ProbeWritable` instead:
 direct mode needs no hardlinks, only a library it can write to. Same position, same abort.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** one result is a pass on purpose: a probe write refused because the
+disk is full. The folder is reachable, `checkBudgetSpace` already refuses the downloads, and
+aborting the pass would skip the cleanup that frees space
+([#48](048-max-episodes-per-anime-never-limited-batches-the.md)). Every other probe failure still
+aborts the pass. The incomplete folder's probe (`files.ProbeIncompleteFolder`) follows the same rule.
+
 **Don't "fix" by:** removing the gate because "the endpoint already validates it" (it does not, for pre-upgrade and entrypoint-written configs), or downgrading it to a warning that lets the pass continue. Caching the result per path pair is a legitimate optimization if the I/O ever shows up in a profile — but it must be invalidated on config change, and the current cost does not justify the extra state.
 
 **Amendment (see #31):** the probe is now single-path. `Librarian.ProbePaths(save, completed)` was replaced by `Librarian.ProbePath(completedPath)`, which writes a probe file directly under `<completedPath>/.torrents` and hardlinks it in place — there is no second user-supplied path to compare against, since the download directory is derived, not configured. The check still exists for the same reason: exFAT/FAT32 and some SMB shares don't support hardlinks at all, so the invariant "the download dir and the library share a filesystem" is guaranteed by construction, but "the filesystem supports hardlinks" is not.

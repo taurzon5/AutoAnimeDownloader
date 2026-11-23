@@ -55,7 +55,8 @@ func handleStatus(server *Server) http.HandlerFunc {
 
 		var diskTotal, diskFree, incompleteTotal, incompleteFree uint64
 		diskLow := false
-		// Same volume as the download directory, by construction (see Config.DownloadPath).
+		// The library volume holds the download directory by construction (Config.DownloadPath); the
+		// incomplete folder, when set on another drive, is reported on its own (decisions/141).
 		if cfg, err := server.FileManager.LoadConfigs(); err == nil && cfg.CompletedAnimePath != "" {
 			diskTotal, diskFree, _ = files.DiskSpace(cfg.CompletedAnimePath)
 			var session []torrents.TorrentInfo

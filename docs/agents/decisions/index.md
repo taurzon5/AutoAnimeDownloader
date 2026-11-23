@@ -152,3 +152,4 @@ do not edit by hand.
 - [**#138** — Direct mode numbers seasons along the TV PREQUEL chain and pins a series to its first folder](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)
 - [**#139** — A direct-mode file deleted outside the app is reported and not downloaded again on its own](139-a-direct-mode-file-deleted-outside-the-app-is.md)
 - [**#140** — Redownloading missing files adds the same torrent back to rain instead of restarting it](140-redownloading-missing-files-adds-the-same-torrent.md)
+- [**#141** — Staged downloads are copied into the library while they seed and switched over in a short stop](141-staged-downloads-are-copied-into-the-library-while.md)

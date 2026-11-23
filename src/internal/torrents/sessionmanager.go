@@ -535,6 +535,25 @@ func (m *SessionManager) CancelMoves() {
 	m.moves.cancelAll()
 }
 
+// MovePlacementStaging needs the session: the torrent is added back so rain re-checks the moved
+// files (Session.MovePlacementStaging). Like RedownloadPlacement, the queue then holds it to
+// max_concurrent_downloads.
+func (m *SessionManager) MovePlacementStaging(hash, root string) error {
+	err := func() error {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		if m.session == nil {
+			return ErrSessionNotReady
+		}
+		return m.session.MovePlacementStaging(hash, root)
+	}()
+	if err != nil {
+		return err
+	}
+	m.queue.enforce(m)
+	return nil
+}
+
 func (m *SessionManager) ForgetPlacement(hash string) error {
 	return m.placements.forget(hash)
 }

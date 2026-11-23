@@ -75,6 +75,13 @@ name ([#21](021-embedded-torrent-client-hardlink-into-library.md) does not apply
   `LibraryPaths[0]`, which for a direct-mode episode is `Season NN/`, with the entry id. Organize
   already wrote the series nfo with the chain root's id one level up, so marked records are skipped.
 
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** deleting a staging torrent also removes its folder in the incomplete
+folder and any `<final>.aad-moving` copy, and cancels a copy into the library still running. A
+removal with keep data leaves the staged files with the placement, like library ones — a failure
+drop resumes into them, and a manual keep-data delete marks the placement Kept. `Kept` therefore
+guards a third path: the incomplete-folder sweep (`pruneStagingLeftovers`) never removes a Kept
+placement's staged files; deleting them is the user's call.
+
 **Don't "fix" by:** calling `RemoveFromLibrary` for a placed record "for symmetry"; marking a
 placement `Kept` after the removal, or forgetting it instead of marking it (one failed save and
 the sweep deletes what the user kept; a forgotten placement re-downloads as a `[hash8]` copy);

@@ -880,7 +880,12 @@
                       label={t.name}
                     />
                     <p class="mt-1 truncate font-mono text-[12px] text-subtle">
-                      {#if t.bytes_total === 0}
+                      {#if t.status === "moving" && t.move_progress != null}
+                        <!-- Finished, and being copied from the incomplete folder into the library
+                             (decisions/141): on a USB disk a pack takes minutes, and without this
+                             line the row would look stuck. -->
+                        {$locale && m.downloads_moving_line({ percent: formatPercent(t.move_progress, fmtLocale) })}
+                      {:else if t.bytes_total === 0}
                         —
                       {:else if t.bytes_completed === 0 && t.progress > 0}
                         <!-- Pausing zeroes bytes_completed (rain releases the pieces' data) but

@@ -1,8 +1,9 @@
 # 101. The disk guard counts what the queue still has to write, not only free space
 
-**Location:** `daemon/diskbudget.go` (`diskBudget`, `newDiskBudget`); `checkDiskSpace`'s
-`reservedBytes` in `daemon/helpers.go`; built once per pass in `daemon/verification.go` and in
-`DownloadStandaloneAnime`; used by `packsThatFit` and `attemptDownloadWithRetries`;
+**Location:** `daemon/diskbudget.go` (`diskBudget`, `newDiskBudget`, `add`); `checkBudgetSpace`'s
+reservations in `daemon/helpers.go`; built once per pass in `daemon/verification.go` and in
+`DownloadStandaloneAnime`; used by `packsThatFit`, `attemptDownloadWithRetries` and
+`RedownloadMissingFiles`;
 `files.EpisodeStruct.TorrentSize`; `torrents.InfoHash`.
 
 A clean run on a disk with 99 GB free and a tight slack floor (~6 GB of headroom) queued
@@ -40,10 +41,15 @@ their call, and its size is usually unknown anyway.
 
 **Amendment (see [#140](140-redownloading-missing-files-adds-the-same-torrent.md)):** a third,
 user-triggered caller: `daemon.RedownloadMissingFiles` (the bulk "Redownload missing files")
-starts from `newDiskBudget(...).reserved`, so it does count what the session still has to write,
+builds a `newDiskBudget` and checks each torrent with `budget.check`, so it does count what the session still has to write,
 then adds each started torrent's missing bytes as it goes. It does not use `reserve`: its budget is
 its own, not shared with a pass running at the same moment, which is the same race manual
 downloads accept. Its sizes are the missing files', not the whole torrent's.
+
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** the budget also counts, for staging torrents, what the incomplete
+folder's volume still has to take (`staged`) and what they hold that has not moved into the library
+yet (`stagedPending`, all of it lands there). Both only matter when that folder is on another
+filesystem.
 
 **Don't "fix" by:** summing reservations per record instead of per hash (a pack would count once
 per episode); checking free space alone in `packsThatFit`; or splitting `reserve` into a check and a

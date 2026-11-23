@@ -80,10 +80,19 @@ func stagedToCopy(p Placement, sizes map[string]int64) ([]PlacedFile, int64) {
 // copyStagedFiles is phase 1: every file not whole at its final path is copied from staging to
 // "<final>.aad-moving" and synced. On the same filesystem a hard link is the whole copy, instant
 // and free; anywhere else (another drive, a filesystem without links) the bytes are copied.
-// progress, when set, gets the bytes done so far. A failed or cancelled copy removes its
-// ".aad-moving" file.
-func copyStagedFiles(ctx context.Context, p Placement, sizes map[string]int64, progress func(int64)) error {
+// progress, when set, gets the bytes done so far. A failed or cancelled copy removes every
+// ".aad-moving" file it created, the whole ones of a pack included: a delete with keep data during
+// the copy must not leave half a pack of them in the library.
+func copyStagedFiles(ctx context.Context, p Placement, sizes map[string]int64, progress func(int64)) (err error) {
 	todo, _ := stagedToCopy(p, sizes)
+	var created []string
+	defer func() {
+		if err != nil {
+			for _, path := range created {
+				_ = os.Remove(path)
+			}
+		}
+	}()
 	var done int64
 	report := func(n int64) {
 		if progress != nil {
@@ -103,6 +112,7 @@ func copyStagedFiles(ctx context.Context, p Placement, sizes map[string]int64, p
 			return fmt.Errorf("failed to create %s: %w", filepath.Dir(dst), err)
 		}
 		_ = os.Remove(dst)
+		created = append(created, dst)
 		if linkFile(src, dst) != nil {
 			if err := copyFile(ctx, src, dst, func(n int64) { report(done + n) }); err != nil {
 				_ = os.Remove(dst)

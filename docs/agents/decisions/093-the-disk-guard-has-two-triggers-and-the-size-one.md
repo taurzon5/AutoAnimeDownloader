@@ -1,9 +1,11 @@
 # 93. The disk guard has two triggers, and the size one still applies with `min_free_disk_gb = 0`
 
-**Location:** `daemon/helpers.go` (`checkDiskSpace`, `DiskLow`), called in `daemon/episodes.go`
-(`attemptDownloadWithRetries`, once before the loop and once per candidate), in
-`daemon/manual_download.go` (`addAndPrioritize`) and in `daemon/placement.go`
-(`RedownloadMissingFiles`, once per torrent). `GET /status` `disk_low` is `DiskLow`.
+**Location:** `daemon/helpers.go` (`checkDiskSpace`, `checkBudgetSpace`, `checkVolumeSpace`,
+`DiskLow`), reached through the budget (`diskBudget.check`/`reserve`) in `daemon/episodes.go`
+(`attemptDownloadWithRetries`, once before the loop and once per candidate) and in
+`daemon/placement.go` (`RedownloadMissingFiles`, `budget.check`/`budget.add`, once per torrent),
+and directly (`checkBudgetSpace` with nothing reserved) in `daemon/manual_download.go`
+(`addAndPrioritize`). `GET /status` `disk_low` is `DiskLow`.
 
 `checkDiskSpace` receives `torrentSizeBytes` and refuses for two different reasons:
 
@@ -45,3 +47,7 @@ which pass `0` on purpose.
 in the list may fit where the first did not — skipping one does not end the attempt. The
 size-less check **before** the loop still exists, and it is something else: a disk already full
 today means no candidate will do, and trying N times would only fill the log.
+
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** with `incomplete_path` on another filesystem, `checkBudgetSpace` checks
+both volumes, the staging one against its own floor, `incomplete_min_free_disk_gb`. `DiskLow`
+covers both.

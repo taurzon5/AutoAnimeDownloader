@@ -141,6 +141,9 @@ export interface StatusResponse {
   version: string
   disk_total: number
   disk_free: number
+  /** The incomplete folder's drive, only when it is set and not the library's drive. */
+  incomplete_disk_total?: number
+  incomplete_disk_free?: number
   /**
    * The daemon would refuse a new torrent of size 0: free minus reserved, against
    * min_free_disk_gb. Computed on the server on purpose — a threshold duplicated in the
@@ -233,6 +236,9 @@ export interface Config {
   auto_delete_downloads: boolean
   /** Direct mode: "part" writes <name>.part until the torrent completes; "in_place" doesn't. */
   incomplete_files: "part" | "in_place"
+  /** Direct mode: existing folder where torrents download before moving into the library ("" = off). */
+  incomplete_path: string
+  incomplete_min_free_disk_gb: number
   /** Direct mode + Jellyfin renaming: "season" numbers a split cour across its season (S02E13). */
   episode_numbering: "season" | "entry"
   /** No upload at all, and each torrent is removed once organized into the library. */
@@ -339,6 +345,8 @@ export interface TorrentInfo {
   seeded_for_seconds: number
   /** A finished direct-mode torrent whose library file was deleted outside the app. */
   files_missing?: boolean
+  /** 0–1, only while status is "moving": the copy from the incomplete folder into the library. */
+  move_progress?: number
 }
 
 /** A file inside a torrent. */
