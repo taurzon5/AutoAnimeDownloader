@@ -94,6 +94,7 @@ export const baseConfig = {
     max_episode_torrent_size_gb: 0,
     min_seeders: 1,
     max_search_pages: 5,
+    nyaa_request_delay_seconds: 0,
     min_free_disk_gb: 10,
     delete_watched_episodes: false,
     watched_episodes_to_keep: 0,

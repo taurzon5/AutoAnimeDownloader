@@ -855,8 +855,11 @@ func parsePagesWith(parseRow func(int, *goquery.Selection)) func(*goquery.Docume
 	}
 }
 
-// fetchNyaaPage fetches a single Nyaa results page and returns the parsed document.
+// fetchNyaaPage fetches a single Nyaa results page and returns the parsed document. Every Nyaa HTML
+// request (search pages and torrent detail pages) goes through here, which is why the request gap
+// (nyaa_request_delay_seconds, see pacing.go) is applied here and nowhere else.
 func fetchNyaaPage(nyaaURL string) (*goquery.Document, error) {
+	waitForRequestSlot()
 	logger.Logger.Debug().Str("url", nyaaURL).Msg("Fetching Nyaa page")
 
 	resp, err := httpGet(nyaaURL)

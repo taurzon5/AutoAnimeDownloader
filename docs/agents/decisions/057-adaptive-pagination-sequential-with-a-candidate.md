@@ -16,6 +16,12 @@
 
 **(e) There is NO per-anime per-pass fetch budget.** The plan asked for one, so an unsolvable anime would not burn the ceiling every pass. Measured: the worst case is a search that never meets the floor and goes to 5 pages, ~2.3x today's fetches, and **only** on an anime that finds nothing. The budget would require per-anime state crossing `nyaaSearcher` and nyaa's exported functions — plumbing out of proportion to the risk. If the traffic bothers, the shortest path is lowering `max_search_pages`.
 
+**Amendment (see [#135](135-the-nyaa-request-gap-is-one-global-slot-held.md)):** "with no client
+throttle" in (c) no longer holds when `nyaa_request_delay_seconds` is set: `fetchNyaaPage` then
+waits for a global slot before every request. The pagination rules (a), (b), (d), (e) and the
+reason for staying sequential still hold; the gap is applied in `fetchNyaaPage`, not in this
+helper. With the default `0` there is still no throttle.
+
 **Don't "fix" by:**
 - Fetching pages 1..N in parallel "to make it faster" (see (a) and (c)).
 - Swapping the floor for "always fetch the ceiling" (see (a)).

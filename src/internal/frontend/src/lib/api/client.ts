@@ -216,6 +216,8 @@ export interface Config {
   min_seeders: number
   /** Ceiling of Nyaa pages per search. The search only goes deeper if it has few candidates. */
   max_search_pages: number
+  /** Minimum seconds between two Nyaa page requests, across every search. 0 disables. */
+  nyaa_request_delay_seconds: number
   /** Slack the disk guard keeps on the library volume, in GiB. 0 disables the policy. */
   min_free_disk_gb: number
   episode_retry_limit: number

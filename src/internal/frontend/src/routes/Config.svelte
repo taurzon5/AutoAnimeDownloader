@@ -64,6 +64,8 @@
     hintMinSeeders: m.config_hint_min_seeders(),
     labelMaxSearchPages: m.config_label_max_search_pages(),
     hintMaxSearchPages: m.config_hint_max_search_pages(),
+    labelNyaaRequestDelay: m.config_label_nyaa_request_delay(),
+    hintNyaaRequestDelay: m.config_hint_nyaa_request_delay(),
     labelMinFreeDisk: m.config_label_min_free_disk(),
     hintMinFreeDisk: m.config_hint_min_free_disk(),
     labelMaxConcurrent: m.config_label_max_concurrent(),
@@ -131,6 +133,7 @@
     max_episode_torrent_size_gb: 5,
     min_seeders: 3,
     max_search_pages: 5,
+    nyaa_request_delay_seconds: 0,
     min_free_disk_gb: 10,
     episode_retry_limit: 5,
     max_concurrent_downloads: 3,
@@ -329,6 +332,11 @@
       group: "search" as GroupId,
       ok: config.max_search_pages >= 0,
       message: m.config_val_max_search_pages,
+    },
+    {
+      group: "search" as GroupId,
+      ok: config.nyaa_request_delay_seconds >= 0,
+      message: m.config_val_nyaa_request_delay,
     },
     {
       group: "library" as GroupId,
@@ -733,6 +741,19 @@
                 type="number"
                 bind:value={config.max_search_pages}
                 min="1"
+                inline={true}
+              />
+            </div>
+
+            <div class="p-4.5">
+              <Input
+                id="nyaa_request_delay_seconds"
+                label={T && T.labelNyaaRequestDelay || ""}
+                subtitle={T && T.hintNyaaRequestDelay || ""}
+                type="number"
+                bind:value={config.nyaa_request_delay_seconds}
+                min="0"
+                step="0.1"
                 inline={true}
               />
             </div>

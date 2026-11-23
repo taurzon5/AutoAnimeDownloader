@@ -146,3 +146,4 @@ do not edit by hand.
 - [**#132** — Season and part are read from the synonyms that name the anime, never from one that is the title of its manga or novel](132-season-and-part-are-read-from-the-synonyms-that.md)
 - [**#133** — An ONA entry counts its ONA prequel in the season offset, while the series axis still walks TV prequels only](133-an-ona-entry-counts-its-ona-prequel-in-the-season.md)
 - [**#134** — Each decision is its own numbered file, and the index is generated from their headings](134-each-decision-is-its-own-numbered-file-and-the.md)
+- [**#135** — The Nyaa request gap is one global slot held across the sleep, not a pause per search](135-the-nyaa-request-gap-is-one-global-slot-held.md)
