@@ -1,7 +1,8 @@
 # qBittorrent backend: an external client instead of the built-in one
 
 **Date:** 2026-11-23
-**Status:** designed, not implemented — no fixed release. **Since 2026-11-23 rain is being
+**Status:** step 1 (the backend) implemented on branch `feat/qbittorrent-backend`, not merged;
+steps 2–3 not started — no fixed release. **Since 2026-11-23 rain is being
 dropped** ([megapack-downloads](2026-11-23-megapack-downloads-design.md)), so this backend becomes
 the app's only client (see "Since this was written"); the open questions are answered at the end.
 **Origin:** the user wants to run a qBittorrent fork they will modify themselves (base not chosen:

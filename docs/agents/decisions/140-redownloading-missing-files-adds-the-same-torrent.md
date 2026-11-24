@@ -63,3 +63,11 @@ the library are reused in place, the missing ones stage and move like any downlo
 queue's enforce after the add; dropping the
 `Seeding`/`Stopped` check in `FinalizePlacement`; letting the bulk action run on its own (a pass,
 the swap check). It is the user's click, and #139's "nothing else" still holds otherwise.
+
+**Amendment (see [#142](142-qbittorrent-stops-each-placed-torrent-at-its.md)):** the rules above are rain's: rain trusts its stale bitfield, so
+`Start`/`Verify` can't make it look again. qBittorrent's recheck does look again, so
+`QBitBackend.RedownloadPlacement` reopens the placement and the poll loop renames the missing files
+to `.part`, rechecks and starts — no remove and re-add. What carries over is the "settled" rule:
+until qBittorrent shows it took the recheck (`reopened`), the torrent's old complete state neither
+fires `onComplete` nor lets `FinalizePlacement` rename anything; `FinalizePlacement` also waits for
+a complete torrent that isn't checking or moving.

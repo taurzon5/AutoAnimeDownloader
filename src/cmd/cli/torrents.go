@@ -51,6 +51,11 @@ func torrentsCommand() *cli.Command {
 				Action:    handleTorrentsRedownloadMissing,
 			},
 			{
+				Name:   "test",
+				Usage:  "Test the connection to qBittorrent with the saved settings: sign-in, versions, and whether it sees the library folder",
+				Action: handleTorrentClientTest,
+			},
+			{
 				Name:      "delete",
 				Usage:     "Delete a torrent",
 				ArgsUsage: "<hash>",
@@ -87,6 +92,25 @@ func handleTorrentsRedownloadMissing(c *cli.Context) error {
 		fmt.Printf("; %d skipped for lack of disk space", result.SkippedNoSpace)
 	}
 	fmt.Println()
+	return nil
+}
+
+func handleTorrentClientTest(c *cli.Context) error {
+	result, err := getClient().TestTorrentClient()
+	if err != nil {
+		return mapClientError(err)
+	}
+	if outputJSON {
+		outputJSONResponse(result)
+		return nil
+	}
+	fmt.Printf("Connected to qBittorrent %s (Web API %s)\n", result.AppVersion, result.WebAPIVersion)
+	switch {
+	case result.Problem != "":
+		fmt.Printf("Problem: %s\n", result.Problem)
+	case result.LibraryVisible:
+		fmt.Printf("qBittorrent sees the library at %s\n", result.LibraryPath)
+	}
 	return nil
 }
 

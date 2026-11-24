@@ -48,3 +48,8 @@ rule above does not apply to direct mode.
 `AllowedFastSet`; also stopping the torrent at completion: organize runs right after completion and
 removes it, and with no upload a completed torrent has nothing to send anyway, so a stop in between
 only adds a state to keep in sync; treating `TorrentReleased` as "in session" in `findCoveringPack`.
+
+**Amendment (see [#142](142-qbittorrent-stops-each-placed-torrent-at-its.md)):** qBittorrent can't refuse every upload (an upload limit of 0
+means unlimited there), so `disable_seeding` is **refused** with `torrent_client: "qbittorrent"`
+(`validateTorrentClient`) rather than silently uploading. The qBittorrent spec's answer 3 makes it
+"almost no upload" in its step 2; this entry gets amended again then.

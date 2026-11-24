@@ -253,6 +253,39 @@ export interface Config {
     batch_window_seconds: number
   }
   priorities: Priorities
+  /** "builtin" (rain, the default) or "qbittorrent". Read at startup: changing it needs a restart. */
+  torrent_client?: "builtin" | "qbittorrent" | ""
+  qbittorrent_url?: string
+  qbittorrent_username?: string
+  /** A saved secret comes back as SECRET_PLACEHOLDER; sending it back keeps the saved value. */
+  qbittorrent_password?: string
+  qbittorrent_api_key?: string
+  qbittorrent_category?: string
+  /** The same folder as the app and as qBittorrent see it. Empty = identical paths. */
+  qbittorrent_path_map?: PathMapping[]
+}
+
+export interface PathMapping {
+  app: string
+  qbittorrent: string
+}
+
+/** What GET /config shows in place of a saved secret (files.SecretPlaceholder). */
+export const SECRET_PLACEHOLDER = "__saved__"
+
+export interface UpdateConfigResult {
+  message: string
+  /** The torrent client changed: it is picked at startup. */
+  restart_required?: boolean
+}
+
+export interface TorrentClientTestResult {
+  app_version: string
+  webapi_version: string
+  library_checked: boolean
+  library_visible: boolean
+  library_path?: string
+  problem?: string
 }
 
 export interface AnimeInfo {
@@ -410,8 +443,21 @@ export async function getConfig(): Promise<Config> {
   return apiRequest<Config>('GET', '/config')
 }
 
-export async function updateConfig(config: Config): Promise<void> {
-  return apiRequest<void>('PUT', '/config', config)
+export async function updateConfig(config: Config): Promise<UpdateConfigResult> {
+  return apiRequest<UpdateConfigResult>('PUT', '/config', config)
+}
+
+/** Tests qBittorrent with the settings being edited (unsaved); a secret still at the placeholder
+ * uses the saved one. Throws with the reason when it cannot connect or sign in. */
+export async function testTorrentClient(config: Config): Promise<TorrentClientTestResult> {
+  return apiRequest<TorrentClientTestResult>('POST', '/torrent-client/test', {
+    completed_anime_path: config.completed_anime_path,
+    qbittorrent_url: config.qbittorrent_url ?? '',
+    qbittorrent_username: config.qbittorrent_username ?? '',
+    qbittorrent_password: config.qbittorrent_password ?? '',
+    qbittorrent_api_key: config.qbittorrent_api_key ?? '',
+    qbittorrent_path_map: config.qbittorrent_path_map ?? [],
+  })
 }
 
 export async function getPriorityDefaults(): Promise<Priorities> {

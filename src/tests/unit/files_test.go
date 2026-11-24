@@ -204,9 +204,10 @@ func TestManager_LoadConfigs_WithNonExistentFile(t *testing.T) {
 
 func TestManager_LoadConfigs_WithExistingFile(t *testing.T) {
 	mockFS := NewMockFileSystem()
-	// save_path and qbittorrent_url are REMOVED fields: they stay in the fixture on purpose,
-	// proving that a config.json written by an old version still loads (JSON ignores
-	// unknown fields) instead of breaking boot.
+	// save_path is a REMOVED field: it stays in the fixture on purpose, proving that a config.json
+	// written by an old version still loads (JSON ignores unknown fields) instead of breaking boot.
+	// qbittorrent_url came back with the qBittorrent backend: an old config that still carries it
+	// must stay on the built-in client, since torrent_client is absent.
 	configJSON := `{
 		"save_path": "/anime",
 		"anilist_username": "testuser",
@@ -240,6 +241,9 @@ func TestManager_LoadConfigs_WithExistingFile(t *testing.T) {
 	}
 	if config.ExcludedList != "" {
 		t.Errorf("expected ExcludedList to be empty after migration, got '%s'", config.ExcludedList)
+	}
+	if config.UsesQBittorrent() || config.TorrentClient != files.TorrentClientBuiltin {
+		t.Errorf("an old config with qbittorrent_url switched the client to %q", config.TorrentClient)
 	}
 }
 

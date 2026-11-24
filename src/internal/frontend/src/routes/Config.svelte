@@ -13,7 +13,9 @@
     getConfig,
     updateConfig,
     triggerCheck,
+    testTorrentClient,
     type Config,
+    type TorrentClientTestResult,
   } from "../lib/api/client.js";
   import Loading from "../components/Loading.svelte";
   import Input from "../components/Input.svelte";
@@ -30,7 +32,7 @@
     onboardingDone,
   } from "../lib/stores/onboarding.js";
 
-  type GroupId = "library" | "anilist" | "downloads" | "search";
+  type GroupId = "library" | "anilist" | "downloads" | "search" | "client";
 
   $: T = $locale && {
     title: m.config_title(),
@@ -84,6 +86,26 @@
     labelPartFiles: m.config_label_part_files(),
     hintPartFiles: m.config_hint_part_files(),
     labelIncompletePath: m.config_label_incomplete_path(),
+    labelUseQBittorrent: m.config_label_use_qbittorrent(),
+    hintUseQBittorrent: m.config_hint_use_qbittorrent(),
+    labelQBittorrentURL: m.config_label_qbittorrent_url(),
+    hintQBittorrentURL: m.config_hint_qbittorrent_url(),
+    labelQBittorrentUsername: m.config_label_qbittorrent_username(),
+    labelQBittorrentPassword: m.config_label_qbittorrent_password(),
+    hintQBittorrentPassword: m.config_hint_qbittorrent_password(),
+    labelQBittorrentAPIKey: m.config_label_qbittorrent_api_key(),
+    hintQBittorrentAPIKey: m.config_hint_qbittorrent_api_key(),
+    labelQBittorrentCategory: m.config_label_qbittorrent_category(),
+    hintQBittorrentCategory: m.config_hint_qbittorrent_category(),
+    labelQBittorrentPathMap: m.config_label_qbittorrent_path_map(),
+    hintQBittorrentPathMap: m.config_hint_qbittorrent_path_map(),
+    pathMapApp: m.config_path_map_app(),
+    pathMapQBittorrent: m.config_path_map_qbittorrent(),
+    pathMapAdd: m.config_path_map_add(),
+    pathMapRemove: m.config_path_map_remove(),
+    btnTestQBittorrent: m.config_btn_test_qbittorrent(),
+    qbittorrentTesting: m.config_qbittorrent_testing(),
+    qbittorrentNeedsDirect: m.config_qbittorrent_needs_direct(),
     hintIncompletePath: m.config_hint_incomplete_path(),
     labelIncompleteMinFree: m.config_label_incomplete_min_free_disk(),
     hintIncompleteMinFree: m.config_hint_incomplete_min_free_disk(),
@@ -128,6 +150,7 @@
     { id: "library" as GroupId, label: m.config_section_library(), advanced: false },
     { id: "anilist" as GroupId, label: m.config_section_anilist(), advanced: false },
     { id: "downloads" as GroupId, label: m.config_section_downloads(), advanced: false },
+    { id: "client" as GroupId, label: m.config_section_client(), advanced: false },
     { id: "search" as GroupId, label: m.config_section_search(), advanced: true },
   ]) || [];
 
@@ -180,7 +203,40 @@
       audio: [],
       ignore_list: [],
     },
+    torrent_client: "builtin",
+    qbittorrent_url: "",
+    qbittorrent_username: "",
+    qbittorrent_password: "",
+    qbittorrent_api_key: "",
+    qbittorrent_category: "autoanimedownloader",
+    qbittorrent_path_map: [],
   };
+
+  // The connection test of the "Torrent client" group: the result of the last run, or its error.
+  let qbitTesting = false;
+  let qbitTestResult: TorrentClientTestResult | null = null;
+  let qbitTestError = "";
+
+  async function runQBitTest() {
+    qbitTesting = true;
+    qbitTestResult = null;
+    qbitTestError = "";
+    try {
+      qbitTestResult = await testTorrentClient(config);
+    } catch (err) {
+      qbitTestError = err instanceof Error ? err.message : String(err);
+    } finally {
+      qbitTesting = false;
+    }
+  }
+
+  function addPathMapping() {
+    config.qbittorrent_path_map = [...(config.qbittorrent_path_map ?? []), { app: "", qbittorrent: "" }];
+  }
+
+  function removePathMapping(index: number) {
+    config.qbittorrent_path_map = (config.qbittorrent_path_map ?? []).filter((_, i) => i !== index);
+  }
 
   // A status can't be in "download" and "delete" at the same time — turning one on always turns the
   // other off. Pre-existing rule, kept verbatim.
@@ -284,6 +340,7 @@
         config.anilist_usernames = [config.anilist_username];
       }
       if (!config.notifications) config.notifications = { webhooks: [], batch_window_seconds: 0 };
+      if (!Array.isArray(config.qbittorrent_path_map)) config.qbittorrent_path_map = [];
       if (!Array.isArray(config.notifications.webhooks)) config.notifications.webhooks = [];
       baseline = snapshot(config);
     } catch (err) {
@@ -372,6 +429,11 @@
       ok: (config.incomplete_min_free_disk_gb ?? 0) >= 0,
       message: m.config_val_incomplete_min_free_disk,
     },
+    {
+      group: "client" as GroupId,
+      ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
+      message: m.config_val_qbittorrent_url,
+    },
   ];
 
   /** Groups with something pending — feeds the dot in the side index. */
@@ -392,9 +454,9 @@
         throw new Error(invalid.message);
       }
 
-      await updateConfig(config);
+      const result = await updateConfig(config);
       baseline = snapshot(config);
-      toast.success(m.config_saved());
+      toast.success(result?.restart_required ? m.config_restart_required() : m.config_saved());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.config_error_save());
     } finally {
@@ -906,6 +968,107 @@
                 suffix="GiB"
               />
             </div>
+          {/if}
+
+          {#if activeGroup === "client"}
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="use_qbittorrent"
+                checked={config.torrent_client === "qbittorrent"}
+                on:change={(e) => (config.torrent_client = isOn(e) ? "qbittorrent" : "builtin")}
+                label={(T && T.labelUseQBittorrent) || ""}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{T && T.hintUseQBittorrent}</p>
+              {#if config.torrent_client === "qbittorrent" && config.library_mode !== "direct"}
+                <p class="text-caption text-danger">{T && T.qbittorrentNeedsDirect}</p>
+              {/if}
+            </div>
+
+            {#if config.torrent_client === "qbittorrent"}
+              <div class="p-4.5">
+                <Input
+                  id="qbittorrent_url"
+                  label={(T && T.labelQBittorrentURL) || ""}
+                  subtitle={(T && T.hintQBittorrentURL) || ""}
+                  bind:value={config.qbittorrent_url}
+                  placeholder="http://127.0.0.1:8080"
+                  required={true}
+                />
+              </div>
+              <div class="p-4.5">
+                <Input
+                  id="qbittorrent_username"
+                  label={(T && T.labelQBittorrentUsername) || ""}
+                  bind:value={config.qbittorrent_username}
+                />
+              </div>
+              <div class="p-4.5">
+                <Input
+                  id="qbittorrent_password"
+                  type="password"
+                  label={(T && T.labelQBittorrentPassword) || ""}
+                  subtitle={(T && T.hintQBittorrentPassword) || ""}
+                  bind:value={config.qbittorrent_password}
+                />
+              </div>
+              <div class="p-4.5">
+                <Input
+                  id="qbittorrent_api_key"
+                  type="password"
+                  label={(T && T.labelQBittorrentAPIKey) || ""}
+                  subtitle={(T && T.hintQBittorrentAPIKey) || ""}
+                  bind:value={config.qbittorrent_api_key}
+                />
+              </div>
+              <div class="p-4.5">
+                <Input
+                  id="qbittorrent_category"
+                  label={(T && T.labelQBittorrentCategory) || ""}
+                  subtitle={(T && T.hintQBittorrentCategory) || ""}
+                  bind:value={config.qbittorrent_category}
+                />
+              </div>
+
+              <div class="space-y-3 p-4.5">
+                <div class="space-y-1">
+                  <p class="text-copy text-body">{T && T.labelQBittorrentPathMap}</p>
+                  <p class="text-caption text-subtle">{T && T.hintQBittorrentPathMap}</p>
+                </div>
+                {#each config.qbittorrent_path_map ?? [] as mapping, i (i)}
+                  <div class="flex flex-col gap-2 md:flex-row md:items-end">
+                    <div class="flex-1">
+                      <Input id={`path_map_app_${i}`} label={(T && T.pathMapApp) || ""} bind:value={mapping.app} placeholder="/mnt/anime" />
+                    </div>
+                    <div class="flex-1">
+                      <Input id={`path_map_qbit_${i}`} label={(T && T.pathMapQBittorrent) || ""} bind:value={mapping.qbittorrent} placeholder="/downloads" />
+                    </div>
+                    <Button variant="ghost" ariaLabel={(T && T.pathMapRemove) || ""} on:click={() => removePathMapping(i)}>✕</Button>
+                  </div>
+                {/each}
+                <Button variant="ghost" on:click={addPathMapping}>{T && T.pathMapAdd}</Button>
+              </div>
+
+              <div class="space-y-2 p-4.5">
+                <Button variant="ghost" disabled={qbitTesting || !config.qbittorrent_url?.trim()} on:click={runQBitTest}>
+                  {qbitTesting ? (T && T.qbittorrentTesting) : (T && T.btnTestQBittorrent)}
+                </Button>
+                {#if qbitTestResult}
+                  <p class="text-caption text-body" data-testid="qbittorrent-test-result">
+                    {$locale && m.config_qbittorrent_test_ok({ app: qbitTestResult.app_version, webapi: qbitTestResult.webapi_version })}
+                    {#if qbitTestResult.library_visible && qbitTestResult.library_path}
+                      {$locale && m.config_qbittorrent_test_library({ path: qbitTestResult.library_path })}
+                    {/if}
+                  </p>
+                  {#if qbitTestResult.problem}
+                    <p class="text-caption text-danger">{$locale && m.config_qbittorrent_test_problem({ problem: qbitTestResult.problem })}</p>
+                  {/if}
+                {/if}
+                {#if qbitTestError}
+                  <p class="text-caption text-danger" data-testid="qbittorrent-test-error">{qbitTestError}</p>
+                {/if}
+              </div>
+            {/if}
           {/if}
         </div>
       </div>
