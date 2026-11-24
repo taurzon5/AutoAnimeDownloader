@@ -39,8 +39,9 @@ type fakeQBit struct {
 	rid   int64
 	// prefs is the queue part of app/preferences (qBittorrent's defaults). ignoreLimits answers the
 	// limit calls without applying them, as a qBittorrent that drops them would.
-	prefs        qbitQueuePrefs
+	prefs        qbitManagedPrefs
 	ignoreLimits bool
+	ignoreDiskIO bool
 }
 
 type fakeTorrent struct {
@@ -60,7 +61,8 @@ func newFakeQBit(t *testing.T) *fakeQBit {
 		categories: map[string]bool{},
 		torrents:   map[string]*fakeTorrent{},
 		meta:       map[string][]qbitFile{},
-		prefs:      qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 3, MaxActiveUploads: 3, MaxActiveTorrents: 5},
+		prefs: qbitManagedPrefs{qbitQueuePrefs: qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 3, MaxActiveUploads: 3, MaxActiveTorrents: 5},
+			IncompleteFilesExt: true, DiskIOType: qbitDiskIODefault},
 	}
 	f.server = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.server.Close)
@@ -179,13 +181,14 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 		f.torrents[h] = &fakeTorrent{
 			qbitTorrent: qbitTorrent{Hash: h, Name: h, State: "metaDL", Category: r.Form.Get("category"),
 				SavePath: r.Form.Get("savepath"), HasMetadata: &meta, AddedOn: int64(len(f.torrents) + 1), ETA: qbitETAInfinity,
-				RatioLimit: fakeFloat(r.Form.Get("ratioLimit"), -2), SeedingTimeLimit: fakeInt(r.Form.Get("seedingTimeLimit"), -2),
+				DownloadPath: map[bool]string{true: r.Form.Get("downloadPath")}[r.Form.Get("useDownloadPath") == "true"],
+				RatioLimit:   fakeFloat(r.Form.Get("ratioLimit"), -2), SeedingTimeLimit: fakeInt(r.Form.Get("seedingTimeLimit"), -2),
 				InactiveSeedingTimeLimit: fakeInt(r.Form.Get("inactiveSeedingTimeLimit"), -2), UpLimit: fakeInt(r.Form.Get("upLimit"), 0)},
 			stopAtMeta: r.Form.Get("stopCondition") == "MetadataReceived",
 		}
-		f.record("add %s savepath=%s stopAtMeta=%v useDownloadPath=%s limits=%s/%s/%s upLimit=%s", h, r.Form.Get("savepath"),
+		f.record("add %s savepath=%s stopAtMeta=%v useDownloadPath=%s limits=%s/%s/%s upLimit=%s downloadPath=%s", h, r.Form.Get("savepath"),
 			f.torrents[h].stopAtMeta, r.Form.Get("useDownloadPath"), r.Form.Get("ratioLimit"), r.Form.Get("seedingTimeLimit"),
-			r.Form.Get("inactiveSeedingTimeLimit"), r.Form.Get("upLimit"))
+			r.Form.Get("inactiveSeedingTimeLimit"), r.Form.Get("upLimit"), r.Form.Get("downloadPath"))
 		if f.modern {
 			w.WriteHeader(http.StatusAccepted)
 			fmt.Fprint(w, `{"success_count":0,"pending_count":1,"failure_count":0,"added_torrent_ids":[]}`)
@@ -227,8 +230,8 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 		oldPath, newPath := r.Form.Get("oldPath"), r.Form.Get("newPath")
 		for i := range t.files {
 			if t.files[i].Name == oldPath {
-				from := filepath.Join(t.SavePath, filepath.FromSlash(oldPath))
-				to := filepath.Join(t.SavePath, filepath.FromSlash(newPath))
+				from := filepath.Join(t.location(), filepath.FromSlash(oldPath))
+				to := filepath.Join(t.location(), filepath.FromSlash(newPath))
 				if _, err := os.Stat(from); err == nil {
 					_ = os.MkdirAll(filepath.Dir(to), 0755)
 					_ = os.Rename(from, to)
@@ -272,6 +275,18 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.record("topPrio %s", strings.Join(hashes, ","))
 		f.noContent(w)
+	case "torrents/setDownloadPath":
+		t := f.torrents[strings.ToLower(r.Form.Get("id"))]
+		if t == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		// Like qBittorrent: the files go with the path, and none are lost when they are not there.
+		from := t.location()
+		t.DownloadPath = r.Form.Get("path")
+		t.moveFiles(from, t.location())
+		f.record("setDownloadPath %s %s", t.Hash, t.DownloadPath)
+		f.noContent(w)
 	case "app/preferences":
 		_ = json.NewEncoder(w).Encode(f.prefs)
 	case "app/setPreferences":
@@ -285,6 +300,9 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for k, v := range sent {
+			if k == "disk_io_type" && f.ignoreDiskIO {
+				continue
+			}
 			merged[k] = v
 		}
 		data, _ := json.Marshal(merged)
@@ -330,6 +348,29 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 		f.noContent(w)
 	default:
 		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// location is where the torrent's files are: its download path while incomplete, else its save path.
+func (t *fakeTorrent) location() string {
+	if t.DownloadPath != "" && t.Progress < 1 {
+		return t.DownloadPath
+	}
+	return t.SavePath
+}
+
+// moveFiles moves the torrent's files from one folder to another, skipping those not there.
+func (t *fakeTorrent) moveFiles(from, to string) {
+	if from == to {
+		return
+	}
+	for _, file := range t.files {
+		src := filepath.Join(from, filepath.FromSlash(file.Name))
+		dst := filepath.Join(to, filepath.FromSlash(file.Name))
+		if _, err := os.Stat(src); err == nil {
+			_ = os.MkdirAll(filepath.Dir(dst), 0755)
+			_ = os.Rename(src, dst)
+		}
 	}
 }
 
@@ -393,13 +434,14 @@ func (f *fakeQBit) deliverMetadata(hash string, files ...qbitFile) {
 	}
 }
 
-// finish writes every file of the torrent where qBittorrent has it named and marks it seeding.
+// finish writes every file of the torrent where qBittorrent has it named and marks it seeding. One
+// with a download path is left "moving", its files still there, until moveIn.
 func (f *fakeQBit) finish(hash string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	t := f.torrents[hash]
 	for _, file := range t.files {
-		path := filepath.Join(t.SavePath, filepath.FromSlash(file.Name))
+		path := filepath.Join(t.location(), filepath.FromSlash(file.Name))
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			f.t.Fatal(err)
 		}
@@ -409,6 +451,18 @@ func (f *fakeQBit) finish(hash string) {
 	}
 	t.Progress = 1
 	t.Completed = t.Size
+	t.State = "stalledUP"
+	if t.DownloadPath != "" {
+		t.State = "moving"
+	}
+}
+
+// moveIn ends the move of a finished torrent with a download path: its files go to the save path.
+func (f *fakeQBit) moveIn(hash string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.torrents[hash]
+	t.moveFiles(t.DownloadPath, t.SavePath)
 	t.State = "stalledUP"
 }
 

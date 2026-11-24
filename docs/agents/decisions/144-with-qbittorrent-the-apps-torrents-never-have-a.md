@@ -1,6 +1,6 @@
 # 144. With qBittorrent the app's torrents never have a share limit, disable_seeding is an upload limit of a few KiB/s, and the queue is set only when the app manages qBittorrent
 
-**Location:** `internal/torrents/qbittorrent.go`: `enforceLimits` (called by `poll`), `syncQueue`
+**Location:** `internal/torrents/qbittorrent.go`: `enforceLimits` (called by `poll`), `syncManagedSettings`
 and `qbitWantedQueue` (called by `Ensure` and by `poll` when `queueDirty`), `SetMaxActiveDownloads`,
 `SetUploadDisabled`, `QBitSettings.uploadFloor`, the `UploadLimit` given to `Add`.
 `internal/torrents/qbit_client.go`: the share limits in `add`'s form, `setNoShareLimit`,
@@ -12,7 +12,8 @@ and `qbitWantedQueue` (called by `Ensure` and by `poll` when `queueDirty`), `Set
 `TestQBit_ALimitQBittorrentIgnoresIsResentOnceAMinute`,
 `TestQBit_DisableSeedingHoldsEveryTorrentAtTheUploadFloor`,
 `TestQBit_AChangedUploadFloorAppliesAndIsLiftedLater`,
-`TestQBit_ManagedQueueFollowsMaxConcurrentDownloads`, `TestQBit_UnmanagedQueueIsLeftAlone`, and
+`TestQBit_ManagedQueueFollowsMaxConcurrentDownloads`, `TestQBit_UnmanagedQueueIsLeftAlone`,
+`TestQBit_ManagedDiskIOIsSentOncePerConnection`, `TestQBit_RemoveDeletesTheIncompleteExtension`, and
 `TestQBitLive` against a real qBittorrent ([testing.md](../testing.md#qbittorrent-live-test)).
 
 **What it looks like:**
@@ -78,6 +79,19 @@ and `qbitWantedQueue` (called by `Ensure` and by `poll` when `queueDirty`), `Set
   `Ensure` and written only when they differ, so a queue changed in the WebUI goes back to the app's
   on the next pass. With the switch off, the connection test reports qBittorrent's own queue, and the
   settings page says which queue applies.
+- **The switch also governs the rest of qBittorrent's global settings the app relies on.** These
+  are answer 2's list, and only the keys that differ are sent:
+  - **The ".!qB" extension is turned off.** The app names incomplete files itself
+    (`incomplete_files`). Measured: with qBittorrent's extension on, the file on disk is
+    `ep.mkv.part.!qB` while the API reports `ep.mkv.part`, and the `.!qB` is dropped when the
+    torrent finishes. Off or on, `Remove` deletes the `.!qB` names too. Without that,
+    `RemovePlacedFiles` would leave them, and the series folder they sit in could never be pruned.
+  - **Default or memory-mapped disk I/O becomes "Simple pread/pwrite"** (`disk_io_type` 3).
+    libtorrent 2's memory-mapped I/O takes the client down when a disk disappears under it (a USB
+    library), and it is slow on network shares. POSIX (2) and the newer pread mode (4) are a choice
+    the app leaves alone. The type needs a qBittorrent restart, and a version that doesn't take it
+    would be sent it on every pass, so it goes out once per connection (`diskIOTried`). With the
+    switch off, the connection test reports the type and the settings page recommends pread.
 
 **Don't "fix" by:**
 - Leaving a torrent on qBittorrent's global share limit, or respecting a per-torrent limit
@@ -89,3 +103,7 @@ and `qbitWantedQueue` (called by `Ensure` and by `poll` when `queueDirty`), `Set
 - Setting qBittorrent's queue without the switch.
 - Leaving its upload and total caps at the defaults.
 - Sending `max_concurrent_downloads` 0 as `max_active_downloads` 0.
+- Sending every managed key on every pass instead of the ones that differ.
+- Retrying the disk I/O type on every pass.
+- Overwriting a POSIX or pread choice.
+- Leaving the `.!qB` names out of `Remove`.

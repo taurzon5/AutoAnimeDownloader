@@ -130,7 +130,7 @@ func TestQBit_PlacedTorrentIsRenamedBeforeItStarts(t *testing.T) {
 
 	want := []string{
 		"createCategory aad",
-		"add " + qbHashA + " savepath=" + q.root + " stopAtMeta=true useDownloadPath=false limits=-1/-1/-1 upLimit=",
+		"add " + qbHashA + " savepath=" + q.root + " stopAtMeta=true useDownloadPath=false limits=-1/-1/-1 upLimit= downloadPath=",
 		"rename " + qbHashA + " [Group] Frieren - 05 (1080p).mkv -> Frieren/Season 01/Frieren - S01E05.mkv.part",
 		"start " + qbHashA,
 	}
@@ -366,7 +366,7 @@ func TestQBitStatusSlug(t *testing.T) {
 		"downloading": StatusDownloading, "stalledDL": StatusDownloading, "forcedDL": StatusDownloading,
 		"queuedDL": StatusQueued, "uploading": "seeding", "stalledUP": "seeding", "queuedUP": "seeding",
 		"forcedUP": "seeding", "checkingDL": "verifying", "checkingUP": "verifying",
-		"checkingResumeData": "verifying", "moving": "verifying", "stoppedDL": StatusStopped,
+		"checkingResumeData": "verifying", "moving": StatusMoving, "stoppedDL": StatusStopped,
 		"stoppedUP": StatusStopped, "pausedDL": StatusStopped, "error": StatusStopped,
 		"missingFiles": StatusStopped, "allocating": "allocating", "somethingNew": "unknown",
 	}
@@ -499,8 +499,21 @@ func TestQBit_RedownloadRechecksAndStarts(t *testing.T) {
 	if !hasSize(filepath.Join(q.root, "Show", "Pack", "02.mkv"), 3) {
 		t.Fatal("the redownloaded file did not get its final name")
 	}
-	if err := b.RedownloadPlacement(qbHashA, "/fast/incomplete"); !errors.Is(err, errQBitStaging) {
-		t.Fatalf("redownload into an incomplete folder = %v, want errQBitStaging", err)
+	// With incomplete_path set it still redownloads in place, and qBittorrent's download path is
+	// cleared first: set while the recheck makes the torrent incomplete, it would move the whole
+	// pack out of the library (decisions/145).
+	if err := os.Remove(filepath.Join(q.root, "Show", "Pack", "01.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	before = len(q.fake.callLog())
+	if err := b.RedownloadPlacement(qbHashA, "/fast/incomplete"); err != nil {
+		t.Fatalf("redownload with an incomplete folder set: %v", err)
+	}
+	if got := q.fake.callLog()[before:]; !reflect.DeepEqual(got, []string{"setDownloadPath " + qbHashA + " "}) {
+		t.Fatalf("redownload calls = %v, want the download path cleared", got)
+	}
+	if p, _ := b.Placement(qbHashA); p.IncompleteRoot != "" || p.Completed {
+		t.Fatalf("placement after the redownload = %+v, want reopened in place", p)
 	}
 }
 
@@ -541,11 +554,12 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 	library := t.TempDir()
 	settings := QBitSettings{URL: fake.server.URL, Username: "admin", Password: "secret"}
 
-	res, err := TestQBittorrent(settings, library)
+	res, err := TestQBittorrent(settings, library, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.WebAPIVersion != "2.11.3" || res.AppVersion != "v5.1.0" || !res.LibraryChecked || !res.LibraryVisible || res.Problem != "" {
+	if res.WebAPIVersion != "2.11.3" || res.AppVersion != "v5.1.0" || !res.LibraryChecked || !res.LibraryVisible || res.Problem != "" ||
+		res.SignIn != "password" || res.DiskIOType == nil || *res.DiskIOType != qbitDiskIODefault {
 		t.Fatalf("same folder on both sides: %+v", res)
 	}
 	if entries, _ := os.ReadDir(library); len(entries) != 0 {
@@ -556,9 +570,21 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 		t.Fatalf("queue = %v / %v, want qBittorrent's 3 at a time", res.QueueingEnabled, res.MaxActiveDownloads)
 	}
 
+	// The incomplete folder is probed too, once the library is seen.
+	incomplete := t.TempDir()
+	res, err = TestQBittorrent(settings, library, incomplete)
+	if err != nil || !res.IncompleteChecked || !res.IncompleteVisible || res.IncompletePath != incomplete || res.Problem != "" {
+		t.Fatalf("incomplete folder on both sides: %+v, %v", res, err)
+	}
+	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: library}, {App: incomplete, QBittorrent: t.TempDir()}}
+	res, _ = TestQBittorrent(settings, library, incomplete)
+	if !res.LibraryVisible || res.IncompleteVisible || !strings.Contains(res.Problem, "incomplete folder") {
+		t.Fatalf("incomplete folder mapped elsewhere: %+v, want its problem reported", res)
+	}
+
 	// qBittorrent pointed at another folder through the path map.
 	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: t.TempDir()}}
-	res, err = TestQBittorrent(settings, library)
+	res, err = TestQBittorrent(settings, library, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +593,7 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 	}
 
 	settings.Password = "wrong"
-	if _, err := TestQBittorrent(settings, library); err == nil {
+	if _, err := TestQBittorrent(settings, library, ""); err == nil {
 		t.Fatal("a wrong password passed the test")
 	}
 }
@@ -724,8 +750,8 @@ func TestQBit_AddGivesNoShareLimitAndTheUploadFloorOnlyWithDisableSeeding(t *tes
 	}
 	log := strings.Join(q.fake.callLog(), "\n")
 	for _, want := range []string{
-		"add " + qbHashA + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit=\n",
-		"add " + qbHashB + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit=16384",
+		"add " + qbHashA + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit= downloadPath=\n",
+		"add " + qbHashB + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit=16384 downloadPath=",
 	} {
 		if !strings.Contains(log+"\n", want) {
 			t.Errorf("calls =\n%s\nwant a line %q", log, want)
@@ -880,7 +906,8 @@ func TestQBit_ManagedQueueFollowsMaxConcurrentDownloads(t *testing.T) {
 	if _, err := b.Ensure(q.savePath); err != nil {
 		t.Fatal(err)
 	}
-	want := qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 2, MaxActiveUploads: -1, MaxActiveTorrents: -1}
+	want := qbitManagedPrefs{qbitQueuePrefs: qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 2, MaxActiveUploads: -1, MaxActiveTorrents: -1},
+		IncompleteFilesExt: false, DiskIOType: qbitDiskIOSimplePread}
 	if q.fake.prefs != want {
 		t.Fatalf("after connecting: prefs %+v (calls %v), want %+v", q.fake.prefs, q.callsSince(n), want)
 	}
@@ -897,8 +924,12 @@ func TestQBit_ManagedQueueFollowsMaxConcurrentDownloads(t *testing.T) {
 	q.fake.mu.Lock()
 	q.fake.prefs.MaxActiveDownloads = 7
 	q.fake.mu.Unlock()
+	n = len(q.fake.callLog())
 	if _, err := b.Ensure(q.savePath); err != nil {
 		t.Fatal(err)
+	}
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{`setPreferences {"max_active_downloads":2}`}) {
+		t.Fatalf("calls after the queue changed in qBittorrent = %v, want only that key sent", got)
 	}
 	if q.fake.prefs.MaxActiveDownloads != 2 {
 		t.Fatalf("a queue changed in qBittorrent stayed at %d after the next pass, want 2", q.fake.prefs.MaxActiveDownloads)
@@ -932,5 +963,184 @@ func TestQBit_UnmanagedQueueIsLeftAlone(t *testing.T) {
 	}
 	if q.fake.prefs.MaxActiveDownloads != 3 {
 		t.Fatalf("qBittorrent's own queue changed to %d", q.fake.prefs.MaxActiveDownloads)
+	}
+}
+
+// stagedPlacement registers a single-episode placement that stages in a fresh incomplete folder.
+func (q *qbTest) stagedPlacement(t *testing.T, hash string) string {
+	t.Helper()
+	staging := t.TempDir()
+	if err := q.backend.SetPlacement(PlacementRequest{Hash: hash, SeriesDir: "Frieren", Kind: PlacementEpisode, Season: 1,
+		RenameVideo: "Frieren - S01E05", PartFiles: true, IncompleteRoot: staging}); err != nil {
+		t.Fatal(err)
+	}
+	return staging
+}
+
+// incomplete_path with qBittorrent: the torrent downloads in its staging folder as qBittorrent's
+// download path, under its final name (no .part: staging is out of Jellyfin's sight), and
+// qBittorrent moves it into the library at the end. Finishing waits for the move and then drops the
+// download path (decisions/141, decisions/145).
+func TestQBit_StagedTorrentDownloadsInTheIncompleteFolderAndMovesIn(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	staging := q.stagedPlacement(t, qbHashA)
+	var completed []string
+	b.SetCallbacks(func(hash string) { completed = append(completed, hash) }, nil)
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	stagingDir := filepath.Join(staging, qbHashA)
+	want := "add " + qbHashA + " savepath=" + q.root + " stopAtMeta=true useDownloadPath=true limits=-1/-1/-1 upLimit= downloadPath=" + stagingDir
+	if !fakeContains(q.fake.callLog(), want) {
+		t.Fatalf("calls = %v, want %q", q.fake.callLog(), want)
+	}
+	q.fake.deliverMetadata(qbHashA, qbitFile{Index: 0, Name: "[Group] Frieren - 05.mkv", Size: 8})
+	b.poll()
+	if !fakeContains(q.fake.callLog(), "rename "+qbHashA+" [Group] Frieren - 05.mkv -> Frieren/Season 01/Frieren - S01E05.mkv") {
+		t.Fatalf("calls = %v, want the final name without .part", q.fake.callLog())
+	}
+	if info, _ := b.Get(qbHashA); !info.Staged {
+		t.Fatal("a downloading staged torrent is not marked Staged")
+	}
+
+	final := filepath.Join(q.root, "Frieren", "Season 01", "Frieren - S01E05.mkv")
+	q.fake.finish(qbHashA)
+	if !hasSize(filepath.Join(stagingDir, "Frieren", "Season 01", "Frieren - S01E05.mkv"), 8) {
+		t.Fatal("the file was not downloaded in the incomplete folder")
+	}
+	b.poll()
+	info, _ := b.Get(qbHashA)
+	if info.Status != StatusMoving || info.MoveProgress != 0 || len(completed) != 0 {
+		t.Fatalf("while qBittorrent moves it: status %q, progress %v, completions %v", info.Status, info.MoveProgress, completed)
+	}
+	if err := os.MkdirAll(filepath.Dir(final), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(final, make([]byte, 2), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := b.Get(qbHashA); info.MoveProgress != 0.25 {
+		t.Fatalf("2 of 8 bytes at the final path: MoveProgress %v, want 0.25", info.MoveProgress)
+	}
+	if err := b.FinalizePlacement(qbHashA); err == nil {
+		t.Fatal("FinalizePlacement accepted a torrent qBittorrent is still moving")
+	}
+	// Reported finished before the move starts: the files are not in the library yet.
+	q.fake.setState(qbHashA, "stalledUP")
+	b.poll()
+	b.moveWait = 50 * time.Millisecond
+	if err := b.FinalizePlacement(qbHashA); err == nil {
+		t.Fatal("FinalizePlacement accepted a finished torrent whose files are still in the incomplete folder")
+	}
+	if p, _ := b.Placement(qbHashA); p.Completed {
+		t.Fatal("the placement was marked completed before the move")
+	}
+	q.fake.setState(qbHashA, "moving")
+	b.poll()
+
+	q.fake.moveIn(qbHashA)
+	b.poll()
+	if !reflect.DeepEqual(completed, []string{qbHashA}) {
+		t.Fatalf("completions after the move = %v, want one", completed)
+	}
+	n := len(q.fake.callLog())
+	if err := b.FinalizePlacement(qbHashA); err != nil {
+		t.Fatalf("FinalizePlacement after the move: %v", err)
+	}
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"setDownloadPath " + qbHashA + " "}) {
+		t.Fatalf("finalize calls = %v, want the download path cleared", got)
+	}
+	p, _ := b.Placement(qbHashA)
+	if !p.Completed || !hasSize(final, 8) {
+		t.Fatalf("after finalize: completed %v, final file whole %v", p.Completed, hasSize(final, 8))
+	}
+	if info, _ := b.Get(qbHashA); info.Staged {
+		t.Fatal("a finalized torrent is still marked Staged")
+	}
+}
+
+// A moved incomplete folder (the user moved it and changed incomplete_path) is followed: the
+// placement and qBittorrent's download path point at the new folder, and a recheck finds the data.
+func TestQBit_MovedIncompleteFolderIsFollowed(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	q.stagedPlacement(t, qbHashA)
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	moved := t.TempDir()
+	n := len(q.fake.callLog())
+	if err := b.MovePlacementStaging(qbHashA, moved); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"setDownloadPath " + qbHashA + " " + filepath.Join(moved, qbHashA), "recheck " + qbHashA}
+	if got := q.callsSince(n); !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	if p, _ := b.Placement(qbHashA); p.IncompleteRoot != moved {
+		t.Fatalf("placement root = %q, want %q", p.IncompleteRoot, moved)
+	}
+}
+
+// A staged torrent never runs while its incomplete folder is gone (a drive unmounted): qBittorrent
+// would create the folder on the system disk (measured). A running one is stopped, one whose
+// metadata arrives then is renamed but not started, one qBittorrent fails reports
+// ErrIncompleteFolderUnavailable (the daemon waits instead of dropping it), and one the user had
+// stopped stays stopped. Once the folder is back, the others are rechecked and started
+// (decisions/141, decisions/145).
+func TestQBit_StagedTorrentWaitsForItsFolderAndRestarts(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	staging := q.stagedPlacement(t, qbHashA)
+	for _, h := range []string{qbHashB, qbHashC} {
+		if err := b.SetPlacement(PlacementRequest{Hash: h, SeriesDir: "Show " + h[:1], Kind: PlacementEpisode, Season: 1,
+			IncompleteRoot: staging}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var failures []error
+	b.SetCallbacks(nil, func(hash string, err error) { failures = append(failures, err) })
+	for _, h := range []string{qbHashA, qbHashB, qbHashC} {
+		if _, err := b.Add(qbMagnet(h)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q.fake.deliverMetadata(qbHashA, qbitFile{Index: 0, Name: "a.mkv", Size: 4})
+	q.fake.deliverMetadata(qbHashC, qbitFile{Index: 0, Name: "c.mkv", Size: 4})
+	b.poll() // A and C renamed and started; B still waits for its metadata
+	if err := b.Pause(qbHashC); err != nil {
+		t.Fatal(err)
+	}
+
+	hidden := staging + ".unmounted"
+	if err := os.Rename(staging, hidden); err != nil {
+		t.Fatal(err)
+	}
+	n := len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"stop " + qbHashA}) {
+		t.Fatalf("calls with the folder gone = %v, want the running download stopped", got)
+	}
+	q.fake.deliverMetadata(qbHashB, qbitFile{Index: 0, Name: "b.mkv", Size: 4})
+	n = len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); len(got) != 1 || !strings.HasPrefix(got[0], "rename "+qbHashB) {
+		t.Fatalf("metadata arriving with the folder gone: calls %v, want the rename and no start", got)
+	}
+	q.fake.setState(qbHashA, "error")
+	b.poll()
+	if len(failures) != 1 || !errors.Is(failures[0], ErrIncompleteFolderUnavailable) {
+		t.Fatalf("failures = %v, want ErrIncompleteFolderUnavailable", failures)
+	}
+
+	if err := os.Rename(hidden, staging); err != nil {
+		t.Fatal(err)
+	}
+	n = len(q.fake.callLog())
+	b.poll()
+	want := []string{"recheck " + qbHashA, "start " + qbHashA, "recheck " + qbHashB, "start " + qbHashB}
+	if got := q.callsSince(n); !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls once the folder is back = %v, want %v (C, paused by the user, stays stopped)", got, want)
 	}
 }

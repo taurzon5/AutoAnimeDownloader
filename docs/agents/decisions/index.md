@@ -156,3 +156,4 @@ do not edit by hand.
 - [**#142** — qBittorrent stops each placed torrent at its metadata and the app renames the files before starting it](142-qbittorrent-stops-each-placed-torrent-at-its.md)
 - [**#143** — The qBittorrent password and API key come back from GET /config as a placeholder, and a PUT that sends the placeholder keeps them](143-the-qbittorrent-password-and-api-key-come-back.md)
 - [**#144** — With qBittorrent the app's torrents never have a share limit, disable_seeding is an upload limit of a few KiB/s, and the queue is set only when the app manages qBittorrent](144-with-qbittorrent-the-apps-torrents-never-have-a.md)
+- [**#145** — With qBittorrent a staged torrent downloads into its incomplete folder as qBittorrent's download path, qBittorrent moves it into the library, and the app then clears the path](145-with-qbittorrent-a-staged-torrent-downloads-into.md)

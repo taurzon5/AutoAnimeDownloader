@@ -17,6 +17,7 @@ import (
 // files.SecretPlaceholder (what GET /config shows) uses the saved one.
 type torrentClientTestRequest struct {
 	CompletedAnimePath  string              `json:"completed_anime_path"`
+	IncompletePath      string              `json:"incomplete_path"`
 	QBittorrentURL      string              `json:"qbittorrent_url"`
 	QBittorrentUsername string              `json:"qbittorrent_username"`
 	QBittorrentPassword string              `json:"qbittorrent_password"`
@@ -46,6 +47,7 @@ func handleTorrentClientTest(server *Server) http.HandlerFunc {
 		}
 		if req.QBittorrentURL != "" {
 			config.CompletedAnimePath = req.CompletedAnimePath
+			config.IncompletePath = req.IncompletePath
 			config.QBittorrentURL = req.QBittorrentURL
 			config.QBittorrentUsername = req.QBittorrentUsername
 			config.QBittorrentPassword = req.QBittorrentPassword
@@ -65,7 +67,7 @@ func handleTorrentClientTest(server *Server) http.HandlerFunc {
 			return
 		}
 
-		result, err := torrents.TestQBittorrent(daemon.QBitSettingsFrom(&config), config.CompletedAnimePath)
+		result, err := torrents.TestQBittorrent(daemon.QBitSettingsFrom(&config), config.CompletedAnimePath, config.StagingPath())
 		if err != nil {
 			logger.Logger.Info().Err(err).Msg("qBittorrent connection test failed")
 			JSONError(w, http.StatusBadGateway, "TORRENT_CLIENT_UNREACHABLE", err.Error())

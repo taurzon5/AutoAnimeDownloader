@@ -92,3 +92,11 @@ on one drive a crash mid-way leaves a placement whose staged file is gone); copy
 is missing; giving a library file its final name before the copy is synced; dropping or
 re-adding a torrent stopped with `ErrIncompleteFolderUnavailable`; checking only the library
 volume when staging is on another drive.
+
+**Amendment (see [#145](145-with-qbittorrent-a-staged-torrent-downloads-into.md)):** with `torrent_client: "qbittorrent"` the copy-while-seeding above is
+rain's only. qBittorrent downloads a staged torrent into the same `<incomplete_path>/<hash>/` as its
+per-torrent download path and moves it into the library itself when it finishes, not seeding
+during the move. `FinalizePlacement` waits for that and clears the download path, a redownload
+writes into the library directly, and "never `.part` in staging" holds. "Never create the
+folder" holds only because the app keeps staged torrents stopped while their folder is missing:
+qBittorrent itself creates a missing download folder when it can write the parent (measured).

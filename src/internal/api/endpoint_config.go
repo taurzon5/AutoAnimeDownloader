@@ -239,9 +239,6 @@ func validateTorrentClient(c *files.Config) string {
 	if !c.IsDirectMode() {
 		return `qBittorrent writes straight into the library: set library_mode to "direct"`
 	}
-	if c.IncompletePath != "" {
-		return "The incomplete download folder isn't supported with qBittorrent yet: clear incomplete_path"
-	}
 	// 0 would be unlimited in qBittorrent (decisions/144). Only while disable_seeding is on, the
 	// one time the value is used and the settings page shows it.
 	if c.DisableSeeding && c.QBittorrentDisableSeedingUploadKiB < 1 {
@@ -253,6 +250,10 @@ func validateTorrentClient(c *files.Config) string {
 	}
 	if len(c.QBittorrentPathMap) > 0 && !underAnyMapping(c.CompletedAnimePath, c.QBittorrentPathMap) {
 		return "The library folder is not under any app folder of the qBittorrent path map"
+	}
+	// qBittorrent downloads staged torrents there itself (decisions/145).
+	if staging := c.StagingPath(); staging != "" && len(c.QBittorrentPathMap) > 0 && !underAnyMapping(staging, c.QBittorrentPathMap) {
+		return "The incomplete download folder is not under any app folder of the qBittorrent path map"
 	}
 	return ""
 }

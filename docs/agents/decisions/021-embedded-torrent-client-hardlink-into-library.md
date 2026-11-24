@@ -23,7 +23,10 @@ above still holds for every torrent added in hardlink mode, whatever the mode is
 **Amendment (see [#142](142-qbittorrent-stops-each-placed-torrent-at-its.md), [#143](143-the-qbittorrent-password-and-api-key-come-back.md)):** qBittorrent is back as an
 option, `torrent_client: "qbittorrent"`, behind the same `TorrentBackend` (`QBitBackend`), in direct
 mode only: it writes the library in place, so the hardlink model above doesn't apply to it. The
-embedded client stays the default, and `qbittorrent_url` returned with it. The user has since
+embedded client stays the default, and `qbittorrent_url` returned with it. So did a
+`QBITTORRENT_URL` variable, but only for `docker/entrypoint.sh`, which writes it into the first
+`config.json` (the compose file's `qbittorrent` profile). The old runtime override of the URL did
+not come back. The user has since
 decided to drop rain for qBittorrent
 ([megapack spec](../../superpowers/specs/2026-11-23-megapack-downloads-design.md)); when that
 lands, this entry is reversed, not amended again.

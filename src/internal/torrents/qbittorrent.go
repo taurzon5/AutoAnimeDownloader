@@ -28,12 +28,17 @@ import (
 // torrent is added at the library root, stopped as soon as its file list is known
 // (stopCondition=MetadataReceived), its files renamed to their planned paths (with ".part" while
 // downloading when the placement asks for part files), and only then started — so qBittorrent never
-// writes a byte under the torrent's own names (decisions/142).
+// writes a byte under the torrent's own names (decisions/142). A placement that stages
+// (incomplete_path) downloads into its staging folder as qBittorrent's per-torrent download path,
+// and qBittorrent moves it into the library when it finishes (decisions/145).
 type QBitBackend struct {
 	settings     func() (QBitSettings, error)
 	idPath       string
 	placements   *placementStore
 	pollInterval time.Duration
+	// moveWait is how long FinalizePlacement waits for qBittorrent to put a finished torrent's files
+	// at their final paths (renames, or a staged torrent's move) before organize retries.
+	moveWait time.Duration
 
 	mu          sync.Mutex
 	client      *qbitClient
@@ -66,9 +71,12 @@ type QBitBackend struct {
 	reopened map[string]time.Time
 	// maxActive is max_concurrent_downloads (SetMaxActiveDownloads), applied to qBittorrent's queue
 	// only when the app manages its settings; queueDirty asks the next poll to apply a change.
+	// diskIOTried: the disk I/O type was sent on this connection, so a qBittorrent that doesn't take
+	// it is not sent it again on every pass.
 	maxActive      int
 	maxActiveKnown bool
 	queueDirty     bool
+	diskIOTried    bool
 	// uploadDisabled is disable_seeding (SetUploadDisabled). floorsUsed holds every upload floor the
 	// backend set in this run, so turning disable_seeding off also lifts a floor whose value changed
 	// since. shareSent and uploadSent hold the limit last sent to a torrent and when, so a limit
@@ -77,9 +85,12 @@ type QBitBackend struct {
 	floorsUsed     map[int64]bool
 	shareSent      map[string]qbitSent
 	uploadSent     map[string]qbitSent
-	pollFailing    bool
-	stopLoop       chan struct{}
-	loopDone       chan struct{}
+	// stagingGone holds the staged torrents the backend stopped, held back or saw fail while their
+	// incomplete folder was missing: the poll restarts them once it is back (guardStaging).
+	stagingGone map[string]bool
+	pollFailing bool
+	stopLoop    chan struct{}
+	loopDone    chan struct{}
 }
 
 // QBitSettings is what the backend needs from config.json.
@@ -149,6 +160,7 @@ func NewQBitBackend(dataDir string, settings func() (QBitSettings, error)) *QBit
 		idPath:        filepath.Join(dataDir, rootIDFileName),
 		placements:    newPlacementStore(filepath.Join(dataDir, placementsFileName)),
 		pollInterval:  2 * time.Second,
+		moveWait:      30 * time.Second,
 		raw:           map[string]map[string]json.RawMessage{},
 		decoded:       map[string]qbitTorrent{},
 		complete:      map[string]bool{},
@@ -161,6 +173,7 @@ func NewQBitBackend(dataDir string, settings func() (QBitSettings, error)) *QBit
 		shareSent:     map[string]qbitSent{},
 		uploadSent:    map[string]qbitSent{},
 		floorsUsed:    map[int64]bool{},
+		stagingGone:   map[string]bool{},
 	}
 }
 
@@ -201,7 +214,7 @@ func (b *QBitBackend) Ensure(savePath string) (bool, error) {
 		// reported on the next pass, not on the next reconnect (decisions/034).
 		b.checkSwap(savePath)
 		// Every pass too: a queue changed by hand in qBittorrent goes back to the app's.
-		b.syncQueue(ctx, client, settings)
+		b.syncManagedSettings(ctx, client, settings)
 		return false, nil
 	}
 
@@ -241,6 +254,7 @@ func (b *QBitBackend) Ensure(savePath string) (bool, error) {
 	b.raw = map[string]map[string]json.RawMessage{}
 	b.decoded = map[string]qbitTorrent{}
 	b.rid = 0
+	b.diskIOTried = false
 	b.mergeLocked(data)
 	// Everything already there is known from now on: a change fires, the present state doesn't.
 	for hash, t := range b.ownTorrentsLocked() {
@@ -260,36 +274,53 @@ func (b *QBitBackend) Ensure(savePath string) (bool, error) {
 	writeRootMarkers(b.idPath, savePath, id)
 	logger.Logger.Info().Str("webapi", version).Str("category", settings.Category).
 		Msg("Connected to qBittorrent")
-	b.syncQueue(ctx, client, settings)
+	b.syncManagedSettings(ctx, client, settings)
 	return true, nil
 }
 
-// syncQueue sets qBittorrent's download queue to max_concurrent_downloads when the app manages its
-// settings: queueing on, that many downloads at once (0 = no limit), and no cap on seeding or on
-// active torrents, which would hold downloads back too. It reads the preferences first and writes
-// only when they differ. A failure is logged, not returned: downloads still run on qBittorrent's
-// own queue.
-func (b *QBitBackend) syncQueue(ctx context.Context, client *qbitClient, settings QBitSettings) {
+// syncManagedSettings sets the global qBittorrent settings the app relies on, when it manages them
+// (decisions/144):
+//   - the download queue from max_concurrent_downloads: queueing on, that many downloads at once
+//     (0 = no limit), and no cap on seeding or on active torrents, which would hold downloads back;
+//   - no ".!qB" extension: the app names incomplete files itself (incomplete_files);
+//   - Simple pread/pwrite disk I/O in place of Default or memory-mapped, once per connection
+//     (it takes effect when qBittorrent restarts).
+//
+// It reads the preferences first and writes only the keys that differ. A failure is logged, not
+// returned: downloads still run on qBittorrent's own settings.
+func (b *QBitBackend) syncManagedSettings(ctx context.Context, client *qbitClient, settings QBitSettings) {
 	b.mu.Lock()
-	limit, known := b.maxActive, b.maxActiveKnown
+	limit, known, diskIOTried := b.maxActive, b.maxActiveKnown, b.diskIOTried
 	b.queueDirty = false
 	b.mu.Unlock()
-	if !settings.ManageSettings || !known {
+	if !settings.ManageSettings {
 		return
 	}
-	want := qbitWantedQueue(limit)
-	have, err := client.queuePrefs(ctx)
-	if err == nil && have == want {
-		return
-	}
-	if err == nil {
-		err = client.setQueuePrefs(ctx, want)
-	}
+	have, err := client.managedPrefs(ctx)
 	if err != nil {
-		logger.Logger.Warn().Err(err).Msg("Failed to set qBittorrent's download queue; it keeps its own until the next pass")
+		logger.Logger.Warn().Err(err).Msg("Failed to read qBittorrent's settings; it keeps its own until the next pass")
 		return
 	}
-	logger.Logger.Info().Int("max_active_downloads", want.MaxActiveDownloads).Msg("Set qBittorrent's download queue")
+	want := have
+	if known {
+		want.qbitQueuePrefs = qbitWantedQueue(limit)
+	}
+	want.IncompleteFilesExt = false
+	if !diskIOTried && (have.DiskIOType == qbitDiskIODefault || have.DiskIOType == qbitDiskIOMMap) {
+		want.DiskIOType = qbitDiskIOSimplePread
+		b.mu.Lock()
+		b.diskIOTried = true
+		b.mu.Unlock()
+	}
+	changed, err := client.setPrefs(ctx, have, want)
+	if err != nil {
+		logger.Logger.Warn().Err(err).Msg("Failed to set qBittorrent's settings; it keeps its own until the next pass")
+		return
+	}
+	if changed {
+		logger.Logger.Info().Int("max_active_downloads", want.MaxActiveDownloads).
+			Msg("Set qBittorrent's download queue, incomplete-file extension and disk I/O type")
+	}
 }
 
 // qbitWantedQueue is the queue the app gives a qBittorrent it manages.
@@ -424,13 +455,70 @@ func (b *QBitBackend) poll() {
 		}
 	}
 	b.enforceLimits(ctx, client)
+	b.guardStaging(ctx, client)
 	b.mu.Lock()
 	dirty, settings := b.queueDirty, b.current
 	b.mu.Unlock()
 	if dirty {
-		b.syncQueue(ctx, client, settings)
+		b.syncManagedSettings(ctx, client, settings)
 	}
 	b.applyPlacements(ctx)
+}
+
+// guardStaging keeps staged torrents off a missing incomplete folder (an unmounted drive). Measured
+// on 5.3.0: qBittorrent creates a missing download folder when its user can write the parent, so a
+// running torrent would recreate <incomplete_path> on the system disk; rain refuses to (decisions/141).
+// The poll stops a running staged torrent whose folder is gone, and once the folder is back it
+// rechecks and starts the ones it stopped, held back (applyPlacement) or saw fail — with rain the
+// download queue restarts those on every pass, and nothing does for qBittorrent. A torrent the user
+// had stopped stays stopped (decisions/145).
+func (b *QBitBackend) guardStaging(ctx context.Context, client *qbitClient) {
+	b.mu.Lock()
+	var stop, back []string
+	for hash, t := range b.ownTorrentsLocked() {
+		p, ok := b.placements.get(hash)
+		if !ok || p.IncompleteRoot == "" || p.Completed {
+			delete(b.stagingGone, hash)
+			continue
+		}
+		if !isDir(p.IncompleteRoot) {
+			switch {
+			case qbitIsFailed(t):
+				b.stagingGone[hash] = true
+			case !qbitIsStopped(t.State) && t.metadataKnown() && !b.stagingGone[hash]:
+				// Still fetching its metadata it writes nothing, and it stops there by itself
+				// (stopCondition): its renames can happen while the folder is away.
+				b.stagingGone[hash] = true
+				stop = append(stop, hash)
+			}
+			continue
+		}
+		if b.stagingGone[hash] {
+			delete(b.stagingGone, hash)
+			back = append(back, hash)
+		}
+	}
+	b.mu.Unlock()
+	sort.Strings(stop)
+	if len(stop) > 0 {
+		if err := client.stop(ctx, stop...); err != nil {
+			logger.Logger.Warn().Err(err).Int("count", len(stop)).Msg("Failed to stop qBittorrent downloads whose incomplete folder is gone")
+		} else {
+			logger.Logger.Warn().Int("count", len(stop)).Msg("The incomplete downloads folder is gone; stopped the downloads in it until it is back")
+		}
+	}
+	sort.Strings(back)
+	for _, hash := range back {
+		err := client.recheck(ctx, hash)
+		if err == nil {
+			err = client.start(ctx, hash)
+		}
+		if err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Failed to restart a qBittorrent download whose incomplete folder is back")
+			continue
+		}
+		logger.Logger.Info().Str("hash", hash).Msg("The incomplete downloads folder is back; restarted the torrent")
+	}
 }
 
 // enforceLimits keeps the app's torrents on the app's limits, whoever changed them: no share limit
@@ -527,6 +615,7 @@ func (b *QBitBackend) forgetLocked(hash string) {
 	delete(b.reopened, hash)
 	delete(b.shareSent, hash)
 	delete(b.uploadSent, hash)
+	delete(b.stagingGone, hash)
 }
 
 // decodeLocked refreshes decoded[hash] from raw[hash]. An entry that doesn't decode is left out.
@@ -611,6 +700,14 @@ func qbitIsFailed(t qbitTorrent) bool {
 	return t.State == "error" || t.State == "missingFiles"
 }
 
+func qbitIsStopped(state string) bool {
+	switch state {
+	case "stoppedDL", "pausedDL", "stoppedUP", "pausedUP":
+		return true
+	}
+	return false
+}
+
 func qbitIsChecking(state string) bool {
 	switch state {
 	case "checkingDL", "checkingUP", "checkingResumeData", "moving":
@@ -623,6 +720,13 @@ func qbitIsChecking(state string) bool {
 // deleted outside the app: the same ErrPlacedFileMissing rain reports, so the daemon flags the row
 // instead of downloading them again (decisions/139).
 func (b *QBitBackend) stopError(t qbitTorrent) error {
+	if qbitIsFailed(t) {
+		// The incomplete folder is gone (its drive unmounted): the daemon waits instead of dropping
+		// the torrent, and the poll restarts it once the folder is back (decisions/141).
+		if p, ok := b.placements.get(t.Hash); ok && p.IncompleteRoot != "" && !p.Completed && !isDir(p.IncompleteRoot) {
+			return fmt.Errorf("%w: %s", ErrIncompleteFolderUnavailable, p.IncompleteRoot)
+		}
+	}
 	switch t.State {
 	case "missingFiles":
 		if p, ok := b.placements.get(t.Hash); ok && p.Completed {
@@ -650,8 +754,12 @@ func qbitStatusSlug(state string) string {
 		return StatusQueued
 	case "uploading", "stalledUP", "forcedUP", "queuedUP":
 		return "seeding"
-	case "checkingDL", "checkingUP", "checkingResumeData", "moving":
+	case "checkingDL", "checkingUP", "checkingResumeData":
 		return "verifying"
+	case "moving":
+		// The app only gives qBittorrent a download path for staging, so a move is a finished
+		// staged torrent going into the library.
+		return StatusMoving
 	case "allocating":
 		return "allocating"
 	case "stoppedDL", "pausedDL", "stoppedUP", "pausedUP", "error", "missingFiles":
@@ -689,35 +797,77 @@ func (b *QBitBackend) toInfoLocked(t qbitTorrent) TorrentInfo {
 	if t.State == "queuedDL" && t.Priority > 0 {
 		info.QueuePosition = t.Priority
 	}
+	if p, ok := b.placements.get(t.Hash); ok && p.IncompleteRoot != "" && !p.Completed {
+		info.Staged = true
+	}
 	return info
+}
+
+// withMoveProgress fills MoveProgress for the torrents qBittorrent is moving into the library,
+// which it doesn't report: the bytes already at the final paths, out of each file's larger copy
+// (a file being copied is partly at its final path and still whole in staging). It stats the disk,
+// so it runs without b.mu.
+func (b *QBitBackend) withMoveProgress(infos []TorrentInfo, root string) {
+	for i := range infos {
+		if infos[i].Status != StatusMoving {
+			continue
+		}
+		p, ok := b.placements.get(infos[i].Hash)
+		if !ok || p.IncompleteRoot == "" || len(p.Files) == 0 {
+			continue
+		}
+		p = p.Resolve(root)
+		var moved, total int64
+		for _, f := range p.Files {
+			final, staging := fileSize(f.Path), fileSize(p.StagingPath(f))
+			moved += final
+			total += max(final, staging)
+		}
+		if total > 0 {
+			infos[i].MoveProgress = float64(moved) / float64(total)
+		}
+	}
+}
+
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return 0
+	}
+	return info.Size()
 }
 
 func (b *QBitBackend) List() []TorrentInfo {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	own := b.ownTorrentsLocked()
 	out := make([]TorrentInfo, 0, len(own))
 	for _, t := range own {
 		out = append(out, b.toInfoLocked(t))
 	}
+	root := b.libraryRoot
+	b.mu.Unlock()
 	sort.Slice(out, func(i, j int) bool {
 		if !out[i].AddedAt.Equal(out[j].AddedAt) {
 			return out[i].AddedAt.Before(out[j].AddedAt)
 		}
 		return out[i].Hash < out[j].Hash
 	})
+	b.withMoveProgress(out, root)
 	return out
 }
 
 func (b *QBitBackend) Get(hash string) (TorrentInfo, bool) {
 	hash = strings.ToLower(hash)
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	t, ok := b.decoded[hash]
 	if !ok || t.Category != b.current.Category {
+		b.mu.Unlock()
 		return TorrentInfo{}, false
 	}
-	return b.toInfoLocked(t), true
+	info, root := []TorrentInfo{b.toInfoLocked(t)}, b.libraryRoot
+	b.mu.Unlock()
+	b.withMoveProgress(info, root)
+	return info[0], true
 }
 
 // connection returns the client and the paths, or ErrSessionNotReady before the first Ensure.
@@ -765,7 +915,10 @@ func (b *QBitBackend) Add(magnet string) (string, error) {
 	}
 
 	req := qbitAddRequest{Magnet: magnet, Category: settings.Category}
-	_, placed := b.placements.get(hash)
+	placement, placed := b.placements.get(hash)
+	if placed && placement.IncompleteRoot != "" && !placement.Completed {
+		req.DownloadPath = qbitMapPath(placement.StagingDir(), settings.PathMap, true)
+	}
 	b.mu.Lock()
 	if b.uploadDisabled {
 		req.UploadLimit = settings.uploadFloor()
@@ -916,14 +1069,19 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 	}
 
 	onDisk := false
+	resolved := p.Resolve(root)
+	staged := p.IncompleteRoot != "" && !p.Completed
 	for _, f := range list {
 		if f.Index < 0 || f.Index >= len(p.Files) {
 			return fmt.Errorf("torrent %s reports a file index %d outside its placement", hash, f.Index)
 		}
 		want := filepath.ToSlash(p.Files[f.Index].Path)
-		if hasSize(filepath.Join(root, p.Files[f.Index].Path), f.Size) {
+		switch {
+		case hasSize(resolved.Files[f.Index].Path, f.Size) || (staged && hasSize(resolved.StagingPath(resolved.Files[f.Index]), f.Size)):
 			onDisk = true
-		} else if !p.Completed && p.PartFiles {
+		case !p.Completed && p.PartFiles && !staged:
+			// Staged files keep their final names: they are in the incomplete folder, out of
+			// Jellyfin's sight (decisions/141).
 			want += partSuffix
 		}
 		if f.Name == want {
@@ -941,6 +1099,12 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 	delete(b.recheckFirst, hash)
 	delete(b.retryApplyAt, hash)
 	b.applied[hash] = true
+	if (start || recheck) && staged && !isDir(p.IncompleteRoot) {
+		// Started now, qBittorrent would create the missing incomplete folder; guardStaging starts
+		// it once the folder is back.
+		b.stagingGone[hash] = true
+		start, recheck = false, false
+	}
 	b.mu.Unlock()
 
 	if recheck {
@@ -1012,11 +1176,24 @@ func (b *QBitBackend) Remove(hash string, keepData bool) error {
 	if !hadMetadata && p.Kept {
 		return nil
 	}
-	if err := RemovePlacedFiles(p.Resolve(root)); err != nil {
+	resolved := p.Resolve(root)
+	// qBittorrent's "Append .!qB extension to incomplete files" puts it after the app's own names
+	// (measured: "ep.mkv.part.!qB"). RemovePlacedFiles doesn't know it, and the folders it prunes
+	// would not be empty.
+	for _, f := range resolved.Files {
+		for _, name := range []string{f.Path, f.Path + partSuffix, resolved.StagingPath(f)} {
+			_ = os.Remove(name + qbitIncompleteExt)
+		}
+	}
+	if err := RemovePlacedFiles(resolved); err != nil {
 		return err
 	}
 	return b.placements.forget(hash)
 }
+
+// qbitIncompleteExt is the extension qBittorrent appends to incomplete files when its
+// incomplete_files_ext preference is on.
+const qbitIncompleteExt = ".!qB"
 
 // Pause stops the torrent. One still waiting for its files to be renamed stays stopped afterwards.
 func (b *QBitBackend) Pause(hash string) error {
@@ -1156,18 +1333,20 @@ func (b *QBitBackend) Placements() []Placement {
 	return out
 }
 
-// errQBitStaging is what the staging paths answer: the incomplete download folder maps onto
-// qBittorrent's own temp folder in a later step, and the config refuses it with qBittorrent until then.
-var errQBitStaging = errors.New("the incomplete download folder is not supported with qBittorrent yet")
-
 // RedownloadPlacement reopens a finished placement and makes qBittorrent check the files and download
 // what is missing: the missing ones become .part again (when the placement uses part files), the
-// whole ones keep their names.
-func (b *QBitBackend) RedownloadPlacement(hash, incompleteRoot string) error {
-	if incompleteRoot != "" {
-		return errQBitStaging
+// whole ones keep their names. Always in place, incomplete_path or not: qBittorrent keeps a
+// torrent's files in one place, and a download path set while it is incomplete would move every
+// file of it, the whole ones too, out of the library and back (measured on 5.3.0; decisions/145).
+func (b *QBitBackend) RedownloadPlacement(hash, _ string) error {
+	client, err := b.connectionHash(hash)
+	if err != nil {
+		return err
 	}
-	if _, err := b.connectionHash(hash); err != nil {
+	// Before the recheck makes it incomplete: a download path left from staging would take effect.
+	ctx, cancel := qbitContext()
+	defer cancel()
+	if err := client.setDownloadPath(ctx, hash, ""); err != nil {
 		return err
 	}
 	if err := b.placements.reopen(hash, ""); err != nil {
@@ -1193,8 +1372,24 @@ func (b *QBitBackend) connectionHash(hash string) (*qbitClient, error) {
 	return client, nil
 }
 
-func (b *QBitBackend) MovePlacementStaging(string, string) error {
-	return errQBitStaging
+// MovePlacementStaging follows an incomplete folder the user moved (decisions/141): the placement
+// and qBittorrent's download path point at the new folder, and a recheck finds the moved data.
+// Measured on 5.3.0: setting the path keeps files already there.
+func (b *QBitBackend) MovePlacementStaging(hash, root string) error {
+	client, settings, _, _, err := b.connection()
+	if err != nil {
+		return err
+	}
+	if err := b.placements.setIncompleteRoot(hash, root); err != nil {
+		return err
+	}
+	p, _ := b.placements.get(hash)
+	ctx, cancel := qbitContext()
+	defer cancel()
+	if err := client.setDownloadPath(ctx, hash, qbitMapPath(p.StagingDir(), settings.PathMap, true)); err != nil {
+		return err
+	}
+	return client.recheck(ctx, hash)
 }
 
 // FinalizePlacement gives a finished placed torrent's .part files their final names (through
@@ -1203,9 +1398,6 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 	p, ok := b.placements.get(hash)
 	if !ok || p.Completed {
 		return nil
-	}
-	if p.IncompleteRoot != "" {
-		return errQBitStaging
 	}
 	client, err := b.connectionHash(hash)
 	if err != nil {
@@ -1220,6 +1412,9 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 	b.mu.Unlock()
 	if !listed || !qbitIsComplete(t) || qbitIsChecking(t.State) || reopening {
 		return fmt.Errorf("torrent %s is not complete yet", hash)
+	}
+	if p.IncompleteRoot != "" {
+		return b.finalizeStaged(client, hash, p, root)
 	}
 
 	if p.PartFiles && len(p.Files) > 0 {
@@ -1246,7 +1441,7 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 		for _, f := range list {
 			sizes[f.Index] = f.Size
 		}
-		if !qbitWaitFor(30*time.Second, func() bool {
+		if !qbitWaitFor(b.moveWait, func() bool {
 			for i, pf := range p.Files {
 				if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
 					return false
@@ -1256,6 +1451,39 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 		}) {
 			return fmt.Errorf("torrent %s: qBittorrent has not renamed the files to their final names yet", hash)
 		}
+	}
+	p.Completed = true
+	return b.placements.update(p)
+}
+
+// finalizeStaged finishes a staged placement. qBittorrent moves a finished torrent from its download
+// path into the library itself, so this waits for every file at its final path, then drops the
+// torrent's download path: left set, any recheck that made the torrent incomplete again would move
+// all of its files out of the library and back (decisions/145). A move still running is an error,
+// and organize retries.
+func (b *QBitBackend) finalizeStaged(client *qbitClient, hash string, p Placement, root string) error {
+	ctx, cancel := qbitContext()
+	defer cancel()
+	list, err := client.files(ctx, hash)
+	if err != nil {
+		return err
+	}
+	sizes := map[int]int64{}
+	for _, f := range list {
+		sizes[f.Index] = f.Size
+	}
+	if !qbitWaitFor(b.moveWait, func() bool {
+		for i, pf := range p.Files {
+			if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
+				return false
+			}
+		}
+		return true
+	}) {
+		return fmt.Errorf("qBittorrent is still moving torrent %s into the library", hash)
+	}
+	if err := client.setDownloadPath(ctx, hash, ""); err != nil {
+		return fmt.Errorf("failed to clear the download path of torrent %s: %w", hash, err)
 	}
 	p.Completed = true
 	return b.placements.update(p)
@@ -1350,23 +1578,35 @@ func qbitMapPath(path string, maps []QBitPathMapping, toQBit bool) string {
 type QBitTestResult struct {
 	AppVersion    string `json:"app_version"`
 	WebAPIVersion string `json:"webapi_version"`
+	// SignIn is how the app signed in: "api_key" (sent as a Bearer token, used when set) or
+	// "password" (the WebUI login).
+	SignIn string `json:"sign_in"`
 	// LibraryChecked and LibraryVisible: whether qBittorrent sees the library the app writes, proved
 	// with a probe file the app writes there. Not checked without a library path.
 	LibraryChecked bool   `json:"library_checked"`
 	LibraryVisible bool   `json:"library_visible"`
 	LibraryPath    string `json:"library_path,omitempty"` // the library as qBittorrent sees it
-	Problem        string `json:"problem,omitempty"`
+	// IncompleteChecked, IncompleteVisible and IncompletePath: the same for incomplete_path, when
+	// set — qBittorrent downloads staged torrents there (decisions/145).
+	IncompleteChecked bool   `json:"incomplete_checked"`
+	IncompleteVisible bool   `json:"incomplete_visible"`
+	IncompletePath    string `json:"incomplete_path,omitempty"`
+	Problem           string `json:"problem,omitempty"`
 	// QueueingEnabled and MaxActiveDownloads are qBittorrent's own download queue (-1 = no limit):
 	// what applies instead of max_concurrent_downloads when the app doesn't manage its settings.
 	// Absent when qBittorrent didn't answer its preferences.
 	QueueingEnabled    *bool `json:"queueing_enabled,omitempty"`
 	MaxActiveDownloads *int  `json:"max_active_downloads,omitempty"`
+	// DiskIOType is qBittorrent's disk_io_type: 0 Default and 1 memory-mapped are the ones the app
+	// would change when it manages the settings.
+	DiskIOType *int `json:"disk_io_type,omitempty"`
 }
 
-// TestQBittorrent signs in, reads the versions and checks that qBittorrent sees the library: the
-// connection test behind POST /api/v1/torrent-client/test. An error means it could not connect;
-// a connected qBittorrent with a problem (too old, library not visible) reports it in Problem.
-func TestQBittorrent(settings QBitSettings, libraryRoot string) (QBitTestResult, error) {
+// TestQBittorrent signs in, reads the versions and checks that qBittorrent sees the library and the
+// incomplete folder (when set): the connection test behind POST /api/v1/torrent-client/test. An
+// error means it could not connect; a connected qBittorrent with a problem (too old, a folder not
+// visible) reports it in Problem.
+func TestQBittorrent(settings QBitSettings, libraryRoot, incompleteRoot string) (QBitTestResult, error) {
 	var out QBitTestResult
 	client, err := newQBitClient(settings.URL, settings.Username, settings.Password, settings.APIKey)
 	if err != nil {
@@ -1378,6 +1618,10 @@ func TestQBittorrent(settings QBitSettings, libraryRoot string) (QBitTestResult,
 		return out, err
 	}
 	defer client.logout(ctx)
+	out.SignIn = "password"
+	if client.apiKey != "" {
+		out.SignIn = "api_key"
+	}
 	if out.WebAPIVersion, err = client.webAPIVersion(ctx); err != nil {
 		return out, err
 	}
@@ -1386,34 +1630,44 @@ func TestQBittorrent(settings QBitSettings, libraryRoot string) (QBitTestResult,
 		out.Problem = fmt.Sprintf("qBittorrent 5.0 or later is required (Web API %s+)", qbitMinWebAPI)
 		return out, nil
 	}
-	if queue, err := client.queuePrefs(ctx); err == nil {
-		out.QueueingEnabled, out.MaxActiveDownloads = &queue.QueueingEnabled, &queue.MaxActiveDownloads
+	if prefs, err := client.managedPrefs(ctx); err == nil {
+		out.QueueingEnabled, out.MaxActiveDownloads = &prefs.QueueingEnabled, &prefs.MaxActiveDownloads
+		out.DiskIOType = &prefs.DiskIOType
 	}
 	if libraryRoot == "" {
 		return out, nil
 	}
-
-	probe, err := writeProbe(libraryRoot)
-	if err != nil {
-		out.Problem = fmt.Sprintf("the app cannot write to the library: %v", err)
-		return out, nil
-	}
-	defer os.Remove(probe)
 	out.LibraryChecked = true
 	out.LibraryPath = qbitMapPath(libraryRoot, settings.PathMap, true)
-	listed, err := client.directoryContent(ctx, out.LibraryPath)
-	if err != nil {
-		out.Problem = fmt.Sprintf("qBittorrent cannot open %s: %v", out.LibraryPath, err)
+	if out.LibraryVisible, out.Problem = probeVisible(ctx, client, libraryRoot, out.LibraryPath, "the library"); out.Problem != "" {
 		return out, nil
+	}
+	if incompleteRoot != "" {
+		out.IncompleteChecked = true
+		out.IncompletePath = qbitMapPath(incompleteRoot, settings.PathMap, true)
+		out.IncompleteVisible, out.Problem = probeVisible(ctx, client, incompleteRoot, out.IncompletePath, "the incomplete folder")
+	}
+	return out, nil
+}
+
+// probeVisible writes a probe file in dir and checks qBittorrent lists it at qbitDir, dir as
+// qBittorrent sees it. A problem says what is wrong; "" means visible.
+func probeVisible(ctx context.Context, client *qbitClient, dir, qbitDir, what string) (bool, string) {
+	probe, err := writeProbe(dir)
+	if err != nil {
+		return false, fmt.Sprintf("the app cannot write to %s: %v", what, err)
+	}
+	defer os.Remove(probe)
+	listed, err := client.directoryContent(ctx, qbitDir)
+	if err != nil {
+		return false, fmt.Sprintf("qBittorrent cannot open %s: %v", qbitDir, err)
 	}
 	for _, entry := range listed {
 		if filepath.Base(strings.ReplaceAll(entry, `\`, "/")) == filepath.Base(probe) {
-			out.LibraryVisible = true
-			return out, nil
+			return true, ""
 		}
 	}
-	out.Problem = fmt.Sprintf("qBittorrent sees %s, but not the file the app just wrote there: the two are not the same folder (check the path map)", out.LibraryPath)
-	return out, nil
+	return false, fmt.Sprintf("qBittorrent sees %s, but not the file the app just wrote in %s there: the two are not the same folder (check the path map)", qbitDir, what)
 }
 
 func writeProbe(dir string) (string, error) {

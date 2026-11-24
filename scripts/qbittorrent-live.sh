@@ -27,7 +27,7 @@ case "${1:-}" in
   *) echo "usage: $0 up|down"; exit 2 ;;
 esac
 
-mkdir -p "$BASE"/{seeder-config,seeder-data,leech-config,library,torrents}
+mkdir -p "$BASE"/{seeder-config,seeder-data,leech-config,library,incomplete,torrents}
 python3 -I "$HERE/qbittorrent-live-torrents.py" "$BASE/seeder-data" "$BASE/torrents" > "$BASE/torrents/hashes.txt"
 
 docker network inspect $NET >/dev/null 2>&1 || docker network create $NET >/dev/null
@@ -40,7 +40,7 @@ run() { # name port extra-mounts...
     -e PUID="$(id -u)" -e PGID="$(id -g)" "$@" $IMAGE >/dev/null
 }
 run aad-qbt-seeder 18081 -v "$BASE/seeder-config:/config" -v "$BASE/seeder-data:/data"
-run aad-qbt-leech 18080 -v "$BASE/leech-config:/config" -v "$BASE/library:/library"
+run aad-qbt-leech 18080 -v "$BASE/leech-config:/config" -v "$BASE/library:/library" -v "$BASE/incomplete:/incomplete"
 
 # First start prints a temporary WebUI password; log in with it and set a known one.
 setpass() { # name port
@@ -91,6 +91,8 @@ export AAD_QBIT_URL=http://127.0.0.1:18080
 export AAD_QBIT_PASSWORD=$PASS
 export AAD_QBIT_LIBRARY=$BASE/library
 export AAD_QBIT_LIBRARY_IN_QBIT=/library
+export AAD_QBIT_INCOMPLETE=$BASE/incomplete
+export AAD_QBIT_INCOMPLETE_IN_QBIT=/incomplete
 export AAD_QBIT_SEED_DATA=$BASE/seeder-data
 export AAD_QBIT_PACK_MAGNET='magnet:?xt=urn:btih:$PACK&dn=LivePack&x.pe=$SEEDER_IP:6881'
 export AAD_QBIT_SINGLE_MAGNET='magnet:?xt=urn:btih:$SINGLE&dn=Live%20Show%20-%2003.mkv&x.pe=$SEEDER_IP:6881'

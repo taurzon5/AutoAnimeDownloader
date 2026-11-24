@@ -85,6 +85,34 @@ describe('Config — torrent client', () => {
     expect(result).toContain('/downloads')
   })
 
+  it('sends the incomplete folder to the test and shows that qBittorrent sees it', async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), incomplete_path: '/mnt/nvme/incomplete' } as never)
+    vi.mocked(client.testTorrentClient).mockResolvedValueOnce({
+      app_version: 'v5.3.0', webapi_version: '2.16.2', library_checked: true, library_visible: true, library_path: '/downloads',
+      incomplete_checked: true, incomplete_visible: true, incomplete_path: '/incomplete',
+    })
+    await openClientGroup()
+    await fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await flush()
+    expect(client.testTorrentClient).toHaveBeenCalledWith(expect.objectContaining({ incomplete_path: '/mnt/nvme/incomplete' }))
+    expect(screen.getByTestId('qbittorrent-test-result').textContent).toContain('incomplete folder at /incomplete')
+  })
+
+  it('says which sign-in is in use and suggests pread disk I/O when the app does not manage qBittorrent', async () => {
+    vi.mocked(client.testTorrentClient).mockResolvedValueOnce({
+      app_version: 'v5.3.0', webapi_version: '2.16.2', library_checked: false, library_visible: false, sign_in: 'api_key', disk_io_type: 0,
+    })
+    await openClientGroup()
+    await fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await flush()
+    expect(screen.getByTestId('qbittorrent-test-result').textContent).toContain('Signed in with the API key')
+    expect(screen.getByTestId('qbittorrent-test-diskio').textContent).toContain('Simple pread/pwrite')
+
+    await fireEvent.click(document.getElementById('qbittorrent_manage_settings') as HTMLInputElement)
+    await flush()
+    expect(screen.queryByTestId('qbittorrent-test-diskio')).toBeNull()
+  })
+
   it('shows why the test failed', async () => {
     vi.mocked(client.testTorrentClient).mockRejectedValueOnce(new Error('qBittorrent refused the credentials'))
     await openClientGroup()

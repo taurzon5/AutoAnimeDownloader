@@ -287,13 +287,21 @@ export interface UpdateConfigResult {
 export interface TorrentClientTestResult {
   app_version: string
   webapi_version: string
+  /** How the app signed in: the API key (used when set) or the WebUI username and password. */
+  sign_in?: 'api_key' | 'password'
   library_checked: boolean
   library_visible: boolean
   library_path?: string
+  /** The same check for incomplete_path, when set: qBittorrent downloads staged torrents there. */
+  incomplete_checked?: boolean
+  incomplete_visible?: boolean
+  incomplete_path?: string
   problem?: string
   /** qBittorrent's own download queue; max_active_downloads -1 = no limit. */
   queueing_enabled?: boolean
   max_active_downloads?: number
+  /** qBittorrent's disk_io_type: 0 Default, 1 memory-mapped, 2 POSIX, 3 and 4 pread. */
+  disk_io_type?: number
 }
 
 export interface AnimeInfo {
@@ -460,6 +468,7 @@ export async function updateConfig(config: Config): Promise<UpdateConfigResult> 
 export async function testTorrentClient(config: Config): Promise<TorrentClientTestResult> {
   return apiRequest<TorrentClientTestResult>('POST', '/torrent-client/test', {
     completed_anime_path: config.completed_anime_path,
+    incomplete_path: config.incomplete_path ?? '',
     qbittorrent_url: config.qbittorrent_url ?? '',
     qbittorrent_username: config.qbittorrent_username ?? '',
     qbittorrent_password: config.qbittorrent_password ?? '',

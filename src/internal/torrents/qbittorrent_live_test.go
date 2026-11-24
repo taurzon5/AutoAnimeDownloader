@@ -14,8 +14,9 @@ import (
 // TestQBitLive drives a real qBittorrent through QBitBackend: the connection test, a pack and a
 // single episode added, placed, downloaded from a seeder, finalized and removed; on the way, the
 // limits of decisions/144 (no share limit under a strict global one, disable_seeding's upload
-// floor, the managed queue). It changes the downloader's global settings, so it is meant for the
-// throwaway containers of scripts/qbittorrent-live.sh. Only runs with
+// floor, the managed queue) and, for the single episode, the incomplete folder of decisions/145. It
+// changes the downloader's global settings, so it is meant for the throwaway containers of
+// scripts/qbittorrent-live.sh. Only runs with
 // AAD_LIVE_QBITTORRENT=1 and the AAD_QBIT_* variables (docs/agents/testing.md, "qBittorrent Live
 // Test"), so `go test ./...` doesn't need Docker.
 func TestQBitLive(t *testing.T) {
@@ -30,10 +31,12 @@ func TestQBitLive(t *testing.T) {
 		return v
 	}
 	library := env("AAD_QBIT_LIBRARY")
+	incomplete := env("AAD_QBIT_INCOMPLETE")
 	seedData := env("AAD_QBIT_SEED_DATA")
 	settings := QBitSettings{
 		URL: env("AAD_QBIT_URL"), Username: "admin", Password: env("AAD_QBIT_PASSWORD"), Category: "aad-live",
-		PathMap:        []QBitPathMapping{{App: library, QBittorrent: env("AAD_QBIT_LIBRARY_IN_QBIT")}},
+		PathMap: []QBitPathMapping{{App: library, QBittorrent: env("AAD_QBIT_LIBRARY_IN_QBIT")},
+			{App: incomplete, QBittorrent: env("AAD_QBIT_INCOMPLETE_IN_QBIT")}},
 		ManageSettings: true,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -53,12 +56,12 @@ func TestQBitLive(t *testing.T) {
 		t.Fatalf("setting the strict global limits: %v", err)
 	}
 
-	res, err := TestQBittorrent(settings, library)
+	res, err := TestQBittorrent(settings, library, incomplete)
 	if err != nil {
 		t.Fatalf("connection test: %v", err)
 	}
 	t.Logf("qBittorrent %s, Web API %s, library seen at %s", res.AppVersion, res.WebAPIVersion, res.LibraryPath)
-	if !res.LibraryVisible || res.Problem != "" {
+	if !res.LibraryVisible || !res.IncompleteVisible || res.Problem != "" {
 		t.Fatalf("connection test: %+v", res)
 	}
 
@@ -73,8 +76,9 @@ func TestQBitLive(t *testing.T) {
 	if _, err := b.Ensure(filepath.Join(library, ".torrents")); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
-	if queue, err := admin.queuePrefs(ctx); err != nil || queue != qbitWantedQueue(2) {
-		t.Fatalf("qBittorrent's queue after Ensure = %+v, %v; want %+v", queue, err, qbitWantedQueue(2))
+	if prefs, err := admin.managedPrefs(ctx); err != nil || prefs.qbitQueuePrefs != qbitWantedQueue(2) || prefs.IncompleteFilesExt ||
+		prefs.DiskIOType != qbitDiskIOSimplePread {
+		t.Fatalf("qBittorrent's managed settings after Ensure = %+v, %v; want the queue %+v, no .!qB, pread", prefs, err, qbitWantedQueue(2))
 	}
 
 	packMagnet, singleMagnet := env("AAD_QBIT_PACK_MAGNET"), env("AAD_QBIT_SINGLE_MAGNET")
@@ -88,11 +92,16 @@ func TestQBitLive(t *testing.T) {
 	}
 	must(b.SetPlacement(PlacementRequest{Hash: packHash, SeriesDir: "Live Show", Kind: PlacementPack, PartFiles: true}))
 	must(b.SetPlacement(PlacementRequest{Hash: singleHash, SeriesDir: "Live Show", Kind: PlacementEpisode, Season: 1,
-		RenameVideo: "Live Show - S01E03", PartFiles: true}))
+		RenameVideo: "Live Show - S01E03", PartFiles: true, IncompleteRoot: incomplete}))
 	for _, m := range []string{packMagnet, singleMagnet} {
 		if _, err := b.Add(m); err != nil {
 			t.Fatalf("Add: %v", err)
 		}
+	}
+
+	if staged, err := admin.info(ctx, settings.Category, singleHash); err != nil || len(staged) != 1 ||
+		qbitMapPath(staged[0].DownloadPath, settings.PathMap, false) != filepath.Join(incomplete, singleHash) {
+		t.Fatalf("the single's download path after Add = %+v, %v; want its folder in the incomplete folder", staged, err)
 	}
 
 	pending := map[string]bool{packHash: true, singleHash: true}
@@ -108,7 +117,18 @@ func TestQBitLive(t *testing.T) {
 		}
 	}
 	must(b.FinalizePlacement(packHash))
-	must(b.FinalizePlacement(singleHash))
+	// The staged single: qBittorrent moves it into the library itself; organize retries while it
+	// moves, so this does too.
+	if !qbitWaitFor(30*time.Second, func() bool { return b.FinalizePlacement(singleHash) == nil }) {
+		t.Fatalf("FinalizePlacement(single): %v", b.FinalizePlacement(singleHash))
+	}
+	if entries, _ := os.ReadDir(filepath.Join(incomplete, singleHash)); len(entries) != 0 {
+		t.Errorf("the incomplete folder still holds %v after the move", entries)
+	}
+	if staged, err := admin.info(ctx, settings.Category, singleHash); err != nil || len(staged) != 1 ||
+		qbitMapPath(staged[0].DownloadPath, settings.PathMap, false) == filepath.Join(incomplete, singleHash) {
+		t.Errorf("the single's download path after finalize = %+v, %v; want it cleared", staged, err)
+	}
 	// qBittorrent applies share limits on a timer: a torrent following the global limit above was
 	// stopped within 2 s of finishing when measured, so 5 s shows the app's torrents don't.
 	time.Sleep(5 * time.Second)

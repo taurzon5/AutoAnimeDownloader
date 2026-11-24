@@ -52,7 +52,9 @@ Pinned by `TestQBit_ProgressStandsInForPieces`, `TestQBit_RemoveKeptBeforeMetada
 `TestQBitLive`, [testing.md](../testing.md#qbittorrent-live-test)) failed in four places that the
 fake had answered the old way:
 
-- **Every add sends `useDownloadPath=false`.** With qBittorrent's global "Keep incomplete torrents
+- **Every add sends `useDownloadPath=false`**, except a staged placement, which gets its own
+  `<incomplete_path>/<hash>` as its download path
+  ([#145](145-with-qbittorrent-a-staged-torrent-downloads-into.md)). With qBittorrent's global "Keep incomplete torrents
   in" on, a torrent downloads into that folder and is moved at the end. The renames would then
   apply under a folder the app never looks at. In the official image that folder was
   `/downloads/temp`, and the download stopped with "permission denied". The setting is per torrent,

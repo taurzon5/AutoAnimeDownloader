@@ -105,11 +105,20 @@ func handleTorrentClientTest(c *cli.Context) error {
 		return nil
 	}
 	fmt.Printf("Connected to qBittorrent %s (Web API %s)\n", result.AppVersion, result.WebAPIVersion)
+	switch result.SignIn {
+	case "api_key":
+		fmt.Println("Signed in with the API key")
+	case "password":
+		fmt.Println("Signed in with the username and password")
+	}
 	switch {
 	case result.Problem != "":
 		fmt.Printf("Problem: %s\n", result.Problem)
 	case result.LibraryVisible:
 		fmt.Printf("qBittorrent sees the library at %s\n", result.LibraryPath)
+		if result.IncompleteVisible {
+			fmt.Printf("qBittorrent sees the incomplete folder at %s\n", result.IncompletePath)
+		}
 	}
 	switch q := result.QueueingEnabled; {
 	case q == nil:
@@ -119,6 +128,9 @@ func handleTorrentClientTest(c *cli.Context) error {
 		fmt.Println("Its download queue has no limit")
 	default:
 		fmt.Printf("Its download queue runs %d at a time\n", *result.MaxActiveDownloads)
+	}
+	if d := result.DiskIOType; d != nil && (*d == 0 || *d == 1) {
+		fmt.Println("It uses memory-mapped disk I/O: for a library on a USB or network disk, Simple pread/pwrite (its Advanced settings, then a restart) is safer")
 	}
 	return nil
 }

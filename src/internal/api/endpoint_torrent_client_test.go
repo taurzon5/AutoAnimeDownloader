@@ -87,7 +87,10 @@ func TestUpdateConfig_ValidatesTheTorrentClient(t *testing.T) {
 		{"unknown client", func(c *files.Config) { c.TorrentClient = "deluge" }, `"builtin" or "qbittorrent"`},
 		{"hardlink mode", func(c *files.Config) { c.LibraryMode = files.LibraryModeHardlink }, `library_mode to "direct"`},
 		{"bad URL", func(c *files.Config) { c.QBittorrentURL = "localhost:8080" }, "http(s) address"},
-		{"incomplete folder", func(c *files.Config) { c.IncompletePath = t.TempDir() }, "incomplete download folder"},
+		{"incomplete folder outside the map", func(c *files.Config) {
+			c.IncompletePath = t.TempDir()
+			c.QBittorrentPathMap = []files.PathMapping{{App: c.CompletedAnimePath, QBittorrent: "/data"}}
+		}, "incomplete download folder is not under"},
 		{"upload floor of 0", func(c *files.Config) { c.DisableSeeding, c.QBittorrentDisableSeedingUploadKiB = true, 0 }, "at least 1 KiB/s"},
 		{"relative map", func(c *files.Config) {
 			c.QBittorrentPathMap = []files.PathMapping{{App: "anime", QBittorrent: "/data"}}
@@ -113,6 +116,20 @@ func TestUpdateConfig_ValidatesTheTorrentClient(t *testing.T) {
 				t.Fatalf("PUT = %d %s, want 400 mentioning %q", w.Code, w.Body.String(), tc.want)
 			}
 		})
+	}
+}
+
+// The incomplete folder works with qBittorrent through its per-torrent download path (decisions/145).
+func TestUpdateConfig_IncompleteFolderIsAllowedWithQBittorrent(t *testing.T) {
+	mock := &mockFileManager{configs: qbitConfig(t)}
+	server := &Server{State: daemon.NewState(), FileManager: mock}
+	edit := *mock.configs
+	edit.IncompletePath = t.TempDir()
+	if w := putConfig(t, server, &edit); w.Code != http.StatusOK {
+		t.Fatalf("PUT = %d: %s", w.Code, w.Body.String())
+	}
+	if mock.configs.IncompletePath != edit.IncompletePath {
+		t.Fatalf("incomplete_path saved as %q", mock.configs.IncompletePath)
 	}
 }
 

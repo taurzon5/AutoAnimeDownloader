@@ -19,7 +19,7 @@ These override values from `config.json`. Useful for Docker/CI:
 | `ANILIST_API_URL` | `"https://graphql.anilist.co"` | `anilist/anilist.go` | Override Anilist GraphQL endpoint |
 | `GITHUB_API_URL` | `"https://api.github.com"` | `updates/updates.go` | Override the GitHub API base the update check asks for the latest release (the sandbox points it at `tests/mocks/github`) |
 
-> The former `QBITTORRENT_URL` override was removed along with the external qBittorrent dependency — the BitTorrent client is now embedded (`github.com/cenkalti/rain/v2`).
+> The former `QBITTORRENT_URL` override of the running daemon was removed along with the external qBittorrent dependency. The name is back only as an entrypoint variable for the first `config.json` (below), with the optional qBittorrent backend.
 
 > `docker/entrypoint.sh` no longer reads a `SAVE_PATH` env var to template the initial `config.json` — the download directory is derived from `COMPLETED_ANIME_PATH` (see `docs/agents/config.md` — Download Path). If `SAVE_PATH` is still set in a Docker Compose file or `.env`, the entrypoint simply ignores it; it no longer appears in the generated config.
 
@@ -41,9 +41,10 @@ start. They are not read by the Go code, and they do nothing after the file exis
 | `MAX_EPISODES_PER_ANIME` | `12` | `max_episodes_per_anime` | |
 | `EPISODE_RETRY_LIMIT` | `5` | `episode_retry_limit` | |
 | `DELETE_WATCHED_EPISODES` | `true` | `delete_watched_episodes` | `true`/`1` → `true`, anything else → `false` |
+| `QBITTORRENT_URL` | `""` | `library_mode`, `torrent_client`, `qbittorrent_url`, `qbittorrent_manage_settings` | Set (the compose file's `qbittorrent` profile passes `AAD_QBITTORRENT_URL`): `"direct"`, `"qbittorrent"`, the URL and `true`. That qBittorrent is the app's alone, so the app manages its settings (decisions/144). Empty writes none of the four: the built-in client |
 | `FORCE_CONFIG_UPDATE` | — (unset) | — | When non-empty, overwrites an existing `config.json` |
 
-> The generated file carries **8 of the ~25 fields** in `Config`. That is safe on creation —
+> The generated file carries **8 of the ~25 fields** in `Config` (12 with `QBITTORRENT_URL`). That is safe on creation —
 > `LoadConfigs` unmarshals over `DefaultConfig()`, so the absent fields keep their defaults —
 > but `FORCE_CONFIG_UPDATE` rewrites the *whole* file, discarding everything the user set
 > through the UI or CLI.
@@ -58,8 +59,17 @@ integration-test stack with the mocks.
 |----------|---------|-------------|
 | `AAD_DOCKER_DIR` | `../runtime/docker` (relative to `docker/`) | Host folder holding `data/` (mounted at `/app/data`) and `library/` (mounted at `/library`, the `completed_anime_path`). Both must already exist: the mounts use `create_host_path: false`, so a missing folder fails the start instead of being created owned by root, or on the system disk when a drive is not mounted |
 | `AAD_WEB_PORT` | `8091` | Host port of the web UI, bound to `127.0.0.1` only |
-| `AAD_UID`, `AAD_GID` | `1000` | User the daemon runs as. It must own both folders |
+| `AAD_UID`, `AAD_GID` | `1000` | User the daemon runs as. It must own both folders (and `qbittorrent/`, with the profile below; qBittorrent runs as the same user) |
 | `TZ` | `UTC` | Timezone of the log timestamps |
+| `COMPOSE_PROFILES` | — | `qbittorrent` adds the `qbittorrent` service (`qbittorrentofficial/qbittorrent-nox:5.3.0-2`, the version the live test ran against). It mounts `qbittorrent/` (must exist) at `/config` and the library at the **same** `/library`, so no `qbittorrent_path_map` is needed. Without the profile the stack is the daemon alone, as before |
+| `AAD_QBIT_PORT` | `8093` | qBittorrent's WebUI port, published on `127.0.0.1` and the same inside the container: qBittorrent answers 401 to a Host header whose port differs from its own. The daemon reaches it as `http://qbittorrent:<port>` on the compose network |
+| `AAD_QBITTORRENT_URL` | `""` | Passed to the entrypoint's `QBITTORRENT_URL`, so a first start writes a config on qBittorrent (`http://qbittorrent:8093`). Read only when there is no `config.json` yet; an existing install switches from the Torrent client settings instead |
+
+qBittorrent's first start prints a temporary WebUI password (`docker compose -f
+docker/docker-compose.yml logs qbittorrent`). Sign in at `http://localhost:8093` and set a
+password of your own, then type it in the app's Torrent client settings. The compose file does not
+turn on qBittorrent's "bypass authentication for whitelisted subnets": the host reaches the
+published port through the bridge network too, so anything on the machine would get in.
 
 ## OS / Path
 

@@ -203,6 +203,9 @@ type qbitAddRequest struct {
 	StopAtMetadata bool
 	// UploadLimit adds it with that upload limit in bytes per second (disable_seeding); 0 = none.
 	UploadLimit int64
+	// DownloadPath (qBittorrent's view) is where it downloads before qBittorrent moves it to
+	// SavePath: the placement's staging folder (incomplete_path). Empty = straight into SavePath.
+	DownloadPath string
 }
 
 func (c *qbitClient) add(ctx context.Context, r qbitAddRequest) error {
@@ -212,8 +215,8 @@ func (c *qbitClient) add(ctx context.Context, r qbitAddRequest) error {
 		"category":      {r.Category},
 		"autoTMM":       {"false"},
 		"contentLayout": {"Original"},
-		// Per torrent, so qBittorrent's global "Keep incomplete torrents in" (on by default in its
-		// official Docker image) can't send the download to another folder than the library.
+		// Always per torrent, so qBittorrent's global "Keep incomplete torrents in" (on by default in
+		// its official Docker image) can't send the download to a folder the app doesn't know.
 		"useDownloadPath": {"false"},
 		// No share limit: qBittorrent's global one would stop the torrent, or remove it with its
 		// files, which are the library (decisions/144).
@@ -226,6 +229,10 @@ func (c *qbitClient) add(ctx context.Context, r qbitAddRequest) error {
 	}
 	if r.UploadLimit > 0 {
 		form.Set("upLimit", strconv.FormatInt(r.UploadLimit, 10))
+	}
+	if r.DownloadPath != "" {
+		form.Set("useDownloadPath", "true")
+		form.Set("downloadPath", r.DownloadPath)
 	}
 	body, err := c.call(ctx, http.MethodPost, "torrents/add", form)
 	if errors.Is(err, errQBitConflict) {
@@ -276,6 +283,7 @@ type qbitTorrent struct {
 	ETA          int64   `json:"eta"`
 	AddedOn      int64   `json:"added_on"`
 	SavePath     string  `json:"save_path"`
+	DownloadPath string  `json:"download_path"`
 	Category     string  `json:"category"`
 	Priority     int     `json:"priority"`
 	SeedingTime  int64   `json:"seeding_time"`
@@ -437,8 +445,7 @@ func (c *qbitClient) setUploadLimit(ctx context.Context, limit int64, hashes ...
 	return c.hashesCall(ctx, "torrents/setUploadLimit", hashes, url.Values{"limit": {strconv.FormatInt(limit, 10)}})
 }
 
-// qbitQueuePrefs is the part of qBittorrent's preferences the app sets when it manages them: its
-// download queue. -1 is "no limit".
+// qbitQueuePrefs is qBittorrent's download queue in its preferences. -1 is "no limit".
 type qbitQueuePrefs struct {
 	QueueingEnabled    bool `json:"queueing_enabled"`
 	MaxActiveDownloads int  `json:"max_active_downloads"`
@@ -446,24 +453,75 @@ type qbitQueuePrefs struct {
 	MaxActiveTorrents  int  `json:"max_active_torrents"`
 }
 
-func (c *qbitClient) queuePrefs(ctx context.Context) (qbitQueuePrefs, error) {
+// qbitManagedPrefs is the part of qBittorrent's preferences the app sets when it manages them
+// (decisions/144): the queue, the ".!qB" extension and the disk I/O type.
+type qbitManagedPrefs struct {
+	qbitQueuePrefs
+	IncompleteFilesExt bool `json:"incomplete_files_ext"`
+	DiskIOType         int  `json:"disk_io_type"`
+}
+
+// qBittorrent's disk_io_type values (its WebUI's "Disk IO type", which needs a restart). The app
+// moves Default and MMap to SimplePread when it manages the settings: libtorrent 2's memory-mapped
+// I/O crashes the client when a disk goes away under it (a USB drive) and is slow on network
+// shares. POSIX and the newer pread mode are left as the user chose.
+const (
+	qbitDiskIODefault     = 0
+	qbitDiskIOMMap        = 1
+	qbitDiskIOSimplePread = 3
+)
+
+func (c *qbitClient) managedPrefs(ctx context.Context) (qbitManagedPrefs, error) {
 	body, err := c.call(ctx, http.MethodGet, "app/preferences", nil)
 	if err != nil {
-		return qbitQueuePrefs{}, err
+		return qbitManagedPrefs{}, err
 	}
-	var out qbitQueuePrefs
+	var out qbitManagedPrefs
 	if err := json.Unmarshal(body, &out); err != nil {
-		return qbitQueuePrefs{}, fmt.Errorf("unreadable app/preferences answer: %w", err)
+		return qbitManagedPrefs{}, fmt.Errorf("unreadable app/preferences answer: %w", err)
 	}
 	return out, nil
 }
 
-func (c *qbitClient) setQueuePrefs(ctx context.Context, p qbitQueuePrefs) error {
-	data, err := json.Marshal(p)
+// setPrefs sends the keys of want that differ from have, and nothing when none does: qBittorrent
+// changes only the keys it is sent.
+func (c *qbitClient) setPrefs(ctx context.Context, have, want qbitManagedPrefs) (bool, error) {
+	var haveMap, wantMap map[string]json.RawMessage
+	for _, v := range []struct {
+		from any
+		to   *map[string]json.RawMessage
+	}{{have, &haveMap}, {want, &wantMap}} {
+		data, err := json.Marshal(v.from)
+		if err != nil {
+			return false, err
+		}
+		if err := json.Unmarshal(data, v.to); err != nil {
+			return false, err
+		}
+	}
+	changed := map[string]json.RawMessage{}
+	for k, v := range wantMap {
+		if string(haveMap[k]) != string(v) {
+			changed[k] = v
+		}
+	}
+	if len(changed) == 0 {
+		return false, nil
+	}
+	data, err := json.Marshal(changed)
 	if err != nil {
-		return err
+		return false, err
 	}
 	_, err = c.call(ctx, http.MethodPost, "app/setPreferences", url.Values{"json": {string(data)}})
+	return err == nil, err
+}
+
+// setDownloadPath changes where the torrent downloads before it is moved to its save path.
+// qBittorrent moves the files already there with it (measured on 5.3.0; a folder the user already
+// moved by hand is kept, and a recheck finds its data). An empty path stops using one: the files go
+// back to the save path at once.
+func (c *qbitClient) setDownloadPath(ctx context.Context, hash, path string) error {
+	_, err := c.call(ctx, http.MethodPost, "torrents/setDownloadPath", url.Values{"id": {hash}, "path": {path}})
 	return err
 }
 

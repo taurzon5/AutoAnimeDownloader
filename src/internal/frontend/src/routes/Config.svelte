@@ -1100,8 +1100,16 @@
                 {#if qbitTestResult}
                   <p class="text-caption text-body" data-testid="qbittorrent-test-result">
                     {$locale && m.config_qbittorrent_test_ok({ app: qbitTestResult.app_version, webapi: qbitTestResult.webapi_version })}
+                    {#if qbitTestResult.sign_in === "api_key"}
+                      {$locale && m.config_qbittorrent_test_signin_key()}
+                    {:else if qbitTestResult.sign_in === "password"}
+                      {$locale && m.config_qbittorrent_test_signin_password()}
+                    {/if}
                     {#if qbitTestResult.library_visible && qbitTestResult.library_path}
                       {$locale && m.config_qbittorrent_test_library({ path: qbitTestResult.library_path })}
+                    {/if}
+                    {#if qbitTestResult.incomplete_visible && qbitTestResult.incomplete_path}
+                      {$locale && m.config_qbittorrent_test_incomplete({ path: qbitTestResult.incomplete_path })}
                     {/if}
                     {#if qbitTestResult.queueing_enabled === false}
                       {$locale && m.config_qbittorrent_test_queue_off()}
@@ -1111,6 +1119,9 @@
                       {$locale && m.config_qbittorrent_test_queue({ count: String(qbitTestResult.max_active_downloads) })}
                     {/if}
                   </p>
+                  {#if !config.qbittorrent_manage_settings && (qbitTestResult.disk_io_type === 0 || qbitTestResult.disk_io_type === 1)}
+                    <p class="text-caption text-subtle" data-testid="qbittorrent-test-diskio">{$locale && m.config_qbittorrent_test_disk_io()}</p>
+                  {/if}
                   {#if qbitTestResult.problem}
                     <p class="text-caption text-danger">{$locale && m.config_qbittorrent_test_problem({ problem: qbitTestResult.problem })}</p>
                   {/if}

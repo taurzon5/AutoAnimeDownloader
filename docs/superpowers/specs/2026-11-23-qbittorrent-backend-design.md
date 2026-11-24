@@ -55,8 +55,10 @@ spec was written for "an alternative"; what that changes here:
   not amended**, and [#41](../../agents/decisions/041-the-download-queue-holds-every-incomplete-torrent.md)
   (the app's own queue) goes with rain.
 - **More of qBittorrent's API is used** by the other specs: per-file priorities
-  (`torrents/filePrio`) for megapacks, and the incomplete folder as qBittorrent's "keep incomplete
-  torrents in" (`temp_path`).
+  (`torrents/filePrio`) for megapacks, and the incomplete folder. The incomplete folder is
+  implemented as each torrent's own download path (`useDownloadPath`/`downloadPath`), not the
+  global `temp_path`
+  ([decisions/145](../../agents/decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)).
 - **Docker:** the compose file gets a qBittorrent container next to the app, sharing the library
   folder at the same path, so the path map stays empty.
 
@@ -211,7 +213,13 @@ app's placement through renames.
 2. **Queue and limits:** qBittorrent's queue for `max_concurrent_downloads`, share limits for
    keep forever, `disable_seeding`. Implemented: see
    [decisions/144](../../agents/decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md),
-   which also records what a real qBittorrent 5.3.0 changed (answer 3 below).
+   which also records what a real qBittorrent 5.3.0 changed (answer 3 below). Also done on the
+   branch:
+   - the rest of answer 2's managed settings (the ".!qB" extension, pread disk I/O);
+   - the incomplete folder
+     ([decisions/145](../../agents/decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md));
+   - the sign-in shown by the connection test (answer 5);
+   - the compose file's optional `qbittorrent` profile.
 3. **Import from rain** — not scheduled; only if it is wanted later (answer 4).
 
 Per-file selection comes after these, with the megapack spec (`torrents/filePrio`).

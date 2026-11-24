@@ -71,3 +71,9 @@ to `.part`, rechecks and starts — no remove and re-add. What carries over is t
 until qBittorrent shows it took the recheck (`reopened`), the torrent's old complete state neither
 fires `onComplete` nor lets `FinalizePlacement` rename anything; `FinalizePlacement` also waits for
 a complete torrent that isn't checking or moving.
+
+**Amendment (see [#145](145-with-qbittorrent-a-staged-torrent-downloads-into.md)):** with qBittorrent the redownload ignores the
+incomplete folder configured now ("`reopen` also takes the incomplete folder" above is rain's).
+It clears the torrent's download path and downloads the missing files in place. A download path
+set while the recheck makes the torrent incomplete would move every file of it out of the library
+and back.

@@ -81,8 +81,13 @@ bash scripts/qbittorrent-live.sh down    # removes the containers, the network a
   and checks each torrent carries the upload floor, then that turning it off lifts it. It also
   checks that the managed queue lands in qBittorrent's preferences. With the per-torrent share
   limits removed from the code, this test fails: the real qBittorrent stopped both torrents.
+- **The incomplete folder ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)):**
+  the single episode stages. The downloader mounts `runtime/qbt-test/incomplete` as `/incomplete`,
+  a second path-map entry. The test checks qBittorrent holds it as the torrent's download path
+  after the add, and that after the move the file is in `Season 01/` and the download path is
+  cleared.
 - **What only the fake covers:** the API key, redownload and recheck, Kept, the library swap,
-  pause and priority, and the pre-5.0 answers.
+  pause and priority, a moved or unmounted incomplete folder, and the pre-5.0 answers.
 
 Run it when you touch `qbit_client.go` or `qbittorrent.go`, and after a qBittorrent release that
 bumps the Web API version. The test itself takes a few seconds.
