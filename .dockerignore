@@ -1,6 +1,11 @@
 .git/
 .gitignore
-node_modules/
+# Any depth: the frontend's own node_modules (hundreds of MB, built for the host's libc) would
+# otherwise be copied over the one bun installs inside the image.
+**/node_modules/
+# Docker volumes (downloaded episodes) and the make sandbox scratch dir.
+runtime/
+.sandbox/
 .env
 .env.*
 .vscode/
