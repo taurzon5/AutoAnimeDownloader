@@ -51,8 +51,9 @@
         {$locale && m.detail_shoko_by_hand()}
       {/if}
     </p>
-    {#if shoko.status === "partial" || shoko.by_hand}
-      <div class="flex flex-col gap-2 md:flex-row md:items-end">
+    <!-- Always offered: a partial match to confirm, a wrong one to correct, or no match at all to set
+         by hand (a series that shares no MAL id with the anime). -->
+    <div class="flex flex-col gap-2 md:flex-row md:items-end">
         <div class="flex-1">
           <Input id="shoko_series_id" type="number" min="1" label={$locale && m.detail_shoko_series_id()} bind:value={seriesId} />
         </div>
@@ -63,7 +64,6 @@
           {$locale && m.detail_shoko_confirm()}
         </Button>
       </div>
-    {/if}
     <div class="flex flex-wrap gap-2">
       {#if !(shoko.status === "none" && shoko.by_hand)}
         <Button variant="ghost" disabled={saving} on:click={() => save({ none: true })}>{$locale && m.detail_shoko_not_in()}</Button>

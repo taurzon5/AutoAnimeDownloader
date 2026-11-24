@@ -86,6 +86,13 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 		}
 	}
 
+	bySeries := map[int]bool{}
+	for _, st := range settings {
+		if st.Shoko != nil && st.Shoko.SeriesID > 0 {
+			bySeries[st.Shoko.SeriesID] = true
+		}
+	}
+
 	s.mu.Lock()
 	full := s.fullRequested
 	s.mu.Unlock()
@@ -97,7 +104,7 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 	if full || s.store.Due(cfg.ShokoURL, every, now) {
 		client, err := shoko.NewClient(cfg.ShokoURL, cfg.ShokoAPIKey)
 		if err == nil {
-			err = s.store.Sync(ctx, client, cfg.ShokoURL, tracked, full, now)
+			err = s.store.Sync(ctx, client, cfg.ShokoURL, tracked, bySeries, full, now)
 		}
 		if err != nil {
 			logger.Logger.Warn().Err(err).Msg("Shoko sync failed; the pass uses what was read last")
@@ -109,6 +116,40 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 		}
 	}
 
+	out := map[int]map[int]shoko.File{}
+	matches := s.matchAll(animes, facts, tracked, settings, anilist.PriorityCritical)
+	for id, st := range matches {
+		if len(st.Owned) > 0 {
+			out[id] = st.Owned
+		}
+	}
+	s.mu.Lock()
+	s.matches = matches
+	s.mu.Unlock()
+	return out
+}
+
+// OwnedFor matches one anime against what the last sync read, without syncing: the add-anime path
+// (DownloadStandaloneAnime), which runs outside the pass. nil with Shoko off.
+func (s *ShokoService) OwnedFor(cfg *files.Config, anime anilist.MediaList, settings files.AnimeSettings) map[int]shoko.File {
+	if s == nil || !cfg.ShokoEnabled || cfg.ShokoURL == "" || cfg.ShokoAPIKey == "" {
+		return nil
+	}
+	facts, err := anilist.MALFactsOf([]int{anime.Media.Id}, anilist.PriorityCritical)
+	if err != nil {
+		logger.Logger.Warn().Err(err).Int("anime_id", anime.Media.Id).Msg("Shoko: could not read the anime's MAL id; it is treated as not in Shoko")
+	}
+	tracked := map[int]bool{}
+	if f := facts[anime.Media.Id]; f.MalID > 0 {
+		tracked[f.MalID] = true
+	}
+	matches := s.matchAll([]anilist.MediaList{anime}, facts, tracked, map[int]files.AnimeSettings{anime.Media.Id: settings}, anilist.PriorityCritical)
+	return matches[anime.Media.Id].Owned
+}
+
+// matchAll matches each anime against the store's series and returns, by AniList media id, the match
+// and the episodes Shoko has.
+func (s *ShokoService) matchAll(animes []anilist.MediaList, facts map[int]anilist.MALFacts, tracked map[int]bool, settings map[int]files.AnimeSettings, priority anilist.Priority) map[int]ShokoAnimeStatus {
 	series := s.store.SeriesList()
 	// The other MAL ids of the series that list several, for the offsets (decisions/146).
 	var others []int
@@ -119,13 +160,13 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 	}
 	counts := map[int]int{}
 	if len(others) > 0 {
-		if counts, err = anilist.EpisodesOfMALIDs(others, anilist.PriorityCritical); err != nil {
+		var err error
+		if counts, err = anilist.EpisodesOfMALIDs(others, priority); err != nil {
 			logger.Logger.Warn().Err(err).Msg("Shoko: could not read the episode counts of every MAL id; their series wait to be checked by hand")
 		}
 	}
 	malEpisodes := func(id int) (int, bool) { n, ok := counts[id]; return n, ok }
 
-	out := map[int]map[int]shoko.File{}
 	matches := make(map[int]ShokoAnimeStatus, len(animes))
 	for _, a := range animes {
 		f := facts[a.Media.Id]
@@ -134,16 +175,9 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 			entry.Episodes = *a.Media.Episodes
 		}
 		m := shokoMatchFor(entry, series, malEpisodes, settings[a.Media.Id].Shoko)
-		owned := shoko.OwnedOf(m, entry, s.store.OwnedEpisodes(m.SeriesID))
-		matches[a.Media.Id] = ShokoAnimeStatus{Match: m, Owned: owned}
-		if len(owned) > 0 {
-			out[a.Media.Id] = owned
-		}
+		matches[a.Media.Id] = ShokoAnimeStatus{Match: m, Owned: shoko.OwnedOf(m, entry, s.store.OwnedEpisodes(m.SeriesID))}
 	}
-	s.mu.Lock()
-	s.matches = matches
-	s.mu.Unlock()
-	return out
+	return matches
 }
 
 // shokoMatchFor is the match set by hand when there is one, else the one worked out.

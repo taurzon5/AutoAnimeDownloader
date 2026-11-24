@@ -159,7 +159,7 @@ func processAnimeEpisodes(
 	// keysToDelete came back empty for everyone.
 	// Episodes the user already has in Shoko are neither searched nor downloaded, and take no slot of
 	// max_episodes_per_anime: they leave the list both selections walk. One the app downloaded itself
-	// stays, so its own lifecycle (pruning, deletion) goes on (the Shoko spec §3).
+	// stays, so its own lifecycle (pruning, deletion) goes on (the Shoko spec §3, decisions/147).
 	pending := withoutOwnedElsewhere(episodes, ownedInShoko, anime.Media.Id, savedEpisodesMap)
 	sel := selectEpisodes(configs, effectiveMax(configs, pending), anime, pending, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
 

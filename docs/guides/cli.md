@@ -99,6 +99,9 @@ autoanimedownloader animes remove 154587 --yes
 autoanimedownloader animes remove 154587 --yes --delete-episodes
 autoanimedownloader animes settings 154587
 autoanimedownloader animes settings 154587 progress 12
+autoanimedownloader animes settings 154587 shoko 3 12   # Shoko series 3, its episode 13 is this anime's 1
+autoanimedownloader animes settings 154587 shoko none   # not in Shoko
+autoanimedownloader animes settings 154587 shoko auto   # back to the match from the MAL id
 autoanimedownloader animes episodes 154587
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3
@@ -184,6 +187,22 @@ One hash on `prioritize` hits `POST /torrents/{hash}/prioritize`. Two or more hi
 `POST /torrents/prioritize` with `{"hashes":[…]}` in the order given.
 
 `--keep-data` and `--block` default to false.
+
+## Shoko
+
+```bash
+echo -n "$SHOKO_PASSWORD" | autoanimedownloader shoko login --url http://127.0.0.1:8111 --user admin
+autoanimedownloader shoko status
+autoanimedownloader shoko sync
+autoanimedownloader shoko sync --full
+```
+
+`login` hits `POST /shoko/login`. It reads the password from standard input: piped, or typed after
+the prompt, where it shows as you type. It saves only the address and the API key Shoko returns.
+Then turn Shoko on with `config set shoko_enabled true`. `status` shows whether it is on and signed
+in, the last sync and how many episodes of followed anime Shoko has. `sync` starts a check pass that
+syncs first, and `--full` reads all of Shoko again, so files deleted or moved there stop counting.
+A match that needs checking by hand is set with `animes settings <id> shoko …`, above.
 
 ## Logs
 

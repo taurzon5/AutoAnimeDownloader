@@ -1,7 +1,8 @@
 # Shoko integration: what you already have counts, and only its upgrades are looked for
 
 **Date:** 2026-11-23
-**Status:** step 1 (read-only matching and the sync) being built on branch `feat/shoko-sync`. The
+**Status:** step 1 (read-only matching and the sync) implemented on branch `feat/shoko-sync`
+(decisions 146 and 147); steps 2–3 wait for the release filters. The
 API below was measured against a real Shoko Server v5.3.3 on 2026-11-24 (see "Measured against
 v5.3.3"); the user's decisions are recorded at the end
 **Origin:** "design a spec that takes shoko anime entries and then compares to the series we are

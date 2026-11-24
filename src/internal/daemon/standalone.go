@@ -121,7 +121,7 @@ func withStandaloneProgress(fm FileManagerInterface, ml *anilist.MediaList) *ani
 //
 // It doesn't call deleteEpisodesByStatus or DeleteEmptyFolders either — adding an anime is no
 // occasion to delete anything.
-func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int) (int, error) {
+func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int, inShoko *ShokoService) (int, error) {
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return 0, err
 	}
@@ -161,7 +161,13 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
 	torrentsNow := backend.List()
-	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes), nil)
+	// What Shoko already has stays out, as in the pass (decisions/147).
+	var animeSettings files.AnimeSettings
+	if all, err := fm.LoadAllAnimeSettings(); err == nil {
+		animeSettings = all[mediaID]
+	}
+	owned := inShoko.OwnedFor(configs, *anime, animeSettings)
+	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes), owned)
 
 	saveEpisodesToFile(fm, result.newEpisodes)
 

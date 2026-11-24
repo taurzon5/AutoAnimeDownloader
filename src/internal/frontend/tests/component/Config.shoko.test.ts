@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/svelte'
 import { tick } from 'svelte'
+import { get } from 'svelte/store'
+import { hasUnsavedChanges } from '../../src/lib/stores/unsavedChanges.js'
 import Config from '../../src/routes/Config.svelte'
 import * as client from '../../src/lib/api/client.js'
 
@@ -58,7 +60,9 @@ async function openShokoGroup() {
 
 describe('Config — Shoko', () => {
   beforeEach(() => {
-    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), torrent_client: 'builtin', shoko_enabled: false, shoko_url: '', shoko_api_key: '', shoko_refresh_hours: 24 } as never)
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), torrent_client: 'builtin', shoko_enabled: false, shoko_url: '', shoko_api_key: '', shoko_refresh_hours: 24,
+      // What GET /config always carries; missing, the page fills them in and reads as unsaved before any edit.
+      auto_delete_downloads: false, check_for_updates: false, incomplete_path: '', rename_files_for_jellyfin: false } as never)
     vi.mocked(client.updateConfig).mockReset().mockResolvedValue({ message: 'ok' })
     vi.mocked(client.shokoLogin).mockReset().mockResolvedValue(undefined)
     vi.mocked(client.getShokoStatus).mockReset().mockResolvedValue({ enabled: false, signed_in: false, series: 0, owned_episodes: 0 })
@@ -76,6 +80,8 @@ describe('Config — Shoko', () => {
     expect(client.shokoLogin).toHaveBeenCalledWith('http://shoko:8111/', 'admin', 'pw')
     expect((document.getElementById('shoko_password') as HTMLInputElement).value).toBe('')
     expect(screen.getByTestId('shoko-status').textContent).toContain('Signed in to http://shoko:8111')
+    // Saved on the server by the sign-in: nothing left unsaved (decisions/129).
+    expect(get(hasUnsavedChanges)).toBe(false)
 
     await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
     await flush()

@@ -2,13 +2,16 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"AutoAnimeDownloader/src/internal/anilist"
 	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/files"
 )
@@ -161,5 +164,41 @@ func TestUpdateConfig_ValidatesShoko(t *testing.T) {
 	server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
 		t.Fatalf("a signed-in Shoko = %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Episodes in Shoko are not "still to download": the progress bar and the "behind" count read them
+// as there (decisions/088, decisions/147).
+func TestWithShokoOwnedCountsShokoEpisodesAsThere(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/Series":
+			io.WriteString(w, `{"Total":1,"List":[{"IDs":{"ID":1,"MAL":[52991]},"Name":"Frieren","Sizes":{"Total":{"Episodes":28}}}]}`)
+		case "/api/v3/File":
+			io.WriteString(w, `{"Total":0,"List":[]}`)
+		case "/api/v3/Series/1/Episode":
+			io.WriteString(w, `{"Total":2,"List":[{"AniDB":{"Type":"Episode","EpisodeNumber":1},"Files":[{"ID":1,"Locations":[{"RelativePath":"a.mkv"}]}]},{"AniDB":{"Type":"Episode","EpisodeNumber":2},"Files":[{"ID":2,"Locations":[{"RelativePath":"b.mkv"}]}]}]}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	svc := daemon.NewShokoService(t.TempDir())
+	eps := 28
+	cfg := &files.Config{ShokoEnabled: true, ShokoURL: srv.URL, ShokoAPIKey: "k", ShokoRefreshHours: 24}
+	svc.ForPass(context.Background(), cfg, []anilist.MediaList{{Media: anilist.Media{Id: 154587, Episodes: &eps}}}, nil, time.Now())
+
+	downloaded := map[int]bool{3: true}
+	present := withShokoOwned(downloaded, svc, 154587)
+	if !present[1] || !present[2] || !present[3] || len(downloaded) != 1 {
+		t.Fatalf("present = %v (downloaded %v), want 1–3 and the input untouched", present, downloaded)
+	}
+	if got := countPendingEpisodes(0, 4, present); got != 1 {
+		t.Fatalf("pending = %d, want only episode 4", got)
+	}
+	if got := withShokoOwned(downloaded, nil, 154587); len(got) != 1 {
+		t.Fatalf("without Shoko: %v", got)
 	}
 }

@@ -123,7 +123,7 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 
 		// Synchronous, matching the episode-download POST: it is a single Nyaa search, and
 		// returning the real number of queued episodes is worth more than an empty 202.
-		added, err := daemon.DownloadStandaloneAnime(server.FileManager, server.Torrents, config, body.MediaID)
+		added, err := daemon.DownloadStandaloneAnime(server.FileManager, server.Torrents, config, body.MediaID, server.State.Shoko())
 		if err != nil {
 			logger.Logger.Error().Err(err).Int("media_id", body.MediaID).Msg("Failed to download the standalone anime")
 			JSONDownloadError(w, err, "STANDALONE_DOWNLOAD_FAILED")

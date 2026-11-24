@@ -23,7 +23,7 @@ var (
 
 // MALFactsOf returns the MAL id and episode count of each AniList media id, 50 per query, cached
 // for a day. It is a query of its own, sent only when Shoko is in use, so the queries the pass and
-// the golden set replay stay as they are (decisions/146). A media id AniList doesn't answer for is
+// the golden set replay stay as they are (decisions/147). A media id AniList doesn't answer for is
 // absent.
 func MALFactsOf(mediaIDs []int, priority Priority) (map[int]MALFacts, error) {
 	out := make(map[int]MALFacts, len(mediaIDs))

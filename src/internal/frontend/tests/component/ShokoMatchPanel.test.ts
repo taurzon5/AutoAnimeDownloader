@@ -28,7 +28,7 @@ describe('ShokoMatchPanel', () => {
   it('offers "not in Shoko" for an automatic match, and no way back to automatic', async () => {
     render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'matched', series_id: 1, series_name: 'Frieren', offset: 12 } } })
     expect(screen.getByTestId('shoko-panel-status').textContent).toContain("series' episode 13")
-    expect(document.getElementById('shoko_series_id')).toBeNull()
+    expect((document.getElementById('shoko_offset') as HTMLInputElement).value).toBe('12')
     expect(screen.queryByRole('button', { name: 'Back to automatic' })).toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Not in Shoko' }))
     await flush()
@@ -41,6 +41,14 @@ describe('ShokoMatchPanel', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Back to automatic' }))
     await flush()
     expect(client.updateAnimeShoko).toHaveBeenCalledWith(42, { auto: true })
+  })
+
+  it('lets an anime with no match be matched by hand', async () => {
+    render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'none' } } })
+    await fireEvent.input(document.getElementById('shoko_series_id') as HTMLInputElement, { target: { value: '7' } })
+    await fireEvent.click(screen.getByRole('button', { name: 'Confirm match' }))
+    await flush()
+    expect(client.updateAnimeShoko).toHaveBeenCalledWith(42, { series_id: 7, offset: 0 })
   })
 
   it('shows nothing without Shoko', () => {

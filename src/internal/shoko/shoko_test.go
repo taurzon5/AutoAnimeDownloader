@@ -147,7 +147,7 @@ func TestStoreSyncFullThenOnlyNewer(t *testing.T) {
 	if !store.Due(f.server.URL, 24*time.Hour, t0) {
 		t.Fatal("a store never synced is not due")
 	}
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0); err != nil {
 		t.Fatal(err)
 	}
 	if eps := store.OwnedEpisodes(1); len(eps) != 1 || eps[0].Number != 1 {
@@ -162,7 +162,7 @@ func TestStoreSyncFullThenOnlyNewer(t *testing.T) {
 
 	// Nothing new: one request.
 	n := len(f.requestLog())
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0.Add(24*time.Hour)); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0.Add(24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.requestLog()[n:]; len(got) != 1 || !strings.HasPrefix(got[0], "GET /api/v3/File?") {
@@ -174,7 +174,7 @@ func TestStoreSyncFullThenOnlyNewer(t *testing.T) {
 	f.addSeries(Series{ID: 3, MAL: []int{888}, Name: "New", Episodes: 1}, nil)
 	f.addFile(30, 3, 1, t0.Add(26*time.Hour))
 	tracked[888] = true
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0.Add(48*time.Hour)); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0.Add(48*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if eps := store.OwnedEpisodes(1); len(eps) != 2 {
@@ -191,7 +191,7 @@ func TestStoreSyncFullThenOnlyNewer(t *testing.T) {
 
 	// Shoko unreachable: the state stays, the error is recorded.
 	f.server.Close()
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0.Add(72*time.Hour)); err == nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0.Add(72*time.Hour)); err == nil {
 		t.Fatal("a sync against a closed server succeeded")
 	}
 	snap := store.Snapshot()
@@ -209,13 +209,13 @@ func TestStoreSyncReadsNewlyTrackedAndStartsOverForAnotherServer(t *testing.T) {
 	c, _ := NewClient(f.server.URL, "key-1")
 	store := NewStore(t.TempDir())
 	ctx := context.Background()
-	if err := store.Sync(ctx, c, f.server.URL, map[int]bool{}, false, t0); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, map[int]bool{}, nil, false, t0); err != nil {
 		t.Fatal(err)
 	}
 	if store.OwnedEpisodes(1) != nil {
 		t.Fatal("an untracked series was read")
 	}
-	if err := store.Sync(ctx, c, f.server.URL, map[int]bool{52991: true}, false, t0.Add(time.Hour)); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, map[int]bool{52991: true}, nil, false, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if len(store.OwnedEpisodes(1)) != 1 {
@@ -246,11 +246,11 @@ func TestStoreSyncSameInstantImports(t *testing.T) {
 	store := NewStore(t.TempDir())
 	ctx := context.Background()
 	tracked := map[int]bool{52991: true}
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0); err != nil {
 		t.Fatal(err)
 	}
 	f.addFile(11, 1, 2, t0)
-	if err := store.Sync(ctx, c, f.server.URL, tracked, false, t0.Add(time.Hour)); err != nil {
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if eps := store.OwnedEpisodes(1); len(eps) != 2 {
@@ -258,5 +258,21 @@ func TestStoreSyncSameInstantImports(t *testing.T) {
 	}
 	if ids := store.Snapshot().NewestImportIDs; len(ids) != 2 {
 		t.Fatalf("NewestImportIDs = %v, want both files of that instant", ids)
+	}
+}
+
+// A match set by hand may point at a series that shares no MAL id with any followed anime: its
+// episodes are read all the same.
+func TestStoreSyncReadsASeriesMatchedByHand(t *testing.T) {
+	f := newFakeShoko(t)
+	f.addSeries(Series{ID: 5, MAL: []int{4242}, Name: "Elsewhere", Episodes: 12}, nil)
+	f.addFile(50, 5, 1, t0)
+	c, _ := NewClient(f.server.URL, "key-1")
+	store := NewStore(t.TempDir())
+	if err := store.Sync(context.Background(), c, f.server.URL, map[int]bool{}, map[int]bool{5: true}, false, t0); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.OwnedEpisodes(5)) != 1 {
+		t.Fatal("the episodes of a series matched by hand were not read")
 	}
 }

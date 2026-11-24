@@ -256,6 +256,14 @@
       // (empty) one back and wipe it.
       config.shoko_api_key = SECRET_PLACEHOLDER;
       config.shoko_url = url.replace(/\/+$/, "");
+      // Saved on the server already: the baseline takes the two fields too, so the page doesn't read
+      // as having unsaved changes for them (decisions/129). Other edits stay unsaved.
+      if (baseline) {
+        const saved = JSON.parse(baseline);
+        saved.shoko_api_key = config.shoko_api_key;
+        saved.shoko_url = config.shoko_url;
+        baseline = snapshot(saved);
+      }
       shokoPassword = "";
       toast.success(m.config_shoko_login_ok());
       await loadShokoStatus();

@@ -20,3 +20,8 @@
 - Going back to iterating `AiringSchedule.Nodes` "because it's simpler" — the simplicity produces a diagnosis of a pipeline the daemon does not run.
 - Stopping at pack resolution "because that's the step that decides the strategy" — it is only half the search; the other half is the per-episode fallback.
 - Truncating `summary.Episodes` to those with `would_search: true` — the report's "nothing searched" count depends on seeing both sides.
+
+**Amendment (see [#147](147-episodes-already-in-shoko-leave-the-list-both.md)):** the debug pass doesn't drop the episodes already in Shoko,
+which the real pass does. It already treats every episode as not downloaded (the warning it logs),
+and Shoko's episodes are a case of that: with Shoko holding 1–6, the debug pass searches from 1
+where the pass searches from 7. Mirroring it would need the Shoko sync inside a dry run.

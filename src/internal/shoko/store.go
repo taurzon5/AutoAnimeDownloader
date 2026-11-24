@@ -111,15 +111,16 @@ func (s *Store) Due(url string, every time.Duration, now time.Time) bool {
 // and a full one read every series, then the owned episodes of the series that match a tracked
 // MAL id. After that only files imported since the newest one seen are read: their series are read
 // again, a series not seen yet is fetched by id, and a tracked series never read is read now.
-// tracked holds the MAL ids of the anime the app follows. A failure leaves the previous state, with
-// the error recorded.
-func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked map[int]bool, full bool, now time.Time) error {
+// tracked holds the MAL ids of the anime the app follows, and bySeries the series a match set by
+// hand points at, which may share no MAL id with them. A failure leaves the previous state, with the
+// error recorded.
+func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked, bySeries map[int]bool, full bool, now time.Time) error {
 	s.mu.Lock()
 	state := s.state
 	s.mu.Unlock()
 	full = full || state.LastFullSync.IsZero() || state.URL != url
 
-	next, err := sync1(ctx, c, state, tracked, full)
+	next, err := sync1(ctx, c, state, tracked, bySeries, full)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err != nil {
@@ -137,7 +138,7 @@ func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked map[int
 	return s.saveLocked()
 }
 
-func sync1(ctx context.Context, c *Client, prev State, tracked map[int]bool, full bool) (State, error) {
+func sync1(ctx context.Context, c *Client, prev State, tracked, bySeries map[int]bool, full bool) (State, error) {
 	next := State{Series: map[int]Series{}, Owned: map[int][]Episode{}, NewestImport: prev.NewestImport,
 		NewestImportIDs: prev.NewestImportIDs, LastFullSync: prev.LastFullSync}
 	refresh := map[int]bool{}
@@ -197,7 +198,7 @@ func sync1(ctx context.Context, c *Client, prev State, tracked map[int]bool, ful
 	}
 
 	for id, sr := range next.Series {
-		if !tracksAny(sr, tracked) {
+		if !tracksAny(sr, tracked) && !bySeries[id] {
 			delete(next.Owned, id)
 			continue
 		}

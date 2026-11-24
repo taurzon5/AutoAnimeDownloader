@@ -65,6 +65,14 @@ func TestShokoServiceForPass(t *testing.T) {
 		t.Fatalf("status = %+v, %v", st, ok)
 	}
 
+	// The add-anime path matches one anime against the last sync, without syncing.
+	if got := svc.OwnedFor(cfg, frierenAnime(), files.AnimeSettings{}); len(got) != 2 {
+		t.Fatalf("OwnedFor = %+v, want episodes 1 and 2", got)
+	}
+	if got := svc.OwnedFor(cfg, frierenAnime(), files.AnimeSettings{Shoko: &files.ShokoMatch{None: true}}); len(got) != 0 {
+		t.Fatalf("OwnedFor with the match set to none = %+v", got)
+	}
+
 	// "Not in Shoko", set by hand: nothing owned.
 	none := map[int]files.AnimeSettings{154587: {Shoko: &files.ShokoMatch{None: true}}}
 	if got := svc.ForPass(ctx, cfg, animes, none, now); len(got) != 0 {
@@ -82,6 +90,9 @@ func TestShokoServiceForPass(t *testing.T) {
 	cfg.ShokoEnabled = false
 	if got := svc.ForPass(ctx, cfg, animes, nil, now); got != nil {
 		t.Fatalf("with Shoko off: %+v", got)
+	}
+	if got := svc.OwnedFor(cfg, frierenAnime(), files.AnimeSettings{}); got != nil {
+		t.Fatalf("OwnedFor with Shoko off: %+v", got)
 	}
 	if _, ok := svc.AnimeStatus(154587); ok {
 		t.Fatal("a status survived turning Shoko off")

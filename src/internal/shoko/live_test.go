@@ -72,7 +72,7 @@ func TestShokoLive(t *testing.T) {
 	store := NewStore(t.TempDir())
 	tracked := map[int]bool{52991: true}
 	for _, when := range []time.Time{time.Now(), time.Now().Add(time.Hour)} {
-		if err := store.Sync(ctx, c, url, tracked, false, when); err != nil {
+		if err := store.Sync(ctx, c, url, tracked, nil, false, when); err != nil {
 			t.Fatalf("Sync: %v", err)
 		}
 	}

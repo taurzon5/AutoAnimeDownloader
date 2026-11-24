@@ -2,6 +2,7 @@ package api
 
 import (
 	"AutoAnimeDownloader/src/internal/anilist"
+	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/logger"
 	"errors"
 	"fmt"
@@ -279,10 +280,11 @@ func handleAnimes(server *Server) http.HandlerFunc {
 
 		animes := make([]AnimeInfo, 0, len(animeMap))
 		for key, animeInfo := range animeMap {
-			animeInfo.EpisodesPending = countPendingEpisodes(animeInfo.EpisodesWatched, animeInfo.EpisodesReleased, downloadedNums[key])
+			present := withShokoOwned(downloadedNums[key], server.State.Shoko(), animeInfo.AnimeID)
+			animeInfo.EpisodesPending = countPendingEpisodes(animeInfo.EpisodesWatched, animeInfo.EpisodesReleased, present)
 			for i := range animeInfo.Accounts {
 				acc := &animeInfo.Accounts[i]
-				acc.EpisodesPending = countPendingEpisodes(acc.EpisodesWatched, animeInfo.EpisodesReleased, downloadedNums[key])
+				acc.EpisodesPending = countPendingEpisodes(acc.EpisodesWatched, animeInfo.EpisodesReleased, present)
 			}
 			animeInfo.IsStandalone = standaloneSet[animeInfo.AnimeID]
 			animes = append(animes, *animeInfo)
@@ -304,6 +306,24 @@ const FailedAccountsHeader = "X-Failed-Accounts"
 // countPendingEpisodes counts the released episodes above the watch progress that aren't on disk
 // yet. It walks by number (not released-downloaded) because watched episodes may stay saved
 // (watched_episodes_to_keep) and would inflate the subtraction.
+// withShokoOwned adds the episodes the user has in Shoko to those the app downloaded: they are not
+// "still to download", and the bar's yellow segment and the "behind" count must not show them so
+// forever (decisions/088, decisions/147). The map passed in is not changed.
+func withShokoOwned(downloaded map[int]bool, svc *daemon.ShokoService, animeID int) map[int]bool {
+	st, ok := svc.AnimeStatus(animeID)
+	if !ok || len(st.Owned) == 0 {
+		return downloaded
+	}
+	out := make(map[int]bool, len(downloaded)+len(st.Owned))
+	for n := range downloaded {
+		out[n] = true
+	}
+	for n := range st.Owned {
+		out[n] = true
+	}
+	return out
+}
+
 func countPendingEpisodes(watched, released int, downloaded map[int]bool) int {
 	pending := 0
 	for n := watched + 1; n <= released; n++ {
