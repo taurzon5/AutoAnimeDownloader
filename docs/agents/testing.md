@@ -46,6 +46,52 @@ same politeness delay. Run `-run TestLive_ExtrasVsNextCour`. Offline pins:
 `TestExtrasBuckets_KnownPackFiles`. The production rule is
 [decisions/113](decisions/113-packfilerange-min-max-skips-extrasova-an-isolated.md).
 
+## qBittorrent Live Test
+
+`torrents/qbittorrent_test.go` drives `QBitBackend` against `fakeQBit`, an httptest server that
+answers in both the pre-5.0 format (200 `Ok.`) and the 5.x one (empty 204, 401, JSON from
+`torrents/add`). What only a real qBittorrent proves (the Host header check, its real answers,
+whether a placed torrent lands renamed in the library) `TestQBitLive` checks against two
+throwaway containers, under the same kind of gate as the live AniList and Nyaa tests:
+
+```bash
+bash scripts/qbittorrent-live.sh up      # seeder + downloader, writes runtime/qbt-test/env.sh
+source runtime/qbt-test/env.sh && go test ./src/internal/torrents/ -run TestQBitLive -v
+bash scripts/qbittorrent-live.sh down    # removes the containers, the network and runtime/qbt-test
+```
+
+- **What `up` needs:** Docker and the `qbittorrentofficial/qbittorrent-nox:latest` image (Docker
+  pulls it on the first run). The test content is random bytes made locally by
+  `scripts/qbittorrent-live-torrents.py`, and the magnet hands the seeder's address to the
+  downloader (`x.pe=`), so no tracker is involved.
+- **What it isolates:** everything lives under `runtime/qbt-test` (git-ignored), on its own Docker
+  network, and both WebUIs answer on 127.0.0.1 only (18080 the downloader, 18081 the seeder).
+  `up` starts by running `down`, so a run never reuses an old state.
+- **Same port inside and outside:** each WebUI listens on the same port inside the container as
+  outside. qBittorrent's Host header check answers 401 to a port mismatch, a mapping like
+  `-p 8080:8090` gives exactly that, and the backend's login error names this cause.
+- **What it covers:** the connection test (probe file in the library), a pack with an `Extras/`
+  folder placed under the series folder, and a single episode renamed into `Season 01/`, both
+  downloaded from the seeder. Their files stay `.part` until `FinalizePlacement`, and must then
+  equal the seed byte for byte. `Remove` runs once with `keepData` and once without, and the path
+  map is exercised too (`/library` in qBittorrent, `runtime/qbt-test/library` in the app).
+- **The limits ([decisions/144](decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md)):**
+  the test sets a global share limit that stops a torrent as soon as it finishes, and checks that
+  the app's torrents are still seeding 5 s after they finish. It downloads with `disable_seeding` on
+  and checks each torrent carries the upload floor, then that turning it off lifts it. It also
+  checks that the managed queue lands in qBittorrent's preferences. With the per-torrent share
+  limits removed from the code, this test fails: the real qBittorrent stopped both torrents.
+- **The incomplete folder ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)):**
+  the single episode stages. The downloader mounts `runtime/qbt-test/incomplete` as `/incomplete`,
+  a second path-map entry. The test checks qBittorrent holds it as the torrent's download path
+  after the add, and that after the move the file is in `Season 01/` and the download path is
+  cleared.
+- **What only the fake covers:** the API key, redownload and recheck, Kept, the library swap,
+  pause and priority, a moved or unmounted incomplete folder, and the pre-5.0 answers.
+
+Run it when you touch `qbit_client.go` or `qbittorrent.go`, and after a qBittorrent release that
+bumps the Web API version. The test itself takes a few seconds.
+
 ## Test Structure
 
 - `src/tests/unit/` — unit tests (`package unit`)

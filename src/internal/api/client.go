@@ -5,6 +5,7 @@ import (
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/notifications"
 	"AutoAnimeDownloader/src/internal/nyaa"
+	"AutoAnimeDownloader/src/internal/torrents"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -365,6 +366,15 @@ func (c *Client) RedownloadMissingFiles(hashes []string) (*daemon.RedownloadResu
 		body = RedownloadMissingRequest{Hashes: hashes}
 	}
 	if err := c.sendSlow(http.MethodPost, "/api/v1/torrents/redownload-missing", body, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// TestTorrentClient runs the qBittorrent connection test against the saved settings.
+func (c *Client) TestTorrentClient() (*torrents.QBitTestResult, error) {
+	var result torrents.QBitTestResult
+	if err := c.sendSlow(http.MethodPost, "/api/v1/torrent-client/test", nil, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

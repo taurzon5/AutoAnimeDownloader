@@ -33,6 +33,13 @@ MAX_EPISODES_PER_ANIME="${MAX_EPISODES_PER_ANIME:-12}"
 EPISODE_RETRY_LIMIT="${EPISODE_RETRY_LIMIT:-5}"
 DELETE_WATCHED_EPISODES="${DELETE_WATCHED_EPISODES:-true}"
 EXCLUDED_LISTS="${EXCLUDED_LISTS:-${EXCLUDED_LIST:-}}"
+# Set (the compose file's qbittorrent profile): qBittorrent instead of the built-in client, which
+# needs direct mode, and the app manages that qBittorrent's settings, since nothing else uses it.
+QBITTORRENT_URL="${QBITTORRENT_URL:-}"
+QBITTORRENT_JSON=""
+if [ -n "$QBITTORRENT_URL" ]; then
+    QBITTORRENT_JSON=$(printf ',\n  "library_mode": "direct",\n  "torrent_client": "qbittorrent",\n  "qbittorrent_url": "%s",\n  "qbittorrent_manage_settings": true' "$QBITTORRENT_URL")
+fi
 
 # Convert DELETE_WATCHED_EPISODES to a JSON boolean
 if [ "$DELETE_WATCHED_EPISODES" = "true" ] || [ "$DELETE_WATCHED_EPISODES" = "1" ]; then
@@ -52,7 +59,7 @@ if [ ! -f "$CONFIG_FILE" ] || [ -n "$FORCE_CONFIG_UPDATE" ]; then
   "max_episodes_per_anime": $MAX_EPISODES_PER_ANIME,
   "episode_retry_limit": $EPISODE_RETRY_LIMIT,
   "delete_watched_episodes": $DELETE_WATCHED_EPISODES_JSON,
-  "excluded_lists": $(csv_to_json_array "$EXCLUDED_LISTS")
+  "excluded_lists": $(csv_to_json_array "$EXCLUDED_LISTS")$QBITTORRENT_JSON
 }
 EOF
     echo "Config file created/updated at $CONFIG_FILE"

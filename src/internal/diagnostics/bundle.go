@@ -48,6 +48,9 @@ type rawConfig struct {
 	Notifications      struct {
 		Webhooks []rawWebhook `json:"webhooks"`
 	} `json:"notifications"`
+	QBittorrentUsername string `json:"qbittorrent_username"`
+	QBittorrentPassword string `json:"qbittorrent_password"`
+	QBittorrentAPIKey   string `json:"qbittorrent_api_key"`
 }
 
 type rawWebhook struct {
@@ -123,7 +126,11 @@ func writeField(b *strings.Builder, name, value string) {
 
 func configUsernames(cfg rawConfig) []string {
 	names := append([]string{cfg.AnilistUsername}, cfg.AnilistUsernames...)
-	return append(names, cfg.MALUsernames...)
+	names = append(names, cfg.MALUsernames...)
+	if cfg.QBittorrentUsername != "" {
+		names = append(names, cfg.QBittorrentUsername)
+	}
+	return names
 }
 
 // webhookSecrets are the configured webhook URLs and header values. A URL with {{vars}} is matched
@@ -140,6 +147,13 @@ func webhookSecrets(cfg rawConfig) []string {
 			secrets = append(secrets, v)
 		}
 	}
+	// The qBittorrent password and API key, wherever a log line might quote them. The username is a
+	// username: configUsernames pseudonymizes it.
+	for _, secret := range []string{cfg.QBittorrentPassword, cfg.QBittorrentAPIKey} {
+		if secret != "" {
+			secrets = append(secrets, secret)
+		}
+	}
 	// Longest first, so a URL isn't half-replaced by a shorter secret it contains.
 	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
 	return secrets
@@ -152,8 +166,12 @@ func redactConfig(r *redactor, data []byte) string {
 	}
 	for key, v := range cfg {
 		switch key {
-		case "anilist_username", "anilist_usernames", "mal_usernames":
+		case "anilist_username", "anilist_usernames", "mal_usernames", "qbittorrent_username":
 			cfg[key] = r.value(pseudonymize, v)
+		case "qbittorrent_password", "qbittorrent_api_key":
+			if s, ok := v.(string); ok && s != "" {
+				cfg[key] = "<redacted>"
+			}
 		default:
 			cfg[key] = r.value(keep, v)
 		}

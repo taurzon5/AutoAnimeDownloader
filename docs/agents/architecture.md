@@ -95,7 +95,7 @@ Key endpoints:
 |--------|----------|-------------|------|
 | `GET` | `/api/v1/status` | `handleStatus` | `endpoint_status.go` — the `disk_low` threshold lives **only** on the server. It is the add-gate for a torrent of size 0: `free - reserved` against `min_free_disk_gb` (`daemon.DiskLow`), so the Status banner cannot disagree with what the daemon will refuse ([decisions/093](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)). The AniList state is written by **any** call (a pass or a frontend poll), because they all go through `sendAnilistRequest` — decisions/065 and decisions/066. `anilist.cache_saved_at` is filled in on **read**, not when the state is written: it's not a fact about AniList, it's what the banner uses to say how old the cache on screen is. `pending_crash_at` (mtime of `crash-pending.log`, `null` when there is none) is what makes the web UI offer the report screen after a crash. `latest_version`/`latest_version_url` come from `updates.Latest()` (memory, no request on read) and drive the update badge next to the version in `NavRail`/`MoreMenu` (`UpdateBadge.svelte`), read once when the shell mounts. `incomplete_disk_total`/`incomplete_disk_free` describe the `incomplete_path` drive, only when it is set and not the library's filesystem; `disk_low` covers both drives ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
 | `GET` | `/api/v1/last-check` | `handleLastCheck` | `endpoint_last_check.go` — memory only. `problems` (should have downloaded and did not) and `limits` (the config doing what it was configured to do). When `pass_error` is set both lists come empty, because `SetLastCheckError` clears the report (decisions/082). A manual download stays out: that path returns the error on its own HTTP response |
-| `GET/PUT` | `/api/v1/config` | `handleConfig` | `endpoint_config.go` |
+| `GET/PUT` | `/api/v1/config` | `handleConfig` | `endpoint_config.go` — `GET` answers the qBittorrent password and API key as `"__saved__"`, and a `PUT` carrying it keeps the saved value ([decisions/143](decisions/143-the-qbittorrent-password-and-api-key-come-back.md)). The `PUT` answers `restart_required: true` when `torrent_client` changed: the client is picked at startup |
 | `GET` | `/api/v1/config/priorities/defaults` | `handlePriorityDefaults` | `endpoint_priorities.go` |
 | `GET` | `/api/v1/animes` | `handleAnimes` | `endpoint_animes.go` — `next_airing_at` is a **timestamp**, not a countdown: the response is cached 60s and a precomputed counter would freeze. `media_status` is AniList media status, copied at merge; the dashboard type filter is client-side (`lib/utils/status.ts`). Search by `alt_names` is client-side. `episodes_downloaded` is **files on disk right now**, not a lifetime total: it DROPS when the daemon prunes watched episodes, so `released - downloaded` is not "still to download" — `episodes_pending` is ([decisions/088](decisions/088-the-progress-bar-derives-downloaded-from-episodes.md)). `episodes_watched`/`episodes_pending` are the **combined** view (lowest progress across accounts); `accounts` carries each account's own pair, which the dashboard user filter projects onto (`scopeToAccounts`). `accounts` holds only the accounts that have the anime in a **download** status — orphans included, cut by `inStatuses`, and an orphan's combined `episodes_watched` is the lowest among those kept accounts, not among every account — unlike `/animes/{id}/episodes`, which lists any status. Header `X-Failed-Accounts` (`FailedAccountsHeader`): comma-separated `<source>:<username>` of the accounts whose list fetch failed for this response; absent when none did. The body stays the bare array ([decisions/125](decisions/125-the-dashboard-user-filter-re-projects-progress.md)) |
 | `GET` | `/api/v1/anilist/search?q=&include_unreleased=` | `handleAniListSearch` | `endpoint_anilist_search.go` — a term shorter than 3 chars returns an empty list, **not** 400. `block_reason` per result (`""` = addable) |
@@ -122,7 +122,8 @@ Key endpoints:
 | `DELETE` | `/api/v1/diagnostics/crash` | `handleDiagnosticsCrash` | `endpoint_diagnostics.go` — moves `crash-pending.log` to `crashes/`. Idempotent; answers the usual 200 envelope, not 204, because `apiRequest` always parses the body |
 | `POST` | `/api/v1/notifications/webhooks/preview` | `handleNotificationWebhookPreview` | `endpoint_notifications.go` — renders the preset in the BODY (the unsaved form) with the test fire's sample values; sends nothing and reads no config |
 | `POST` | `/api/v1/notifications/webhooks/{name}/test` | `handleNotificationWebhookTest` | `endpoint_notifications.go` |
-| `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
+| `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)). With qBittorrent it is qBittorrent's own `moving` state (`qbitStatusSlug`), and `withMoveProgress` measures the bytes already at the final paths ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)) |
+| `POST` | `/api/v1/torrent-client/test` | `handleTorrentClientTest` | `endpoint_torrent_client.go` — signs in to qBittorrent, reads its versions and writes a probe file in the library to check qBittorrent sees it (`torrents.TestQBittorrent`, through `app/getDirectoryContent`). Optional body: the qBittorrent settings being edited (`qbittorrent_url`, user, password, key, `qbittorrent_path_map`, `completed_anime_path`), so the web UI tests before saving; a secret sent as the placeholder uses the saved one. 502 `TORRENT_CLIENT_UNREACHABLE` when it can't connect or sign in; 200 with `problem` when connected but too old or not seeing the library. Also answers qBittorrent's own download queue (`queueing_enabled`, `max_active_downloads`) and `disk_io_type` (absent when it didn't answer its preferences), `sign_in` (`api_key` or `password`), and with `incomplete_path` a second probe there (`incomplete_checked`, `incomplete_visible`, `incomplete_path`). The body takes `incomplete_path` too. Saves nothing. CLI: `torrents test` |
 | `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/resume` | `handleTorrentResume` | `endpoint_torrents.go` |
@@ -285,7 +286,8 @@ to the backend/librarian by `SetOrchestration`.
 
 **`disable_seeding` has two halves, in two packages** ([decisions/119](decisions/119-disable-seeding-means-no-upload-at-all-and-a.md)).
 The session half is in `torrents`: `SetUploadDisabled` → the next `Ensure` rebuilds the session
-with no unchoking and an empty allowed-fast set (`rainConfig`). Call it BEFORE `Ensure`, like
+with no unchoking and an empty allowed-fast set (`rainConfig`); with qBittorrent it is an upload
+limit per torrent instead, applied by the poll loop (decisions/144). Call it BEFORE `Ensure`, like
 `SetMaxActiveDownloads`. The library half is in `jobs.go`: `organizeTorrent` → `releaseTorrent`
 marks the records `TorrentReleased` and then removes the torrent with its download copy. From then
 on the episode exists only as the library hardlink, and every reader of "is the torrent in the
@@ -621,8 +623,32 @@ per-torrent loop. `videoExtEpisodeRegexp` is the one builder (from `videoExtensi
 
 ### `src/internal/torrents/` — embedded BitTorrent client
 
-`github.com/cenkalti/rain/v2` behind the `TorrentBackend` interface. One seam, two sides: production
-uses `SessionManager`/`Session`; tests use the in-memory `FakeBackend`.
+`github.com/cenkalti/rain/v2` behind the `TorrentBackend` interface. One seam, three sides:
+production uses `SessionManager`/`Session` (rain) or `QBitBackend` (qBittorrent, below); tests use
+the in-memory `FakeBackend`. `cmd/daemon` `newTorrentBackend` picks one from `torrent_client` **at
+startup only**; the daemon and the API never know which.
+
+**`qbittorrent.go` / `qbit_client.go` — the qBittorrent backend** (direct mode only,
+[decisions/142](decisions/142-qbittorrent-stops-each-placed-torrent-at-its.md)). It shares
+`placements.json`, `planFiles` and the root markers with rain, in the same data dir. What the
+daemon sees comes from **one poll loop on `sync/maindata`** (2 s): `List`/`Get` read its merged
+snapshot, filtered to the app's category; a change into complete or into `error`/`missingFiles`
+fires the callbacks (none for a torrent first seen complete). A placed torrent is added at the
+library root and stopped at its metadata; the poll loop's `applyPlacement` freezes the file map,
+renames every file to its planned path (`.part` while downloading) and only then starts it.
+`Ensure` connects (Web API 2.11+, the category) or, when connected with unchanged settings, only
+pings: a qBittorrent that went away fails the pass. The same poll keeps the app's limits on every
+torrent of the category (`enforceLimits`): no share limit (qBittorrent's global one could remove
+the library's files) and, with `disable_seeding`, the upload floor. qBittorrent's queue is global,
+so `SetMaxActiveDownloads` reaches it only with `qbittorrent_manage_settings`
+(`syncManagedSettings`, on every `Ensure` and on the next poll after a change, which also turns off
+the ".!qB" extension and moves memory-mapped disk I/O to pread). `Remove` deletes `.!qB` names
+too, whichever way the extension is set. Both in
+[decisions/144](decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md). The incomplete
+folder is qBittorrent's per-torrent download path: qBittorrent moves a finished staged torrent
+into the library itself, `FinalizePlacement` waits for that and clears the path, and a redownload
+happens in place ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)). Progress stands in for rain's piece counts (`qbitProgressScale`):
+the failure handler keeps data on `PiecesHave > 0`. `torrents` doesn't import `files`: `daemon.QBitSettingsFrom` converts the config.
 
 **Lock order: `queue.mu` → `SessionManager.mu`, never the other way.** `queue.enforce` holds
 `queue.mu` while calling `list`/`pause`/`resume`, so every `SessionManager` method drops its own

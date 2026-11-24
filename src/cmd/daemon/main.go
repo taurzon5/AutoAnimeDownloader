@@ -176,11 +176,30 @@ func runDebugAnime(animeId int) {
 	os.Exit(0)
 }
 
-// ensureStartupSession creates the embedded torrent session at boot when a save path is
-// already configured, so seeding starts with the process instead of waiting for the first
-// verification pass. An incomplete config is not an error here — the session stays lazy and
+// newTorrentBackend picks the torrent client from torrent_client, read once here: changing it
+// takes a restart. qBittorrent reads its connection settings on every Ensure, so a changed URL or
+// password applies on the next pass.
+func newTorrentBackend(dataDir string, fileManager *files.FileManager) torrents.TorrentBackend {
+	if configs, err := fileManager.LoadConfigs(); err == nil && configs != nil && configs.UsesQBittorrent() {
+		logger.Logger.Info().Msg("Torrent client: qBittorrent")
+		return torrents.NewQBitBackend(dataDir, func() (torrents.QBitSettings, error) {
+			configs, err := fileManager.LoadConfigs()
+			if err != nil {
+				return torrents.QBitSettings{}, err
+			}
+			return daemon.QBitSettingsFrom(configs), nil
+		})
+	}
+	// The resume database lives in the data dir, not the download dir, so resume data survives a
+	// save-path change.
+	return torrents.NewSessionManager(filepath.Join(dataDir, "session.db"))
+}
+
+// ensureStartupSession creates the torrent session (or connects to qBittorrent) at boot when a
+// save path is already configured, so seeding starts with the process instead of waiting for the
+// first verification pass. An incomplete config is not an error here — the session stays lazy and
 // the verification pass creates it once the config is saved.
-func ensureStartupSession(manager *torrents.SessionManager, fileManager *files.FileManager) {
+func ensureStartupSession(manager torrents.TorrentBackend, fileManager *files.FileManager) {
 	configs, err := fileManager.LoadConfigs()
 	if err != nil {
 		logger.Logger.Warn().Err(err).Msg("Failed to load configs at startup; torrent session will be created on the first verification pass")
@@ -199,10 +218,10 @@ func ensureStartupSession(manager *torrents.SessionManager, fileManager *files.F
 	manager.SetDirectMode(configs.IsDirectMode())
 	downloadPath := configs.DownloadPath()
 	if _, err := manager.Ensure(downloadPath); err != nil {
-		logger.Logger.Error().Err(err).Str("download_path", downloadPath).Msg("Failed to create the embedded torrent session at startup; the verification pass will retry")
+		logger.Logger.Error().Err(err).Str("download_path", downloadPath).Msg("Failed to start the torrent client at startup; the verification pass will retry")
 		return
 	}
-	logger.Logger.Info().Str("download_path", downloadPath).Msg("Embedded torrent session started; seeding is active independently of the daemon loop")
+	logger.Logger.Info().Str("download_path", downloadPath).Msg("Torrent client started; seeding is active independently of the daemon loop")
 }
 
 func main() {
@@ -274,12 +293,10 @@ func main() {
 	}
 	jobQueue := daemon.NewJobQueue(fileManager, filepath.Join(dataDir, "pending_jobs.json"))
 
-	// Embedded torrent client (rain) and the library organizer (hardlinks into the
-	// completed-anime folder). The session is created lazily by SessionManager once the
-	// save path is known (config may be incomplete at startup).
-	// The resume database lives in the data dir, not the download dir, so resume data survives a
-	// save-path change.
-	torrentManager := torrents.NewSessionManager(filepath.Join(dataDir, "session.db"))
+	// The torrent client (the embedded rain session, or qBittorrent) and the library organizer
+	// (hardlinks into the completed-anime folder). The session is created lazily once the save path
+	// is known (config may be incomplete at startup).
+	torrentManager := newTorrentBackend(dataDir, fileManager)
 	librarian := files.NewLibrarian(files.NewOSFileSystem())
 
 	// Completion events enqueue a durable JobOrganize; failures notify and drop the torrent
@@ -316,7 +333,10 @@ func main() {
 	defer jobQueue.Stop()
 	// Runs before jobQueue.Stop (LIFO): an organize job copying a big pack from the incomplete
 	// folder into the library would hold the shutdown for minutes. It starts over next time.
-	defer torrentManager.CancelMoves()
+	// Only rain copies from the incomplete folder; qBittorrent has no such copy to cancel.
+	if session, ok := torrentManager.(*torrents.SessionManager); ok {
+		defer session.CancelMoves()
+	}
 
 	// Create the session at startup when the config is already complete, so seeding resumes
 	// with the process and is independent of the daemon loop (stopping the loop from the

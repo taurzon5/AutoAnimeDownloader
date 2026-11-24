@@ -118,6 +118,7 @@ func (s *Server) SetupRoutes() *http.ServeMux {
 	apiMux.HandleFunc("/api/v1/diagnostics", handleDiagnostics(s))
 	apiMux.HandleFunc("/api/v1/diagnostics/crash", handleDiagnosticsCrash(s))
 	apiMux.HandleFunc("/api/v1/torrents", handleTorrents(s))
+	apiMux.HandleFunc("/api/v1/torrent-client/test", handleTorrentClientTest(s))
 	// Single pattern for every method on this path: Go 1.22+ ServeMux patterns without a
 	// method prefix match all verbs, so handleTorrentDelete's own method check is what turns
 	// a non-DELETE request into a 405 instead of the mux ever seeing an unmatched pattern.

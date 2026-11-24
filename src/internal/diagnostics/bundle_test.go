@@ -41,6 +41,32 @@ func TestBuildRedactsTheConfig(t *testing.T) {
 	}
 }
 
+func TestBuildRedactsTheQBittorrentCredentials(t *testing.T) {
+	t.Setenv("HOME", "/home/alice")
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, configFileName), `{
+  "completed_anime_path": "/home/alice/Animes",
+  "torrent_client": "qbittorrent",
+  "qbittorrent_url": "http://192.168.1.20:8080",
+  "qbittorrent_username": "qbadmin",
+  "qbittorrent_password": "s3cretpass",
+  "qbittorrent_api_key": "qbt_apikey_123"
+}`)
+	writeFile(t, filepath.Join(dir, logFileName), `{"level":"warn","error":"login as qbadmin with s3cretpass failed","message":"x"}`+"\n")
+
+	bundle := Build(dir, Options{Titles: true}).Bundle
+	for _, leaked := range []string{"qbadmin", "s3cretpass", "qbt_apikey_123", "192.168.1.20"} {
+		if strings.Contains(bundle, leaked) {
+			t.Errorf("bundle leaks %q:\n%s", leaked, bundle)
+		}
+	}
+	for _, want := range []string{`"qbittorrent_password": "<redacted>"`, `"torrent_client": "qbittorrent"`} {
+		if !strings.Contains(bundle, want) {
+			t.Errorf("bundle misses %q:\n%s", want, bundle)
+		}
+	}
+}
+
 func TestBuildWithTitlesOffHidesAnimeSettingsAndContextIDs(t *testing.T) {
 	dir := bundleDir(t)
 	writeFile(t, filepath.Join(dir, logFileName), `{"level":"info","anime_id":154587,"message":"x"}`+"\n")

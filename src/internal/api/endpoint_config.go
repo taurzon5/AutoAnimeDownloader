@@ -5,6 +5,9 @@ import (
 	"AutoAnimeDownloader/src/internal/logger"
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"path/filepath"
+	"strings"
 )
 
 func handleConfig(server *Server) http.HandlerFunc {
@@ -29,7 +32,8 @@ func handleGetConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
-		JSONSuccess(w, http.StatusOK, configs)
+		// The qBittorrent password and API key never leave the daemon (decisions/143).
+		JSONSuccess(w, http.StatusOK, configs.MaskSecrets())
 	}
 }
 
@@ -39,6 +43,19 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
 			logger.Logger.Error().Err(err).Msg("Failed to decode config JSON")
 			JSONError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON format")
+			return
+		}
+
+		// Read before anything else: a secret sent back as the placeholder keeps its saved value, and
+		// disable_seeding/library_mode/torrent_client are compared with it below.
+		previous, err := server.FileManager.LoadConfigs()
+		if err != nil {
+			logger.Logger.Error().Err(err).Msg("Failed to load configs")
+			JSONInternalError(w, err)
+			return
+		}
+		if err := config.KeepSecrets(previous); err != nil {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 			return
 		}
 
@@ -70,6 +87,10 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 		case "", files.EpisodeNumberingSeason, files.EpisodeNumberingEntry:
 		default:
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Episode numbering must be "season" or "entry"`)
+			return
+		}
+		if msg := validateTorrentClient(&config); msg != "" {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 			return
 		}
 
@@ -157,14 +178,6 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
-		// Read before the save, to tell whether disable_seeding changed (below).
-		previous, err := server.FileManager.LoadConfigs()
-		if err != nil {
-			logger.Logger.Error().Err(err).Msg("Failed to load configs")
-			JSONInternalError(w, err)
-			return
-		}
-
 		if err := server.FileManager.SaveConfigs(&config); err != nil {
 			logger.Logger.Error().Err(err).Msg("Failed to save configs")
 			JSONInternalError(w, err)
@@ -184,13 +197,100 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			// library_mode, the same way: rain reads its storage once, when the session opens.
 			server.Torrents.SetDirectMode(config.IsDirectMode())
 			modeChanged := previous == nil || previous.IsDirectMode() != config.IsDirectMode()
-			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding || modeChanged) {
+			// qBittorrent reads these two on Ensure: its upload floor and whether it sets its queue.
+			qbitChanged := previous != nil && (previous.QBittorrentDisableSeedingUploadKiB != config.QBittorrentDisableSeedingUploadKiB ||
+				previous.QBittorrentManageSettings != config.QBittorrentManageSettings)
+			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding || modeChanged || qbitChanged) {
 				if _, err := server.Torrents.Ensure(path); err != nil {
 					logger.Logger.Warn().Err(err).Msg("Failed to apply disable_seeding to the torrent session; the next pass retries")
 				}
 			}
 		}
 
-		JSONSuccess(w, http.StatusOK, map[string]string{"message": "Configuration updated successfully"})
+		response := map[string]any{"message": "Configuration updated successfully"}
+		// The torrent client is picked once, at startup (cmd/daemon newTorrentBackend).
+		if previous != nil && clientOf(previous) != clientOf(&config) {
+			response["restart_required"] = true
+		}
+		JSONSuccess(w, http.StatusOK, response)
 	}
+}
+
+func clientOf(c *files.Config) string {
+	if c.UsesQBittorrent() {
+		return files.TorrentClientQBittorrent
+	}
+	return files.TorrentClientBuiltin
+}
+
+// validateTorrentClient checks torrent_client and the qBittorrent settings. "" when valid.
+func validateTorrentClient(c *files.Config) string {
+	switch c.TorrentClient {
+	case "", files.TorrentClientBuiltin, files.TorrentClientQBittorrent:
+	default:
+		return `Torrent client must be "builtin" or "qbittorrent"`
+	}
+	if msg := validatePathMap(c.QBittorrentPathMap); msg != "" {
+		return msg
+	}
+	if !c.UsesQBittorrent() {
+		return ""
+	}
+	if !c.IsDirectMode() {
+		return `qBittorrent writes straight into the library: set library_mode to "direct"`
+	}
+	// 0 would be unlimited in qBittorrent (decisions/144). Only while disable_seeding is on, the
+	// one time the value is used and the settings page shows it.
+	if c.DisableSeeding && c.QBittorrentDisableSeedingUploadKiB < 1 {
+		return "The upload limit for disable seeding with qBittorrent must be at least 1 KiB/s"
+	}
+	u, err := url.Parse(strings.TrimSpace(c.QBittorrentURL))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "qBittorrent URL must be an http(s) address, like http://127.0.0.1:8080"
+	}
+	if len(c.QBittorrentPathMap) > 0 && !underAnyMapping(c.CompletedAnimePath, c.QBittorrentPathMap) {
+		return "The library folder is not under any app folder of the qBittorrent path map"
+	}
+	// qBittorrent downloads staged torrents there itself (decisions/145).
+	if staging := c.StagingPath(); staging != "" && len(c.QBittorrentPathMap) > 0 && !underAnyMapping(staging, c.QBittorrentPathMap) {
+		return "The incomplete download folder is not under any app folder of the qBittorrent path map"
+	}
+	return ""
+}
+
+// validatePathMap: both sides absolute, and no folder listed twice or inside another on the same
+// side — the translation takes the longest prefix, and an overlap would make it ambiguous.
+func validatePathMap(maps []files.PathMapping) string {
+	for i, m := range maps {
+		if !filepath.IsAbs(m.App) || !isAbsAnyOS(m.QBittorrent) {
+			return "Every qBittorrent path map entry needs two absolute folders (app and qbittorrent)"
+		}
+		for _, other := range maps[:i] {
+			if nestedOrSame(m.App, other.App) || nestedOrSame(m.QBittorrent, other.QBittorrent) {
+				return "The qBittorrent path map lists the same folder twice, or one inside another"
+			}
+		}
+	}
+	return ""
+}
+
+// isAbsAnyOS accepts an absolute path of either OS: qBittorrent may run on another machine.
+func isAbsAnyOS(p string) bool {
+	return strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\\`) ||
+		(len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/'))
+}
+
+func nestedOrSame(a, b string) bool {
+	a, b = strings.TrimRight(a, `/\`), strings.TrimRight(b, `/\`)
+	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/") ||
+		strings.HasPrefix(a, b+`\`) || strings.HasPrefix(b, a+`\`)
+}
+
+func underAnyMapping(path string, maps []files.PathMapping) bool {
+	for _, m := range maps {
+		if nestedOrSame(path, m.App) && len(strings.TrimRight(path, `/\`)) >= len(strings.TrimRight(m.App, `/\`)) {
+			return true
+		}
+	}
+	return false
 }

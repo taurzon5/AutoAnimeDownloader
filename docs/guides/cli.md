@@ -161,7 +161,19 @@ autoanimedownloader torrents delete HASH --yes
 autoanimedownloader torrents delete HASH --yes --keep-data --block
 autoanimedownloader torrents redownload-missing
 autoanimedownloader torrents redownload-missing HASH1 HASH2
+autoanimedownloader torrents test
 ```
+
+`test` hits `POST /torrent-client/test` with the saved settings: it signs in to qBittorrent,
+prints its version and Web API version, and says whether qBittorrent sees the library folder (or
+what is wrong: too old, a path map that points elsewhere). It also prints how it signed
+in (API key or password), whether qBittorrent sees the incomplete folder when one is set,
+qBittorrent's own download queue (how many downloads run at a time, "no limit", or "off"), which is
+what applies unless `qbittorrent_manage_settings` lets the app set it, and a hint when qBittorrent
+uses memory-mapped disk I/O. A failed sign-in or an unreachable
+qBittorrent is an error. It saves and changes nothing. With the built-in client there is nothing to
+test; set `torrent_client`, `qbittorrent_url` and the login with `config set` first, e.g.
+`autoanimedownloader config set qbittorrent_url http://127.0.0.1:8080`.
 
 `redownload-missing` hits `POST /torrents/redownload-missing`: every finished direct-mode torrent
 whose library files were deleted outside the app (or whose library folder was replaced) downloads

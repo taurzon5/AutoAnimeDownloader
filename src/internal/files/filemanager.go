@@ -5,6 +5,7 @@ import (
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/nyaa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -157,6 +158,7 @@ type Config struct {
 	// DisableSeeding stops every upload: the torrent session never unchokes a peer (not even
 	// during the download), and a torrent is removed, download copy included, as soon as it is
 	// organized into the library. Toggling it rebuilds the torrent session. See decisions/119.
+	// With qBittorrent it is "almost no upload": QBittorrentDisableSeedingUploadKiB (decisions/144).
 	DisableSeeding bool `json:"disable_seeding"`
 	// CheckForUpdates lets the daemon ask GitHub once a day for the latest release (the update badge
 	// and update_available). false = no request ever leaves; whoever installs from the AUR or a
@@ -204,21 +206,112 @@ type Config struct {
 	// IncompleteMinFreeDiskGB is MinFreeDiskGB for the IncompletePath volume, in GiB. Only checked
 	// when that folder is on another filesystem than the library.
 	IncompleteMinFreeDiskGB int `json:"incomplete_min_free_disk_gb"`
+	// TorrentClient picks the BitTorrent client. "builtin" (the default, and what an empty value
+	// means) is the embedded rain session; "qbittorrent" drives an external qBittorrent 5.0+ through
+	// its Web API, in direct mode only. Read once at startup: changing it takes a restart.
+	TorrentClient string `json:"torrent_client"`
+	// QBittorrentURL is the qBittorrent WebUI address ("http://127.0.0.1:8080").
+	QBittorrentURL string `json:"qbittorrent_url"`
+	// QBittorrentUsername and QBittorrentPassword sign in when there is no API key. The password is
+	// a secret: GET /config answers SecretPlaceholder instead of it (MaskSecrets).
+	QBittorrentUsername string `json:"qbittorrent_username"`
+	QBittorrentPassword string `json:"qbittorrent_password"`
+	// QBittorrentAPIKey is used instead of the user and password when set (Web API 2.14.1+, made in
+	// qBittorrent's WebUI). A secret, like the password.
+	QBittorrentAPIKey string `json:"qbittorrent_api_key"`
+	// QBittorrentCategory is the category every torrent of the app gets in qBittorrent. The app only
+	// lists, controls and deletes torrents in it, so a qBittorrent shared with other uses is left
+	// alone.
+	QBittorrentCategory string `json:"qbittorrent_category"`
+	// QBittorrentPathMap translates paths between the app and qBittorrent when they see the library
+	// at different paths (Docker, a share mounted on two machines). Empty = identical paths.
+	QBittorrentPathMap []PathMapping `json:"qbittorrent_path_map"`
+	// QBittorrentManageSettings lets the app set the qBittorrent settings that are global, not per
+	// torrent: for now its download queue, from MaxConcurrentDownloads. Off (the default, for a
+	// qBittorrent also used for other things), qBittorrent's own queue applies (decisions/144).
+	QBittorrentManageSettings bool `json:"qbittorrent_manage_settings"`
+	// QBittorrentDisableSeedingUploadKiB is disable_seeding's upload limit per torrent with
+	// qBittorrent, in KiB/s. qBittorrent can't refuse uploads (0 is unlimited there), and the limit
+	// also carries the download's own requests, so a download runs at most a few hundred times it.
+	// At least 1 (decisions/144).
+	QBittorrentDisableSeedingUploadKiB int `json:"qbittorrent_disable_seeding_upload_kib"`
 }
 
-// Library modes and the direct-mode option values.
+// PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
+type PathMapping struct {
+	App         string `json:"app"`
+	QBittorrent string `json:"qbittorrent"`
+}
+
+// Library modes, the direct-mode option values and the torrent clients.
 const (
-	LibraryModeHardlink    = "hardlink"
-	LibraryModeDirect      = "direct"
-	IncompleteFilesPart    = "part"
-	IncompleteFilesInPlace = "in_place"
-	EpisodeNumberingSeason = "season"
-	EpisodeNumberingEntry  = "entry"
+	LibraryModeHardlink      = "hardlink"
+	LibraryModeDirect        = "direct"
+	IncompleteFilesPart      = "part"
+	IncompleteFilesInPlace   = "in_place"
+	EpisodeNumberingSeason   = "season"
+	EpisodeNumberingEntry    = "entry"
+	TorrentClientBuiltin     = "builtin"
+	TorrentClientQBittorrent = "qbittorrent"
 )
+
+// SecretPlaceholder stands in for a saved secret (the qBittorrent password and API key) in what
+// GET /config returns. A PUT that sends it back keeps the saved value (KeepSecrets), so the web UI
+// and `config set` never need the secret itself to save the rest of the config.
+const SecretPlaceholder = "__saved__"
 
 // IsDirectMode reports whether torrents are written straight to their library path.
 func (c *Config) IsDirectMode() bool {
 	return c.LibraryMode == LibraryModeDirect
+}
+
+// UsesQBittorrent reports whether the external qBittorrent client is selected.
+func (c *Config) UsesQBittorrent() bool {
+	return c.TorrentClient == TorrentClientQBittorrent
+}
+
+// MaskSecrets returns a copy of the config with every saved secret replaced by SecretPlaceholder.
+func (c *Config) MaskSecrets() *Config {
+	out := *c
+	if out.QBittorrentPassword != "" {
+		out.QBittorrentPassword = SecretPlaceholder
+	}
+	if out.QBittorrentAPIKey != "" {
+		out.QBittorrentAPIKey = SecretPlaceholder
+	}
+	return &out
+}
+
+// ErrSecretNeedsRetyping is KeepSecrets refusing to reuse a saved secret for another address.
+var ErrSecretNeedsRetyping = errors.New("the qBittorrent address changed: type the password (and the API key) again")
+
+// KeepSecrets puts back, from saved, every secret that c still carries as SecretPlaceholder — but
+// only for the saved qBittorrent address. With another address it refuses (ErrSecretNeedsRetyping):
+// otherwise anyone who can reach the web UI could point the address at their own server and have
+// the daemon sign in there with the saved password (decisions/143).
+func (c *Config) KeepSecrets(saved *Config) error {
+	if saved == nil {
+		return nil
+	}
+	sameURL := sameQBittorrentURL(c.QBittorrentURL, saved.QBittorrentURL)
+	for _, pair := range []struct{ field, saved *string }{
+		{&c.QBittorrentPassword, &saved.QBittorrentPassword},
+		{&c.QBittorrentAPIKey, &saved.QBittorrentAPIKey},
+	} {
+		if *pair.field != SecretPlaceholder {
+			continue
+		}
+		if !sameURL && *pair.saved != "" {
+			return ErrSecretNeedsRetyping
+		}
+		*pair.field = *pair.saved
+	}
+	return nil
+}
+
+func sameQBittorrentURL(a, b string) bool {
+	norm := func(u string) string { return strings.ToLower(strings.TrimRight(strings.TrimSpace(u), "/")) }
+	return norm(a) == norm(b)
 }
 
 // LiftsEpisodeLimit reports whether max_episodes_per_anime is ignored: direct mode with keep
@@ -330,17 +423,21 @@ func DefaultConfig() *Config {
 		CheckForUpdates:         true,
 		// DeleteWatchedEpisodes comes on by default: with no slack the episode disappears as soon as it's
 		// marked watched. Two forgive "I marked it by mistake" and "I wanted to rewatch".
-		WatchedEpisodesToKeep:   2,
-		ExcludedLists:           []string{},
-		DownloadStatuses:        []string{"CURRENT", "REPEATING"},
-		DownloadMediaStatuses:   []string{"RELEASING", "FINISHED"},
-		DeleteStatuses:          []string{},
-		Notifications:           NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
-		Priorities:              nyaa.DefaultPriorities(),
-		LibraryMode:             LibraryModeHardlink,
-		IncompleteFiles:         IncompleteFilesPart,
-		IncompleteMinFreeDiskGB: 10,
-		EpisodeNumbering:        EpisodeNumberingSeason,
+		WatchedEpisodesToKeep:              2,
+		ExcludedLists:                      []string{},
+		DownloadStatuses:                   []string{"CURRENT", "REPEATING"},
+		DownloadMediaStatuses:              []string{"RELEASING", "FINISHED"},
+		DeleteStatuses:                     []string{},
+		Notifications:                      NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
+		Priorities:                         nyaa.DefaultPriorities(),
+		LibraryMode:                        LibraryModeHardlink,
+		IncompleteFiles:                    IncompleteFilesPart,
+		IncompleteMinFreeDiskGB:            10,
+		EpisodeNumbering:                   EpisodeNumberingSeason,
+		TorrentClient:                      TorrentClientBuiltin,
+		QBittorrentCategory:                "autoanimedownloader",
+		QBittorrentPathMap:                 []PathMapping{},
+		QBittorrentDisableSeedingUploadKiB: 16,
 	}
 }
 
