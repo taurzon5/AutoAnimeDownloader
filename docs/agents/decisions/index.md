@@ -157,3 +157,4 @@ do not edit by hand.
 - [**#143** — The qBittorrent password and API key come back from GET /config as a placeholder, and a PUT that sends the placeholder keeps them](143-the-qbittorrent-password-and-api-key-come-back.md)
 - [**#144** — With qBittorrent the app's torrents never have a share limit, disable_seeding is an upload limit of a few KiB/s, and the queue is set only when the app manages qBittorrent](144-with-qbittorrent-the-apps-torrents-never-have-a.md)
 - [**#145** — With qBittorrent a staged torrent downloads into its incomplete folder as qBittorrent's download path, qBittorrent moves it into the library, and the app then clears the path](145-with-qbittorrent-a-staged-torrent-downloads-into.md)
+- [**#146** — An AniList entry matches a Shoko series through its MAL id, at offset 0 when it has the series' own episode count, and anything that doesn't add up waits to be confirmed by hand](146-an-anilist-entry-matches-a-shoko-series-through.md)
