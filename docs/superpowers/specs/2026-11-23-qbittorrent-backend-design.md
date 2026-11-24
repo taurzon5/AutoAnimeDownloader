@@ -1,11 +1,13 @@
 # qBittorrent backend: an external client instead of the built-in one
 
 **Date:** 2026-11-23
-**Status:** designed, not implemented — no fixed release
+**Status:** designed, not implemented — no fixed release. **Since 2026-11-23 rain is being
+dropped** ([megapack-downloads](2026-11-23-megapack-downloads-design.md)), so this backend becomes
+the app's only client (see "Since this was written"); the open questions are answered at the end.
 **Origin:** the user wants to run a qBittorrent fork they will modify themselves (base not chosen:
 stock or Enhanced Edition) in place of the built-in rain client, with direct library mode, and with
-qBittorrent's own queueing and seeding limits. Per-file selection inside packs is deferred until the
-user has planned it.
+qBittorrent's own queueing and seeding limits. Per-file selection inside packs was deferred until
+the user had planned it — the megapack spec now uses qBittorrent's per-file priorities.
 **Scope:** `internal/torrents` (a `qbittorrent` backend behind `TorrentBackend`), `internal/files`
 (config, path mapping), `internal/daemon` (backend choice, the direct-mode placement path),
 `internal/diagnostics` (secret redaction), `internal/api` (validation, a connection test),
@@ -32,9 +34,30 @@ code the user wants to change. The user wants the daemon to drive a qBittorrent 
   guard and the leftover cleanup read and write the library. Paths may differ on each side.
 - **Not per-file selection.** File priorities stay at "download everything" until the user's own
   design for packs lands.
-- **Not a migration tool, in v1.** See [Switching clients](#switching-clients).
+- **Not a migration tool, in v1.** An import from rain is designed but not a priority (answer 4).
+  See [Moving from rain](#moving-from-rain-the-import).
 
 ---
+
+## Since this was written: rain is being dropped
+
+On 2026-11-23 the user decided the built-in client goes and qBittorrent is the only one (the
+megapack spec needs per-file selection, which rain lacks). Other clients were weighed the same day
+(Deluge, rTorrent, Transmission, Porla, `anacrolix/torrent`); the user stuck with qBittorrent. This
+spec was written for "an alternative"; what that changes here:
+
+- **`torrent_client` is temporary.** It exists for the move only: `"builtin"` until an install
+  switches, then `"qbittorrent"`; the key goes away with rain.
+- **Direct mode is the only library mode for new torrents.** Hardlink mode needs rain's separate
+  `.torrents` copy.
+- **[#21](../../agents/decisions/021-embedded-torrent-client-hardlink-into-library.md) is reversed,
+  not amended**, and [#41](../../agents/decisions/041-the-download-queue-holds-every-incomplete-torrent.md)
+  (the app's own queue) goes with rain.
+- **More of qBittorrent's API is used** by the other specs: per-file priorities
+  (`torrents/filePrio`) for megapacks, and the incomplete folder as qBittorrent's "keep incomplete
+  torrents in" (`temp_path`).
+- **Docker:** the compose file gets a qBittorrent container next to the app, sharing the library
+  folder at the same path, so the path map stays empty.
 
 ## Settings
 
@@ -62,15 +85,15 @@ the library is visible to qBittorrent (`app/getDirectoryContent` on the mapped f
 
 - **Web API 2.11 or later (qBittorrent 5.0+).** 2.11 renamed `torrents/pause|resume` to
   `torrents/stop|start`; supporting both is cheap (pick by version at login) but 4.x is end of life.
-  Open question 1.
+  Answer 1: 5.0 or later only.
 - **Both sides see the library.** Same machine, a bind mount in Docker, or the same NFS/SMB share
   mounted on both hosts. The path map translates; it cannot make an unshared disk visible.
-- **Preferences the app relies on** are read at connect and reported, never silently overwritten:
+- **Preferences the app relies on** are read at connect; the app sets them only when "Let the app
+  manage this qBittorrent's settings" is on (answer 2), and otherwise reports what differs:
   - "Append .!qB extension to incomplete files" ↔ `incomplete_files: "part"` (the app accepts `.!qB`
     instead of `.part`; Jellyfin skips both);
   - automatic torrent management **off** for the app's category (the app sets each torrent's save
     path itself).
-  Open question 2: report-only or let the app set them.
 
 ---
 
@@ -88,7 +111,7 @@ the library is visible to qBittorrent (`app/getDirectoryContent` on the mapped f
 | `Remove` | `torrents/delete` with `deleteFiles=!keepData` |
 | `Pause` / `Resume` / `Prioritize(All)` | `torrents/stop` / `start` / `topPrio` (in order, for the batch) |
 | `SetMaxActiveDownloads` | qBittorrent's queue (`queueing_enabled`, `max_active_downloads`) — see [Queue and limits](#queue-and-limits) |
-| `SetUploadDisabled` | per-torrent upload limit and a share limit of ratio 0 (open question 3: qBittorrent has no "upload nothing at all") |
+| `SetUploadDisabled` | the smallest per-torrent upload limit while downloading, then the torrent is removed (files kept) once organized — qBittorrent has no "upload nothing at all" (answer 3) |
 | `Announce` | `torrents/reannounce` |
 | `SetCallbacks` | a poll loop on `sync/maindata` (every few seconds): a torrent crossing into a completed state fires `onComplete`; `error`/`missingFiles` fires `onFailed`. A completed torrent seen for the first time after a restart is left to the reconcile pass, as with rain |
 | `SetDirectMode` | no-op: always direct |
@@ -131,31 +154,50 @@ for both clients. Only how it is applied changes.
 With `"qbittorrent"`, qBittorrent's queue replaces the app's:
 
 - `max_concurrent_downloads` sets qBittorrent's `max_active_downloads` (queueing on) **for the
-  whole client**. Open question 2 again: a shared qBittorrent may not want that.
+  whole client**, so it is set only when the app manages the settings (answer 2); otherwise the
+  settings page shows qBittorrent's own cap next to it.
 - Prioritize (web UI, CLI, manual downloads) is `topPrio`; resume is `start` and lets qBittorrent's
   queue decide; pause is `stop`. The app's `queue.go` is not used by this backend.
 - Seeding: keep forever = no share limit on the app's torrents (`ratioLimit=-1`,
   `seedingTimeLimit=-1`). A seeding policy (ratio, days) becomes possible here as a later option.
 
-## Switching clients
+## Moving from rain: the import
 
-v1: `torrent_client` is fixed per installation in practice. Switching it does not move torrents.
-A record whose hash the new client doesn't have reads as missing and is downloaded again, so
-switching re-downloads everything still tracked. The settings page says so next to the switch.
+> **Not a priority** (answer 4): the first release switches without it, and what rain was tracking
+> is downloaded again. This section is kept so the work isn't redone if it is wanted later.
 
-The real fix is an import: re-add each tracked direct-mode torrent to the other client with its
-save path at the files' location, letting the client verify instead of download. That is a
-separate PR (open question 4).
+The import would run once, from the settings page (and the CLI), while rain is still there to read
+from:
+
+1. **For each torrent the app tracks**, it takes the `.torrent` metadata from rain's session — the
+   same bytes the redownload already re-adds
+   ([#140](../../agents/decisions/140-redownloading-missing-files-adds-the-same-torrent.md)) — so
+   qBittorrent needs no magnet lookup.
+2. **It adds it to qBittorrent** in the app's category with the save path where the files already
+   are, checking on, stopped until the check ends: qBittorrent verifies the files and seeds them
+   instead of downloading. Direct-mode torrents point at their library folders; their file names
+   already match the placement.
+3. **Hardlink-era torrents keep their data where it is:** qBittorrent seeds them from
+   `.torrents/<hash>/`, and the library hardlinks stay. They are handled like direct-mode torrents
+   from then on, and the `.torrents` folder empties as they are deleted or upgraded.
+4. **A torrent whose files fail the check** (deleted, partly missing) is reported on the import
+   page with the choice to download it again or forget it.
+5. When every torrent is in qBittorrent, `torrent_client` becomes `"qbittorrent"` and rain's
+   session is closed.
+
+The check reads every file once, sequentially. On a large library on a slow disk it takes hours;
+the import page shows progress, and the app keeps working with rain until the switch.
 
 ---
 
 ## Decisions this touches
 
 [decisions/021](../../agents/decisions/021-embedded-torrent-client-hardlink-into-library.md)
-(embedded client replaces qBittorrent) gets an amendment: the embedded client stays the default;
-qBittorrent comes back as an option, in direct mode only, behind the same interface.
+(embedded client replaces qBittorrent) is **reversed** now that rain is dropped: qBittorrent is the
+client, in direct mode, behind the same interface. (Written before that decision, this said "an
+amendment: the embedded client stays the default".)
 [decisions/041](../../agents/decisions/041-the-download-queue-holds-every-incomplete-torrent.md)
-(the app's queue) is scoped to the built-in client. The status-slug mapping must stay in sync with
+(the app's queue) goes with rain; qBittorrent's queue replaces it. The status-slug mapping must stay in sync with
 `src/lib/utils/torrentStatus.ts`, as for rain. New entries when implemented: completion by polling
 `sync/maindata`; the category as the boundary of what the app touches; qBittorrent applies the
 app's placement through renames.
@@ -167,9 +209,9 @@ app's placement through renames.
    redaction of the password. Direct mode only; placement renames.
 2. **Queue and limits:** qBittorrent's queue for `max_concurrent_downloads`, share limits for
    keep forever, `disable_seeding`.
-3. **Import between clients** (if open question 4 says yes).
+3. **Import from rain** — not scheduled; only if it is wanted later (answer 4).
 
-Per-file selection is not on this list: it waits for the user's design.
+Per-file selection comes after these, with the megapack spec (`torrents/filePrio`).
 
 ## Tests
 
@@ -184,14 +226,35 @@ Per-file selection is not on this list: it waits for the user's design.
 - `sandbox`: a qBittorrent mock wired in place of the built-in client.
 - Optional, not in CI: an integration test against a real qBittorrent-nox in Docker.
 
-## Open questions
+## Open questions — answered (2026-11-23)
 
-1. **Minimum version:** 5.0+ only (simplest), or also 4.x (`pause`/`resume`)?
-2. **Global qBittorrent preferences** (incomplete-file extension, auto torrent management, the
-   active-download cap): report and ask the user to set them, or let the app set them — which
-   affects every torrent in a qBittorrent shared with other uses?
-3. **`disable_seeding` with qBittorrent:** qBittorrent can't refuse all uploads (an upload limit of
-   0 means unlimited). Use the smallest limit plus ratio 0, or disable the option for this client?
-4. **Switching clients:** accept the re-download in v1, or make the import part of the first
-   delivery?
-5. **Auth:** username/password only, or also qBittorrent's API keys (Web API 2.14.1+)?
+The user asked for these to be answered, after choosing to stick with qBittorrent. Say if you
+disagree with any.
+
+1. **Minimum version: qBittorrent 5.0 or later (Web API 2.11+), no 4.x.** 4.x is end of life; 5.0
+   renamed `pause`/`resume` to `stop`/`start`, so one code path instead of two. 5.0.1 added the
+   "Simple pread/pwrite" disk mode, which avoids libtorrent 2.0's memory-mapped I/O — what the
+   user's low-memory, SMR-disk setup wants. Debian trixie ships 5.1.0, and the user's fork will
+   start from current code anyway.
+2. **Global preferences: a switch, "Let the app manage this qBittorrent's settings".** On, the app
+   sets what it needs at connect; off, it only reports what differs and the settings page says
+   what to change. The switch is **on in the app's own Docker setup** (a qBittorrent that only the
+   app uses) and **off by default otherwise** (a qBittorrent shared with other uses). Everything that
+   can be set per torrent is set per torrent either way: save path, automatic torrent management
+   off, share limits, upload limit. What the switch governs is the truly global part: the
+   incomplete-file extension, the incomplete folder (`temp_path`), the active-download cap and the
+   disk I/O mode (pread recommended).
+3. **`disable_seeding`: keep it, as "almost no upload".** While downloading, each torrent gets the
+   smallest upload limit qBittorrent accepts (0 means unlimited there, so not 0); as soon as an
+   episode is in the library, the app removes the torrent and keeps the files — in direct mode the
+   files are the library. The setting's hint says "almost no upload" instead of "no upload at
+   all", and [#119](../../agents/decisions/119-disable-seeding-means-no-upload-at-all-and-a.md)
+   gets amended.
+4. **Switching: not a priority** (the user, 2026-11-23: "switching from rain spec is not really
+   important, don't prioritise it"). The first release switches without an import: what rain was
+   tracking reads as missing in qBittorrent and is downloaded again, and the settings page says so
+   before the switch. "Moving from rain" stays as a design for later, not scheduled.
+5. **Sign-in: an API key when qBittorrent offers one, otherwise user and password.** With Web API
+   2.14.1 or later, paste a key created in qBittorrent's WebUI. Older 5.x has no keys, so the user
+   and password are stored as a secret (never logged, redacted in bug reports, not echoed back).
+   The settings page says which one is in use.
