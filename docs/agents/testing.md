@@ -75,6 +75,12 @@ bash scripts/qbittorrent-live.sh down    # removes the containers, the network a
   downloaded from the seeder. Their files stay `.part` until `FinalizePlacement`, and must then
   equal the seed byte for byte. `Remove` runs once with `keepData` and once without, and the path
   map is exercised too (`/library` in qBittorrent, `runtime/qbt-test/library` in the app).
+- **The limits ([decisions/144](decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md)):**
+  the test sets a global share limit that stops a torrent as soon as it finishes, and checks that
+  the app's torrents are still seeding 5 s after they finish. It downloads with `disable_seeding` on
+  and checks each torrent carries the upload floor, then that turning it off lifts it. It also
+  checks that the managed queue lands in qBittorrent's preferences. With the per-torrent share
+  limits removed from the code, this test fails: the real qBittorrent stopped both torrents.
 - **What only the fake covers:** the API key, redownload and recheck, Kept, the library swap,
   pause and priority, and the pre-5.0 answers.
 

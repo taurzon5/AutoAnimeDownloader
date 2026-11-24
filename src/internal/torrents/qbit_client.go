@@ -201,6 +201,8 @@ type qbitAddRequest struct {
 	// StopAtMetadata adds with stopCondition=MetadataReceived: the torrent stops as soon as its file
 	// list is known, before it writes anything, so the backend can rename the files first.
 	StopAtMetadata bool
+	// UploadLimit adds it with that upload limit in bytes per second (disable_seeding); 0 = none.
+	UploadLimit int64
 }
 
 func (c *qbitClient) add(ctx context.Context, r qbitAddRequest) error {
@@ -213,9 +215,17 @@ func (c *qbitClient) add(ctx context.Context, r qbitAddRequest) error {
 		// Per torrent, so qBittorrent's global "Keep incomplete torrents in" (on by default in its
 		// official Docker image) can't send the download to another folder than the library.
 		"useDownloadPath": {"false"},
+		// No share limit: qBittorrent's global one would stop the torrent, or remove it with its
+		// files, which are the library (decisions/144).
+		"ratioLimit":               {qbitNoLimit},
+		"seedingTimeLimit":         {qbitNoLimit},
+		"inactiveSeedingTimeLimit": {qbitNoLimit},
 	}
 	if r.StopAtMetadata {
 		form.Set("stopCondition", "MetadataReceived")
+	}
+	if r.UploadLimit > 0 {
+		form.Set("upLimit", strconv.FormatInt(r.UploadLimit, 10))
 	}
 	body, err := c.call(ctx, http.MethodPost, "torrents/add", form)
 	if errors.Is(err, errQBitConflict) {
@@ -271,6 +281,26 @@ type qbitTorrent struct {
 	SeedingTime  int64   `json:"seeding_time"`
 	HasMetadata  *bool   `json:"has_metadata"`
 	ErrorMessage string  `json:"error"`
+	// The limits are pointers: a field qBittorrent did not send must not read as a limit of 0, or
+	// the backend would set it again on every poll.
+	RatioLimit               *float64 `json:"ratio_limit"`
+	SeedingTimeLimit         *int64   `json:"seeding_time_limit"`
+	InactiveSeedingTimeLimit *int64   `json:"inactive_seeding_time_limit"`
+	UpLimit                  *int64   `json:"up_limit"`
+}
+
+// hasShareLimit reports whether qBittorrent could stop or remove the torrent for its ratio or seeding
+// time: any of the three limits other than "none" (-1), including "use the global one" (-2).
+func (t qbitTorrent) hasShareLimit() bool {
+	if t.RatioLimit != nil && *t.RatioLimit != -1 {
+		return true
+	}
+	for _, v := range []*int64{t.SeedingTimeLimit, t.InactiveSeedingTimeLimit} {
+		if v != nil && *v != -1 {
+			return true
+		}
+	}
+	return false
 }
 
 // metadataKnown reports whether qBittorrent has the torrent's file list. has_metadata only exists
@@ -380,6 +410,61 @@ func (c *qbitClient) reannounce(ctx context.Context, hashes ...string) error {
 
 func (c *qbitClient) recheck(ctx context.Context, hashes ...string) error {
 	return c.hashesCall(ctx, "torrents/recheck", hashes, nil)
+}
+
+// qbitNoLimit is qBittorrent's "no limit" for a torrent's share limits and its queue caps; -2 means
+// "use the global setting".
+const qbitNoLimit = "-1"
+
+// qbitDefaultUploadFloorKiB is disable_seeding's upload limit with qBittorrent when the config has
+// none (qbittorrent_disable_seeding_upload_kib). qBittorrent has no "upload nothing": 0 means
+// unlimited there, and so do 0 upload slots. And the limit also carries the download's own
+// requests, so 1 B/s stalls it before it even has its file list (decisions/144).
+const qbitDefaultUploadFloorKiB = 16
+
+// setNoShareLimit removes every share limit from the torrents. qBittorrent 5.3.0 (Web API 2.16.2,
+// measured) refuses the call without shareLimitAction and shareLimitsMode; versions that don't have
+// them don't read them.
+func (c *qbitClient) setNoShareLimit(ctx context.Context, hashes ...string) error {
+	return c.hashesCall(ctx, "torrents/setShareLimits", hashes, url.Values{
+		"ratioLimit": {qbitNoLimit}, "seedingTimeLimit": {qbitNoLimit}, "inactiveSeedingTimeLimit": {qbitNoLimit},
+		"shareLimitAction": {"Default"}, "shareLimitsMode": {"Default"},
+	})
+}
+
+// setUploadLimit sets the torrents' upload limit in bytes per second; 0 means unlimited.
+func (c *qbitClient) setUploadLimit(ctx context.Context, limit int64, hashes ...string) error {
+	return c.hashesCall(ctx, "torrents/setUploadLimit", hashes, url.Values{"limit": {strconv.FormatInt(limit, 10)}})
+}
+
+// qbitQueuePrefs is the part of qBittorrent's preferences the app sets when it manages them: its
+// download queue. -1 is "no limit".
+type qbitQueuePrefs struct {
+	QueueingEnabled    bool `json:"queueing_enabled"`
+	MaxActiveDownloads int  `json:"max_active_downloads"`
+	MaxActiveUploads   int  `json:"max_active_uploads"`
+	MaxActiveTorrents  int  `json:"max_active_torrents"`
+}
+
+func (c *qbitClient) queuePrefs(ctx context.Context) (qbitQueuePrefs, error) {
+	body, err := c.call(ctx, http.MethodGet, "app/preferences", nil)
+	if err != nil {
+		return qbitQueuePrefs{}, err
+	}
+	var out qbitQueuePrefs
+	if err := json.Unmarshal(body, &out); err != nil {
+		return qbitQueuePrefs{}, fmt.Errorf("unreadable app/preferences answer: %w", err)
+	}
+	return out, nil
+}
+
+func (c *qbitClient) setQueuePrefs(ctx context.Context, p qbitQueuePrefs) error {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	_, err = c.call(ctx, http.MethodPost, "app/setPreferences", url.Values{"json": {string(data)}})
+	return err
 }
 
 // renameFile moves one file of a torrent. Both paths are relative to the torrent's save path and

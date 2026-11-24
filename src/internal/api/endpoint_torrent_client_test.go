@@ -88,7 +88,7 @@ func TestUpdateConfig_ValidatesTheTorrentClient(t *testing.T) {
 		{"hardlink mode", func(c *files.Config) { c.LibraryMode = files.LibraryModeHardlink }, `library_mode to "direct"`},
 		{"bad URL", func(c *files.Config) { c.QBittorrentURL = "localhost:8080" }, "http(s) address"},
 		{"incomplete folder", func(c *files.Config) { c.IncompletePath = t.TempDir() }, "incomplete download folder"},
-		{"disable seeding", func(c *files.Config) { c.DisableSeeding = true }, "Disable seeding isn't supported"},
+		{"upload floor of 0", func(c *files.Config) { c.DisableSeeding, c.QBittorrentDisableSeedingUploadKiB = true, 0 }, "at least 1 KiB/s"},
 		{"relative map", func(c *files.Config) {
 			c.QBittorrentPathMap = []files.PathMapping{{App: "anime", QBittorrent: "/data"}}
 		}, "two absolute folders"},
@@ -113,6 +113,29 @@ func TestUpdateConfig_ValidatesTheTorrentClient(t *testing.T) {
 				t.Fatalf("PUT = %d %s, want 400 mentioning %q", w.Code, w.Body.String(), tc.want)
 			}
 		})
+	}
+}
+
+// Step 1 refused disable_seeding with qBittorrent; step 2 made it "almost no upload" (decisions/144).
+func TestUpdateConfig_DisableSeedingIsAllowedWithQBittorrent(t *testing.T) {
+	mock := &mockFileManager{configs: qbitConfig(t)}
+	server := &Server{State: daemon.NewState(), FileManager: mock}
+	edit := *mock.configs
+	edit.DisableSeeding = true
+	edit.QBittorrentManageSettings = true
+	if w := putConfig(t, server, &edit); w.Code != http.StatusOK {
+		t.Fatalf("PUT = %d: %s", w.Code, w.Body.String())
+	}
+	if !mock.configs.DisableSeeding || !mock.configs.QBittorrentManageSettings {
+		t.Fatalf("saved disable_seeding=%v manage_settings=%v, want both on", mock.configs.DisableSeeding, mock.configs.QBittorrentManageSettings)
+	}
+
+	// The floor is only checked while it is used: a 0 left from config set doesn't block other saves.
+	edit = *mock.configs
+	edit.DisableSeeding = false
+	edit.QBittorrentDisableSeedingUploadKiB = 0
+	if w := putConfig(t, server, &edit); w.Code != http.StatusOK {
+		t.Fatalf("PUT with disable_seeding off and a floor of 0 = %d: %s", w.Code, w.Body.String())
 	}
 }
 

@@ -130,7 +130,7 @@ func TestQBit_PlacedTorrentIsRenamedBeforeItStarts(t *testing.T) {
 
 	want := []string{
 		"createCategory aad",
-		"add " + qbHashA + " savepath=" + q.root + " stopAtMeta=true useDownloadPath=false",
+		"add " + qbHashA + " savepath=" + q.root + " stopAtMeta=true useDownloadPath=false limits=-1/-1/-1 upLimit=",
 		"rename " + qbHashA + " [Group] Frieren - 05 (1080p).mkv -> Frieren/Season 01/Frieren - S01E05.mkv.part",
 		"start " + qbHashA,
 	}
@@ -551,6 +551,10 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 	if entries, _ := os.ReadDir(library); len(entries) != 0 {
 		t.Fatalf("the probe file was left in the library: %v", entries)
 	}
+	// qBittorrent's own queue, what applies when the app doesn't manage it (decisions/144).
+	if res.QueueingEnabled == nil || !*res.QueueingEnabled || res.MaxActiveDownloads == nil || *res.MaxActiveDownloads != 3 {
+		t.Fatalf("queue = %v / %v, want qBittorrent's 3 at a time", res.QueueingEnabled, res.MaxActiveDownloads)
+	}
 
 	// qBittorrent pointed at another folder through the path map.
 	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: t.TempDir()}}
@@ -697,5 +701,236 @@ func TestQBitAddResult(t *testing.T) {
 		if err := qbitAddResult([]byte(body)); (err == nil) != ok {
 			t.Errorf("qbitAddResult(%s) = %v, want ok=%v", body, err, ok)
 		}
+	}
+}
+
+// callsSince returns the fake's calls after the first n, so a test reads only what a step called.
+func (q *qbTest) callsSince(n int) []string {
+	return q.fake.callLog()[n:]
+}
+
+// Every torrent of the app is added with no share limit: qBittorrent's global one would stop it, or
+// remove it with its files, which are the library. Measured on qBittorrent 5.3.0: under a global
+// ratio limit of 0 a torrent left on "use the global limit" stopped the moment it finished
+// (decisions/144).
+func TestQBit_AddGivesNoShareLimitAndTheUploadFloorOnlyWithDisableSeeding(t *testing.T) {
+	q := newQBitTest(t)
+	if _, err := q.backend.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	q.backend.SetUploadDisabled(true)
+	if _, err := q.backend.Add(qbMagnet(qbHashB)); err != nil {
+		t.Fatal(err)
+	}
+	log := strings.Join(q.fake.callLog(), "\n")
+	for _, want := range []string{
+		"add " + qbHashA + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit=\n",
+		"add " + qbHashB + " savepath=" + q.savePath + " stopAtMeta=false useDownloadPath=false limits=-1/-1/-1 upLimit=16384",
+	} {
+		if !strings.Contains(log+"\n", want) {
+			t.Errorf("calls =\n%s\nwant a line %q", log, want)
+		}
+	}
+	// The poll only puts the floor on A, added before disable_seeding was on: B has it already.
+	n := len(q.fake.callLog())
+	q.backend.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"setUploadLimit " + qbHashA + " 16384"}) {
+		t.Fatalf("a poll right after the adds called %v, want only A's floor", got)
+	}
+}
+
+// A torrent of the app that has a share limit anyway (taken over from another category, added by
+// hand in the category, or changed in qBittorrent) loses it on the next poll, whatever the limit.
+// Other categories are not the app's.
+func TestQBit_ShareLimitsAreTakenOffTheAppsTorrents(t *testing.T) {
+	for _, modern := range []bool{false, true} {
+		t.Run(map[bool]string{false: "5.0", true: "5.3"}[modern], func(t *testing.T) {
+			q := newQBitTest(t)
+			q.fake.modern = modern
+			global, custom := -2.0, 1.5
+			q.fake.put(qbitTorrent{Hash: qbHashA, Category: "aad", State: "stalledUP", Progress: 1, TotalSize: 4, RatioLimit: &global})
+			q.fake.put(qbitTorrent{Hash: qbHashB, Category: "aad", State: "stalledUP", Progress: 1, TotalSize: 4, RatioLimit: &custom})
+			q.fake.put(qbitTorrent{Hash: qbHashC, Category: "theirs", State: "stalledUP", Progress: 1, TotalSize: 4, RatioLimit: &global})
+			n := len(q.fake.callLog())
+			q.backend.poll()
+			want := []string{"setShareLimits " + qbHashA + "," + qbHashB + " -1/-1/-1"}
+			if got := q.callsSince(n); !reflect.DeepEqual(got, want) {
+				t.Fatalf("calls = %v, want %v", got, want)
+			}
+			if a := q.fake.torrent(qbHashA); *a.RatioLimit != -1 || *a.SeedingTimeLimit != -1 || *a.InactiveSeedingTimeLimit != -1 {
+				t.Fatalf("qBittorrent did not take the call: %v %v %v", *a.RatioLimit, *a.SeedingTimeLimit, *a.InactiveSeedingTimeLimit)
+			}
+			n = len(q.fake.callLog())
+			q.backend.poll()
+			if got := q.callsSince(n); len(got) != 0 {
+				t.Fatalf("a poll with the limits already off called %v", got)
+			}
+		})
+	}
+}
+
+// A qBittorrent that answers the limit calls without applying them is not sent the same call on
+// every poll: once a minute at most.
+func TestQBit_ALimitQBittorrentIgnoresIsResentOnceAMinute(t *testing.T) {
+	q := newQBitTest(t)
+	q.fake.ignoreLimits = true
+	global := -2.0
+	q.fake.put(qbitTorrent{Hash: qbHashA, Category: "aad", State: "stalledUP", Progress: 1, TotalSize: 4, RatioLimit: &global})
+	n := len(q.fake.callLog())
+	q.backend.poll()
+	q.backend.poll()
+	if got := q.callsSince(n); len(got) != 1 {
+		t.Fatalf("two polls called %v, want one setShareLimits", got)
+	}
+	q.backend.mu.Lock()
+	q.backend.shareSent[qbHashA] = qbitSent{limit: -1, at: time.Now().Add(-qbitLimitResend)}
+	q.backend.mu.Unlock()
+	q.backend.poll()
+	if got := q.callsSince(n); len(got) != 2 {
+		t.Fatalf("after a minute the calls are %v, want the call sent again", got)
+	}
+}
+
+// disable_seeding with qBittorrent is "almost no upload": every torrent of the app is held at the
+// floor (16 KiB/s by default), whoever changed it, since 0 means unlimited there. Turning it off
+// lifts the floor and leaves a limit the user chose alone (decisions/119, decisions/144).
+func TestQBit_DisableSeedingHoldsEveryTorrentAtTheUploadFloor(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	var none, userLimit int64 = 0, 50000
+	q.fake.put(qbitTorrent{Hash: qbHashA, Category: "aad", State: "downloading", TotalSize: 4, UpLimit: &none})
+	q.fake.put(qbitTorrent{Hash: qbHashB, Category: "aad", State: "stalledUP", Progress: 1, TotalSize: 4, UpLimit: &userLimit})
+	q.fake.put(qbitTorrent{Hash: qbHashC, Category: "theirs", State: "downloading", TotalSize: 4, UpLimit: &none})
+	b.poll()
+
+	n := len(q.fake.callLog())
+	b.SetUploadDisabled(true)
+	b.poll()
+	want := []string{"setUploadLimit " + qbHashA + "," + qbHashB + " 16384"}
+	if got := q.callsSince(n); !reflect.DeepEqual(got, want) {
+		t.Fatalf("turning disable_seeding on called %v, want %v", got, want)
+	}
+	n = len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); len(got) != 0 {
+		t.Fatalf("a poll with the floor in place called %v", got)
+	}
+
+	// The user lifts it in qBittorrent: it comes back.
+	q.fake.setLimits(qbHashA, -1, 0)
+	b.mu.Lock()
+	b.uploadSent[qbHashA] = qbitSent{limit: 16384, at: time.Now().Add(-qbitLimitResend)}
+	b.mu.Unlock()
+	n = len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"setUploadLimit " + qbHashA + " 16384"}) {
+		t.Fatalf("a floor lifted by hand: calls %v, want it set again", got)
+	}
+
+	// Off again: the floor goes, right away, and only from the torrents that carry it.
+	q.fake.setLimits(qbHashB, -1, userLimit)
+	n = len(q.fake.callLog())
+	b.SetUploadDisabled(false)
+	b.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"setUploadLimit " + qbHashA + " 0"}) {
+		t.Fatalf("turning disable_seeding off called %v, want only A's floor lifted", got)
+	}
+}
+
+// qbittorrent_disable_seeding_upload_kib changed while disable_seeding is on moves every torrent to
+// the new floor; turned off in the same save as another change of the floor, the old one is still
+// lifted.
+func TestQBit_AChangedUploadFloorAppliesAndIsLiftedLater(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	var none int64
+	q.fake.put(qbitTorrent{Hash: qbHashA, Category: "aad", State: "downloading", TotalSize: 4, UpLimit: &none})
+	b.SetUploadDisabled(true)
+	b.poll()
+
+	q.settings.UploadFloorKiB = 32
+	if _, err := b.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	b.poll()
+	if got := *q.fake.torrent(qbHashA).UpLimit; got != 32*1024 {
+		t.Fatalf("after the floor went to 32 KiB/s: up_limit %d", got)
+	}
+
+	q.settings.UploadFloorKiB = 8
+	b.SetUploadDisabled(false)
+	if _, err := b.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	b.poll()
+	if got := *q.fake.torrent(qbHashA).UpLimit; got != 0 {
+		t.Fatalf("disable_seeding off with the floor changed to 8 KiB/s: up_limit %d, want the old 32 KiB/s floor lifted", got)
+	}
+}
+
+// With the app managing qBittorrent's settings, max_concurrent_downloads is qBittorrent's download
+// queue, seeding and active torrents uncapped; 0 is no limit. It is set on connect, on a change
+// (the next poll), and again on the next pass when someone changed it in qBittorrent.
+func TestQBit_ManagedQueueFollowsMaxConcurrentDownloads(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	b.SetMaxActiveDownloads(2)
+	q.settings.ManageSettings = true
+	n := len(q.fake.callLog())
+	if _, err := b.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	want := qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 2, MaxActiveUploads: -1, MaxActiveTorrents: -1}
+	if q.fake.prefs != want {
+		t.Fatalf("after connecting: prefs %+v (calls %v), want %+v", q.fake.prefs, q.callsSince(n), want)
+	}
+
+	n = len(q.fake.callLog())
+	if _, err := b.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	b.poll()
+	if got := q.callsSince(n); len(got) != 0 {
+		t.Fatalf("a pass and a poll with the queue already set called %v", got)
+	}
+
+	q.fake.mu.Lock()
+	q.fake.prefs.MaxActiveDownloads = 7
+	q.fake.mu.Unlock()
+	if _, err := b.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	if q.fake.prefs.MaxActiveDownloads != 2 {
+		t.Fatalf("a queue changed in qBittorrent stayed at %d after the next pass, want 2", q.fake.prefs.MaxActiveDownloads)
+	}
+
+	b.SetMaxActiveDownloads(0)
+	b.poll()
+	if q.fake.prefs.MaxActiveDownloads != -1 || !q.fake.prefs.QueueingEnabled {
+		t.Fatalf("max_concurrent_downloads 0: prefs %+v, want queueing on with no download limit", q.fake.prefs)
+	}
+	n = len(q.fake.callLog())
+	b.SetMaxActiveDownloads(0)
+	b.poll()
+	if got := q.callsSince(n); len(got) != 0 {
+		t.Fatalf("the same value again called %v", got)
+	}
+}
+
+// Off (the default), the app changes nothing global in qBittorrent, which may be shared.
+func TestQBit_UnmanagedQueueIsLeftAlone(t *testing.T) {
+	q := newQBitTest(t)
+	q.backend.SetMaxActiveDownloads(1)
+	q.backend.poll()
+	if _, err := q.backend.Ensure(q.savePath); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range q.fake.callLog() {
+		if strings.HasPrefix(call, "setPreferences") {
+			t.Fatalf("an unmanaged qBittorrent got %s", call)
+		}
+	}
+	if q.fake.prefs.MaxActiveDownloads != 3 {
+		t.Fatalf("qBittorrent's own queue changed to %d", q.fake.prefs.MaxActiveDownloads)
 	}
 }

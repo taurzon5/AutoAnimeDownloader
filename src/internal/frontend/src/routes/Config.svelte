@@ -97,6 +97,13 @@
     hintQBittorrentAPIKey: m.config_hint_qbittorrent_api_key(),
     labelQBittorrentCategory: m.config_label_qbittorrent_category(),
     hintQBittorrentCategory: m.config_hint_qbittorrent_category(),
+    labelQBittorrentManage: m.config_label_qbittorrent_manage_settings(),
+    hintQBittorrentManage: m.config_hint_qbittorrent_manage_settings(),
+    hintMaxConcurrentQBitManaged: m.config_hint_max_concurrent_qbittorrent_managed(),
+    hintMaxConcurrentQBitOwn: m.config_hint_max_concurrent_qbittorrent_own(),
+    hintDisableSeedingQBit: m.config_hint_disable_seeding_qbittorrent(),
+    labelQBitUploadFloor: m.config_label_qbittorrent_disable_seeding_upload(),
+    hintQBitUploadFloor: m.config_hint_qbittorrent_disable_seeding_upload(),
     labelQBittorrentPathMap: m.config_label_qbittorrent_path_map(),
     hintQBittorrentPathMap: m.config_hint_qbittorrent_path_map(),
     pathMapApp: m.config_path_map_app(),
@@ -210,6 +217,8 @@
     qbittorrent_api_key: "",
     qbittorrent_category: "autoanimedownloader",
     qbittorrent_path_map: [],
+    qbittorrent_manage_settings: false,
+    qbittorrent_disable_seeding_upload_kib: 16,
   };
 
   // The connection test of the "Torrent client" group: the result of the last run, or its error.
@@ -433,6 +442,12 @@
       group: "client" as GroupId,
       ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
       message: m.config_val_qbittorrent_url,
+    },
+    {
+      group: "downloads" as GroupId,
+      // Only while disable seeding is on, the one time the field shows; missing reads as 0, as on the server.
+      ok: config.torrent_client !== "qbittorrent" || !config.disable_seeding || (config.qbittorrent_disable_seeding_upload_kib ?? 0) >= 1,
+      message: m.config_val_qbittorrent_disable_seeding_upload,
     },
   ];
 
@@ -845,6 +860,11 @@
                 inline={true}
               />
               <p class="text-caption text-subtle">{T && T.hintMaxConcurrent}</p>
+              {#if config.torrent_client === "qbittorrent"}
+                <p class="text-caption text-subtle" data-testid="max-concurrent-qbittorrent">
+                  {config.qbittorrent_manage_settings ? (T && T.hintMaxConcurrentQBitManaged) : (T && T.hintMaxConcurrentQBitOwn)}
+                </p>
+              {/if}
             </div>
             <div class="space-y-1.5 p-4.5">
               <Toggle
@@ -854,6 +874,21 @@
                 inline={true}
               />
               <p class="text-caption text-subtle">{T && T.hintDisableSeeding}</p>
+              {#if config.torrent_client === "qbittorrent"}
+                <p class="text-caption text-subtle" data-testid="disable-seeding-qbittorrent">{T && T.hintDisableSeedingQBit}</p>
+                {#if config.disable_seeding}
+                  <Input
+                    id="qbittorrent_disable_seeding_upload_kib"
+                    label={(T && T.labelQBitUploadFloor) || ""}
+                    subtitle={(T && T.hintQBitUploadFloor) || ""}
+                    type="number"
+                    bind:value={config.qbittorrent_disable_seeding_upload_kib}
+                    min="1"
+                    inline={true}
+                    suffix="KiB/s"
+                  />
+                {/if}
+              {/if}
             </div>
             <div class="p-4.5">
               <Input
@@ -1029,6 +1064,15 @@
                   bind:value={config.qbittorrent_category}
                 />
               </div>
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="qbittorrent_manage_settings"
+                  bind:checked={config.qbittorrent_manage_settings}
+                  label={(T && T.labelQBittorrentManage) || ""}
+                  inline={true}
+                />
+                <p class="text-caption text-subtle">{T && T.hintQBittorrentManage}</p>
+              </div>
 
               <div class="space-y-3 p-4.5">
                 <div class="space-y-1">
@@ -1058,6 +1102,13 @@
                     {$locale && m.config_qbittorrent_test_ok({ app: qbitTestResult.app_version, webapi: qbitTestResult.webapi_version })}
                     {#if qbitTestResult.library_visible && qbitTestResult.library_path}
                       {$locale && m.config_qbittorrent_test_library({ path: qbitTestResult.library_path })}
+                    {/if}
+                    {#if qbitTestResult.queueing_enabled === false}
+                      {$locale && m.config_qbittorrent_test_queue_off()}
+                    {:else if qbitTestResult.queueing_enabled && (qbitTestResult.max_active_downloads ?? -1) < 0}
+                      {$locale && m.config_qbittorrent_test_queue_unlimited()}
+                    {:else if qbitTestResult.queueing_enabled}
+                      {$locale && m.config_qbittorrent_test_queue({ count: String(qbitTestResult.max_active_downloads) })}
                     {/if}
                   </p>
                   {#if qbitTestResult.problem}

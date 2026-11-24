@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +37,10 @@ type fakeQBit struct {
 	meta  map[string][]qbitFile
 	calls []string
 	rid   int64
+	// prefs is the queue part of app/preferences (qBittorrent's defaults). ignoreLimits answers the
+	// limit calls without applying them, as a qBittorrent that drops them would.
+	prefs        qbitQueuePrefs
+	ignoreLimits bool
 }
 
 type fakeTorrent struct {
@@ -55,6 +60,7 @@ func newFakeQBit(t *testing.T) *fakeQBit {
 		categories: map[string]bool{},
 		torrents:   map[string]*fakeTorrent{},
 		meta:       map[string][]qbitFile{},
+		prefs:      qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: 3, MaxActiveUploads: 3, MaxActiveTorrents: 5},
 	}
 	f.server = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.server.Close)
@@ -169,12 +175,17 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		meta := false
+		// Like qBittorrent: a limit left out is -2, "use the global one"; no upload limit is 0.
 		f.torrents[h] = &fakeTorrent{
 			qbitTorrent: qbitTorrent{Hash: h, Name: h, State: "metaDL", Category: r.Form.Get("category"),
-				SavePath: r.Form.Get("savepath"), HasMetadata: &meta, AddedOn: int64(len(f.torrents) + 1), ETA: qbitETAInfinity},
+				SavePath: r.Form.Get("savepath"), HasMetadata: &meta, AddedOn: int64(len(f.torrents) + 1), ETA: qbitETAInfinity,
+				RatioLimit: fakeFloat(r.Form.Get("ratioLimit"), -2), SeedingTimeLimit: fakeInt(r.Form.Get("seedingTimeLimit"), -2),
+				InactiveSeedingTimeLimit: fakeInt(r.Form.Get("inactiveSeedingTimeLimit"), -2), UpLimit: fakeInt(r.Form.Get("upLimit"), 0)},
 			stopAtMeta: r.Form.Get("stopCondition") == "MetadataReceived",
 		}
-		f.record("add %s savepath=%s stopAtMeta=%v useDownloadPath=%s", h, r.Form.Get("savepath"), f.torrents[h].stopAtMeta, r.Form.Get("useDownloadPath"))
+		f.record("add %s savepath=%s stopAtMeta=%v useDownloadPath=%s limits=%s/%s/%s upLimit=%s", h, r.Form.Get("savepath"),
+			f.torrents[h].stopAtMeta, r.Form.Get("useDownloadPath"), r.Form.Get("ratioLimit"), r.Form.Get("seedingTimeLimit"),
+			r.Form.Get("inactiveSeedingTimeLimit"), r.Form.Get("upLimit"))
 		if f.modern {
 			w.WriteHeader(http.StatusAccepted)
 			fmt.Fprint(w, `{"success_count":0,"pending_count":1,"failure_count":0,"added_torrent_ids":[]}`)
@@ -261,6 +272,56 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		f.record("topPrio %s", strings.Join(hashes, ","))
 		f.noContent(w)
+	case "app/preferences":
+		_ = json.NewEncoder(w).Encode(f.prefs)
+	case "app/setPreferences":
+		// Only the keys sent change, as in qBittorrent.
+		current, _ := json.Marshal(f.prefs)
+		merged := map[string]json.RawMessage{}
+		_ = json.Unmarshal(current, &merged)
+		var sent map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(r.Form.Get("json")), &sent); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for k, v := range sent {
+			merged[k] = v
+		}
+		data, _ := json.Marshal(merged)
+		_ = json.Unmarshal(data, &f.prefs)
+		f.record("setPreferences %s", r.Form.Get("json"))
+		f.noContent(w)
+	case "torrents/setShareLimits":
+		required := []string{"ratioLimit", "seedingTimeLimit", "inactiveSeedingTimeLimit"}
+		if f.modern {
+			// qBittorrent 5.3.0 (Web API 2.16.2) refuses the call without these two.
+			required = append(required, "shareLimitAction", "shareLimitsMode")
+		}
+		for _, key := range required {
+			if _, ok := r.Form[key]; !ok {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintf(w, "Missing required parameters: %s", key)
+				return
+			}
+		}
+		for _, h := range hashes {
+			if t := f.torrents[h]; t != nil && !f.ignoreLimits {
+				t.RatioLimit = fakeFloat(r.Form.Get("ratioLimit"), -2)
+				t.SeedingTimeLimit = fakeInt(r.Form.Get("seedingTimeLimit"), -2)
+				t.InactiveSeedingTimeLimit = fakeInt(r.Form.Get("inactiveSeedingTimeLimit"), -2)
+			}
+		}
+		f.record("setShareLimits %s %s/%s/%s", strings.Join(hashes, ","), r.Form.Get("ratioLimit"),
+			r.Form.Get("seedingTimeLimit"), r.Form.Get("inactiveSeedingTimeLimit"))
+		f.noContent(w)
+	case "torrents/setUploadLimit":
+		for _, h := range hashes {
+			if t := f.torrents[h]; t != nil && !f.ignoreLimits {
+				t.UpLimit = fakeInt(r.Form.Get("limit"), 0)
+			}
+		}
+		f.record("setUploadLimit %s %s", strings.Join(hashes, ","), r.Form.Get("limit"))
+		f.noContent(w)
 	case "torrents/delete":
 		for _, h := range hashes {
 			delete(f.torrents, h)
@@ -286,6 +347,22 @@ func (f *fakeQBit) sortedTorrents() []*fakeTorrent {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Hash < out[j].Hash })
 	return out
+}
+
+func fakeFloat(v string, missing float64) *float64 {
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		n = missing
+	}
+	return &n
+}
+
+func fakeInt(v string, missing int64) *int64 {
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		n = missing
+	}
+	return &n
 }
 
 func fakeContains(list []string, s string) bool {
@@ -347,11 +424,33 @@ func (f *fakeQBit) torrent(hash string) fakeTorrent {
 	return *f.torrents[hash]
 }
 
-// put inserts a torrent directly, as if it had been in qBittorrent before the app connected.
+// put inserts a torrent directly, as if it had been in qBittorrent before the app connected. Limits
+// left nil are the ones the app adds with: no share limit, no upload limit.
 func (f *fakeQBit) put(t qbitTorrent, files ...qbitFile) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	meta := true
 	t.HasMetadata = &meta
+	if t.RatioLimit == nil {
+		t.RatioLimit = fakeFloat("", -1)
+	}
+	if t.SeedingTimeLimit == nil {
+		t.SeedingTimeLimit = fakeInt("", -1)
+	}
+	if t.InactiveSeedingTimeLimit == nil {
+		t.InactiveSeedingTimeLimit = fakeInt("", -1)
+	}
+	if t.UpLimit == nil {
+		t.UpLimit = fakeInt("", 0)
+	}
 	f.torrents[t.Hash] = &fakeTorrent{qbitTorrent: t, files: files}
+}
+
+// setLimits changes a torrent's limits as a user would in qBittorrent's WebUI.
+func (f *fakeQBit) setLimits(hash string, ratio float64, upLimit int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.torrents[hash]
+	t.RatioLimit = &ratio
+	t.UpLimit = &upLimit
 }

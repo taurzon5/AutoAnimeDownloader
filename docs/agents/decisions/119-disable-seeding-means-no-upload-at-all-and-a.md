@@ -50,6 +50,13 @@ removes it, and with no upload a completed torrent has nothing to send anyway, s
 only adds a state to keep in sync; treating `TorrentReleased` as "in session" in `findCoveringPack`.
 
 **Amendment (see [#142](142-qbittorrent-stops-each-placed-torrent-at-its.md)):** qBittorrent can't refuse every upload (an upload limit of 0
-means unlimited there), so `disable_seeding` is **refused** with `torrent_client: "qbittorrent"`
-(`validateTorrentClient`) rather than silently uploading. The qBittorrent spec's answer 3 makes it
-"almost no upload" in its step 2; this entry gets amended again then.
+means unlimited there), so the qBittorrent backend's step 1 **refused** `disable_seeding` with
+`torrent_client: "qbittorrent"` rather than silently uploading. Superseded by the next amendment.
+
+**Amendment (see [#144](144-with-qbittorrent-the-apps-torrents-never-have-a.md)):** with qBittorrent, `disable_seeding` is accepted and means
+**almost no upload**: every torrent of the app is held at `qbittorrent_disable_seeding_upload_kib`
+(16 KiB/s by default) while it downloads, re-applied on every poll, and released once organized,
+as above (`releaseTorrent` keeps its files in direct mode). Nothing smaller works: the limit also
+carries the download's own requests, and 1 B/s stalled a download before it had its file list.
+qBittorrent also saves 0 upload slots as unlimited. The no-unchoke, no-allowed-fast rule above
+stays rain's.

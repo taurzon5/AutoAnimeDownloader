@@ -263,6 +263,11 @@ export interface Config {
   qbittorrent_category?: string
   /** The same folder as the app and as qBittorrent see it. Empty = identical paths. */
   qbittorrent_path_map?: PathMapping[]
+  /** The app sets qBittorrent's global settings (for now its download queue, from
+   *  max_concurrent_downloads). Off, qBittorrent's own queue applies. */
+  qbittorrent_manage_settings?: boolean
+  /** disable_seeding's upload limit per torrent with qBittorrent, KiB/s, at least 1. */
+  qbittorrent_disable_seeding_upload_kib?: number
 }
 
 export interface PathMapping {
@@ -286,6 +291,9 @@ export interface TorrentClientTestResult {
   library_visible: boolean
   library_path?: string
   problem?: string
+  /** qBittorrent's own download queue; max_active_downloads -1 = no limit. */
+  queueing_enabled?: boolean
+  max_active_downloads?: number
 }
 
 export interface AnimeInfo {

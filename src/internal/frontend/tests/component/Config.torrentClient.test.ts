@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/svelte'
 import { tick } from 'svelte'
+import { get } from 'svelte/store'
+import { toasts } from '../../src/lib/stores/toast.js'
 import Config from '../../src/routes/Config.svelte'
 import * as client from '../../src/lib/api/client.js'
 
@@ -41,6 +43,7 @@ const saved = {
   qbittorrent_api_key: '',
   qbittorrent_category: 'aad',
   qbittorrent_path_map: [],
+  qbittorrent_disable_seeding_upload_kib: 16,
   notifications: { webhooks: [], batch_window_seconds: 60 },
 }
 
@@ -98,6 +101,78 @@ describe('Config — torrent client', () => {
     expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
       torrent_client: 'qbittorrent', qbittorrent_password: '__saved__',
     }))
+  })
+
+  it('saves the switch that lets the app manage qBittorrent\'s settings', async () => {
+    vi.mocked(client.updateConfig).mockResolvedValueOnce({ message: 'ok' })
+    await openClientGroup()
+    const toggle = document.getElementById('qbittorrent_manage_settings') as HTMLInputElement
+    expect(toggle.checked).toBe(false)
+    await fireEvent.click(toggle)
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ qbittorrent_manage_settings: true }))
+  })
+
+  it.each([
+    [{ queueing_enabled: true, max_active_downloads: 3 }, '3 at a time'],
+    [{ queueing_enabled: true, max_active_downloads: -1 }, 'no limit'],
+    [{ queueing_enabled: false, max_active_downloads: 3 }, 'is off'],
+  ])('shows qBittorrent\'s own download queue from the test (%o)', async (queue, want) => {
+    vi.mocked(client.testTorrentClient).mockResolvedValueOnce({
+      app_version: 'v5.3.0', webapi_version: '2.16.2', library_checked: false, library_visible: false, ...queue,
+    })
+    await openClientGroup()
+    await fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await flush()
+    expect(screen.getByTestId('qbittorrent-test-result').textContent).toContain(want)
+  })
+
+  it('says in Downloads which queue applies and what disable seeding means with qBittorrent', async () => {
+    await openClientGroup()
+    await fireEvent.click(screen.getByRole('button', { name: 'Downloads' }))
+    await flush()
+    expect(screen.getByTestId('max-concurrent-qbittorrent').textContent).toContain("doesn't apply")
+    expect(screen.getByTestId('disable-seeding-qbittorrent').textContent).toContain('almost no upload')
+    expect(document.getElementById('qbittorrent_disable_seeding_upload_kib')).toBeNull()
+    await fireEvent.click(document.getElementById('disable_seeding') as HTMLInputElement)
+    await flush()
+    expect((document.getElementById('qbittorrent_disable_seeding_upload_kib') as HTMLInputElement).value).toBe('16')
+
+    await fireEvent.click(screen.getByRole('button', { name: /Torrent client/ }))
+    await flush()
+    await fireEvent.click(document.getElementById('qbittorrent_manage_settings') as HTMLInputElement)
+    await fireEvent.click(screen.getByRole('button', { name: 'Downloads' }))
+    await flush()
+    expect(screen.getByTestId('max-concurrent-qbittorrent').textContent).toContain("sets qBittorrent's own download queue")
+
+    await fireEvent.click(screen.getByRole('button', { name: /Torrent client/ }))
+    await flush()
+    await fireEvent.click(document.getElementById('use_qbittorrent') as HTMLInputElement)
+    await fireEvent.click(screen.getByRole('button', { name: 'Downloads' }))
+    await flush()
+    expect(screen.queryByTestId('max-concurrent-qbittorrent')).toBeNull()
+    expect(screen.queryByTestId('disable-seeding-qbittorrent')).toBeNull()
+  })
+
+  it('refuses to save an upload limit under 1 KiB/s with qBittorrent', async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), disable_seeding: true, qbittorrent_disable_seeding_upload_kib: 0 } as never)
+    await openClientGroup()
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).not.toHaveBeenCalled()
+    expect(get(toasts).map((t) => t.message).join(' ')).toContain('at least 1 KiB/s')
+    // The page opens the group with the field to fix.
+    expect(document.getElementById('qbittorrent_disable_seeding_upload_kib')).not.toBeNull()
+  })
+
+  it('does not block a save on a 0 upload limit while disable seeding is off', async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), disable_seeding: false, qbittorrent_disable_seeding_upload_kib: 0 } as never)
+    vi.mocked(client.updateConfig).mockResolvedValueOnce({ message: 'ok' })
+    await openClientGroup()
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).toHaveBeenCalled()
   })
 
   it('hides the qBittorrent fields with the built-in client', async () => {

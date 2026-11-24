@@ -197,7 +197,10 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			// library_mode, the same way: rain reads its storage once, when the session opens.
 			server.Torrents.SetDirectMode(config.IsDirectMode())
 			modeChanged := previous == nil || previous.IsDirectMode() != config.IsDirectMode()
-			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding || modeChanged) {
+			// qBittorrent reads these two on Ensure: its upload floor and whether it sets its queue.
+			qbitChanged := previous != nil && (previous.QBittorrentDisableSeedingUploadKiB != config.QBittorrentDisableSeedingUploadKiB ||
+				previous.QBittorrentManageSettings != config.QBittorrentManageSettings)
+			if path := config.DownloadPath(); path != "" && (previous == nil || previous.DisableSeeding != config.DisableSeeding || modeChanged || qbitChanged) {
 				if _, err := server.Torrents.Ensure(path); err != nil {
 					logger.Logger.Warn().Err(err).Msg("Failed to apply disable_seeding to the torrent session; the next pass retries")
 				}
@@ -239,10 +242,10 @@ func validateTorrentClient(c *files.Config) string {
 	if c.IncompletePath != "" {
 		return "The incomplete download folder isn't supported with qBittorrent yet: clear incomplete_path"
 	}
-	// disable_seeding means no upload at all (decisions/119); qBittorrent can't do that until the
-	// spec's step 2, so the combination is refused rather than silently uploading.
-	if c.DisableSeeding {
-		return "Disable seeding isn't supported with qBittorrent yet: turn disable_seeding off"
+	// 0 would be unlimited in qBittorrent (decisions/144). Only while disable_seeding is on, the
+	// one time the value is used and the settings page shows it.
+	if c.DisableSeeding && c.QBittorrentDisableSeedingUploadKiB < 1 {
+		return "The upload limit for disable seeding with qBittorrent must be at least 1 KiB/s"
 	}
 	u, err := url.Parse(strings.TrimSpace(c.QBittorrentURL))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

@@ -14,6 +14,9 @@ func QBitSettingsFrom(c *files.Config) torrents.QBitSettings {
 		Password: c.QBittorrentPassword,
 		APIKey:   c.QBittorrentAPIKey,
 		Category: c.QBittorrentCategory,
+		// Read on every Ensure, like the rest: turning it on applies on the next pass.
+		ManageSettings: c.QBittorrentManageSettings,
+		UploadFloorKiB: c.QBittorrentDisableSeedingUploadKiB,
 	}
 	for _, m := range c.QBittorrentPathMap {
 		out.PathMap = append(out.PathMap, torrents.QBitPathMapping{App: m.App, QBittorrent: m.QBittorrent})

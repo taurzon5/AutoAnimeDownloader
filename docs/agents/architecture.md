@@ -123,7 +123,7 @@ Key endpoints:
 | `POST` | `/api/v1/notifications/webhooks/preview` | `handleNotificationWebhookPreview` | `endpoint_notifications.go` — renders the preset in the BODY (the unsaved form) with the test fire's sample values; sends nothing and reads no config |
 | `POST` | `/api/v1/notifications/webhooks/{name}/test` | `handleNotificationWebhookTest` | `endpoint_notifications.go` |
 | `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
-| `POST` | `/api/v1/torrent-client/test` | `handleTorrentClientTest` | `endpoint_torrent_client.go` — signs in to qBittorrent, reads its versions and writes a probe file in the library to check qBittorrent sees it (`torrents.TestQBittorrent`, through `app/getDirectoryContent`). Optional body: the qBittorrent settings being edited (`qbittorrent_url`, user, password, key, `qbittorrent_path_map`, `completed_anime_path`), so the web UI tests before saving; a secret sent as the placeholder uses the saved one. 502 `TORRENT_CLIENT_UNREACHABLE` when it can't connect or sign in; 200 with `problem` when connected but too old or not seeing the library. Saves nothing. CLI: `torrents test` |
+| `POST` | `/api/v1/torrent-client/test` | `handleTorrentClientTest` | `endpoint_torrent_client.go` — signs in to qBittorrent, reads its versions and writes a probe file in the library to check qBittorrent sees it (`torrents.TestQBittorrent`, through `app/getDirectoryContent`). Optional body: the qBittorrent settings being edited (`qbittorrent_url`, user, password, key, `qbittorrent_path_map`, `completed_anime_path`), so the web UI tests before saving; a secret sent as the placeholder uses the saved one. 502 `TORRENT_CLIENT_UNREACHABLE` when it can't connect or sign in; 200 with `problem` when connected but too old or not seeing the library. Also answers qBittorrent's own download queue (`queueing_enabled`, `max_active_downloads`, absent when it didn't answer its preferences). Saves nothing. CLI: `torrents test` |
 | `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/resume` | `handleTorrentResume` | `endpoint_torrents.go` |
@@ -286,7 +286,8 @@ to the backend/librarian by `SetOrchestration`.
 
 **`disable_seeding` has two halves, in two packages** ([decisions/119](decisions/119-disable-seeding-means-no-upload-at-all-and-a.md)).
 The session half is in `torrents`: `SetUploadDisabled` → the next `Ensure` rebuilds the session
-with no unchoking and an empty allowed-fast set (`rainConfig`). Call it BEFORE `Ensure`, like
+with no unchoking and an empty allowed-fast set (`rainConfig`); with qBittorrent it is an upload
+limit per torrent instead, applied by the poll loop (decisions/144). Call it BEFORE `Ensure`, like
 `SetMaxActiveDownloads`. The library half is in `jobs.go`: `organizeTorrent` → `releaseTorrent`
 marks the records `TorrentReleased` and then removes the torrent with its download copy. From then
 on the episode exists only as the library hardlink, and every reader of "is the torrent in the
@@ -636,10 +637,13 @@ fires the callbacks (none for a torrent first seen complete). A placed torrent i
 library root and stopped at its metadata; the poll loop's `applyPlacement` freezes the file map,
 renames every file to its planned path (`.part` while downloading) and only then starts it.
 `Ensure` connects (Web API 2.11+, the category) or, when connected with unchanged settings, only
-pings: a qBittorrent that went away fails the pass. Not done yet (the qBittorrent spec's step 2):
-`SetMaxActiveDownloads`, `SetUploadDisabled` (both no-ops; the config refuses `disable_seeding`
-with qBittorrent and `max_concurrent_downloads` is ignored), the incomplete folder
-(`errQBitStaging`, refused too). Progress stands in for rain's piece counts (`qbitProgressScale`):
+pings: a qBittorrent that went away fails the pass. The same poll keeps the app's limits on every
+torrent of the category (`enforceLimits`): no share limit (qBittorrent's global one could remove
+the library's files) and, with `disable_seeding`, the upload floor. qBittorrent's queue is global,
+so `SetMaxActiveDownloads` reaches it only with `qbittorrent_manage_settings` (`syncQueue`, on
+every `Ensure` and on the next poll after a change); both in
+[decisions/144](decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md). Not done yet:
+the incomplete folder (`errQBitStaging`; the config refuses it). Progress stands in for rain's piece counts (`qbitProgressScale`):
 the failure handler keeps data on `PiecesHave > 0`. `torrents` doesn't import `files`: `daemon.QBitSettingsFrom` converts the config.
 
 **Lock order: `queue.mu` → `SessionManager.mu`, never the other way.** `queue.enforce` holds

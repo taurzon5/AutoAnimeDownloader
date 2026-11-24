@@ -158,6 +158,7 @@ type Config struct {
 	// DisableSeeding stops every upload: the torrent session never unchokes a peer (not even
 	// during the download), and a torrent is removed, download copy included, as soon as it is
 	// organized into the library. Toggling it rebuilds the torrent session. See decisions/119.
+	// With qBittorrent it is "almost no upload": QBittorrentDisableSeedingUploadKiB (decisions/144).
 	DisableSeeding bool `json:"disable_seeding"`
 	// CheckForUpdates lets the daemon ask GitHub once a day for the latest release (the update badge
 	// and update_available). false = no request ever leaves; whoever installs from the AUR or a
@@ -225,6 +226,15 @@ type Config struct {
 	// QBittorrentPathMap translates paths between the app and qBittorrent when they see the library
 	// at different paths (Docker, a share mounted on two machines). Empty = identical paths.
 	QBittorrentPathMap []PathMapping `json:"qbittorrent_path_map"`
+	// QBittorrentManageSettings lets the app set the qBittorrent settings that are global, not per
+	// torrent: for now its download queue, from MaxConcurrentDownloads. Off (the default, for a
+	// qBittorrent also used for other things), qBittorrent's own queue applies (decisions/144).
+	QBittorrentManageSettings bool `json:"qbittorrent_manage_settings"`
+	// QBittorrentDisableSeedingUploadKiB is disable_seeding's upload limit per torrent with
+	// qBittorrent, in KiB/s. qBittorrent can't refuse uploads (0 is unlimited there), and the limit
+	// also carries the download's own requests, so a download runs at most a few hundred times it.
+	// At least 1 (decisions/144).
+	QBittorrentDisableSeedingUploadKiB int `json:"qbittorrent_disable_seeding_upload_kib"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -413,20 +423,21 @@ func DefaultConfig() *Config {
 		CheckForUpdates:         true,
 		// DeleteWatchedEpisodes comes on by default: with no slack the episode disappears as soon as it's
 		// marked watched. Two forgive "I marked it by mistake" and "I wanted to rewatch".
-		WatchedEpisodesToKeep:   2,
-		ExcludedLists:           []string{},
-		DownloadStatuses:        []string{"CURRENT", "REPEATING"},
-		DownloadMediaStatuses:   []string{"RELEASING", "FINISHED"},
-		DeleteStatuses:          []string{},
-		Notifications:           NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
-		Priorities:              nyaa.DefaultPriorities(),
-		LibraryMode:             LibraryModeHardlink,
-		IncompleteFiles:         IncompleteFilesPart,
-		IncompleteMinFreeDiskGB: 10,
-		EpisodeNumbering:        EpisodeNumberingSeason,
-		TorrentClient:           TorrentClientBuiltin,
-		QBittorrentCategory:     "autoanimedownloader",
-		QBittorrentPathMap:      []PathMapping{},
+		WatchedEpisodesToKeep:              2,
+		ExcludedLists:                      []string{},
+		DownloadStatuses:                   []string{"CURRENT", "REPEATING"},
+		DownloadMediaStatuses:              []string{"RELEASING", "FINISHED"},
+		DeleteStatuses:                     []string{},
+		Notifications:                      NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
+		Priorities:                         nyaa.DefaultPriorities(),
+		LibraryMode:                        LibraryModeHardlink,
+		IncompleteFiles:                    IncompleteFilesPart,
+		IncompleteMinFreeDiskGB:            10,
+		EpisodeNumbering:                   EpisodeNumberingSeason,
+		TorrentClient:                      TorrentClientBuiltin,
+		QBittorrentCategory:                "autoanimedownloader",
+		QBittorrentPathMap:                 []PathMapping{},
+		QBittorrentDisableSeedingUploadKiB: 16,
 	}
 }
 

@@ -111,6 +111,15 @@ func handleTorrentClientTest(c *cli.Context) error {
 	case result.LibraryVisible:
 		fmt.Printf("qBittorrent sees the library at %s\n", result.LibraryPath)
 	}
+	switch q := result.QueueingEnabled; {
+	case q == nil:
+	case !*q:
+		fmt.Println("Its download queue is off: every download runs at once")
+	case result.MaxActiveDownloads == nil || *result.MaxActiveDownloads < 0:
+		fmt.Println("Its download queue has no limit")
+	default:
+		fmt.Printf("Its download queue runs %d at a time\n", *result.MaxActiveDownloads)
+	}
 	return nil
 }
 

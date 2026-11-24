@@ -2,6 +2,9 @@ package torrents
 
 import (
 	"bytes"
+	"context"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +12,10 @@ import (
 )
 
 // TestQBitLive drives a real qBittorrent through QBitBackend: the connection test, a pack and a
-// single episode added, placed, downloaded from a seeder, finalized and removed. Only runs with
+// single episode added, placed, downloaded from a seeder, finalized and removed; on the way, the
+// limits of decisions/144 (no share limit under a strict global one, disable_seeding's upload
+// floor, the managed queue). It changes the downloader's global settings, so it is meant for the
+// throwaway containers of scripts/qbittorrent-live.sh. Only runs with
 // AAD_LIVE_QBITTORRENT=1 and the AAD_QBIT_* variables (docs/agents/testing.md, "qBittorrent Live
 // Test"), so `go test ./...` doesn't need Docker.
 func TestQBitLive(t *testing.T) {
@@ -27,7 +33,24 @@ func TestQBitLive(t *testing.T) {
 	seedData := env("AAD_QBIT_SEED_DATA")
 	settings := QBitSettings{
 		URL: env("AAD_QBIT_URL"), Username: "admin", Password: env("AAD_QBIT_PASSWORD"), Category: "aad-live",
-		PathMap: []QBitPathMapping{{App: library, QBittorrent: env("AAD_QBIT_LIBRARY_IN_QBIT")}},
+		PathMap:        []QBitPathMapping{{App: library, QBittorrent: env("AAD_QBIT_LIBRARY_IN_QBIT")}},
+		ManageSettings: true,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	admin, err := newQBitClient(settings.URL, settings.Username, settings.Password, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := admin.login(ctx); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	// A global share limit that stops a torrent the moment it finishes (max_ratio_act 0), and
+	// qBittorrent's default queue, which the backend must replace with max_concurrent_downloads.
+	if _, err := admin.call(ctx, http.MethodPost, "app/setPreferences", url.Values{"json": {`{"max_ratio_enabled":true,` +
+		`"max_ratio":0,"max_seeding_time_enabled":true,"max_seeding_time":0,"max_ratio_act":0,"queueing_enabled":true,` +
+		`"max_active_downloads":3,"max_active_uploads":3,"max_active_torrents":5}`}}); err != nil {
+		t.Fatalf("setting the strict global limits: %v", err)
 	}
 
 	res, err := TestQBittorrent(settings, library)
@@ -45,8 +68,13 @@ func TestQBitLive(t *testing.T) {
 	completed := make(chan string, 8)
 	failed := make(chan error, 8)
 	b.SetCallbacks(func(hash string) { completed <- hash }, func(hash string, err error) { failed <- err })
+	b.SetMaxActiveDownloads(2)
+	b.SetUploadDisabled(true)
 	if _, err := b.Ensure(filepath.Join(library, ".torrents")); err != nil {
 		t.Fatalf("Ensure: %v", err)
+	}
+	if queue, err := admin.queuePrefs(ctx); err != nil || queue != qbitWantedQueue(2) {
+		t.Fatalf("qBittorrent's queue after Ensure = %+v, %v; want %+v", queue, err, qbitWantedQueue(2))
 	}
 
 	packMagnet, singleMagnet := env("AAD_QBIT_PACK_MAGNET"), env("AAD_QBIT_SINGLE_MAGNET")
@@ -81,6 +109,31 @@ func TestQBitLive(t *testing.T) {
 	}
 	must(b.FinalizePlacement(packHash))
 	must(b.FinalizePlacement(singleHash))
+	// qBittorrent applies share limits on a timer: a torrent following the global limit above was
+	// stopped within 2 s of finishing when measured, so 5 s shows the app's torrents don't.
+	time.Sleep(5 * time.Second)
+	listed, err := admin.info(ctx, settings.Category)
+	if err != nil || len(listed) != 2 {
+		t.Fatalf("torrents/info = %d torrents, %v", len(listed), err)
+	}
+	for _, tor := range listed {
+		if tor.hasShareLimit() || tor.UpLimit == nil || *tor.UpLimit != settings.uploadFloor() {
+			t.Errorf("%s: share limit %v, up_limit %v; want none and the floor %d", tor.Name, tor.hasShareLimit(), tor.UpLimit, settings.uploadFloor())
+		}
+	}
+	// disable_seeding off lifts the floor on the next polls.
+	b.SetUploadDisabled(false)
+	if !qbitWaitFor(10*time.Second, func() bool {
+		listed, err := admin.info(ctx, settings.Category)
+		for _, tor := range listed {
+			if tor.UpLimit == nil || *tor.UpLimit != 0 {
+				return false
+			}
+		}
+		return err == nil && len(listed) == 2
+	}) {
+		t.Error("the upload floor was not lifted after disable_seeding was turned off")
+	}
 
 	want := map[string]string{
 		filepath.Join(library, "Live Show", "LivePack", "Live Show - 01.mkv"):      filepath.Join(seedData, "LivePack", "Live Show - 01.mkv"),

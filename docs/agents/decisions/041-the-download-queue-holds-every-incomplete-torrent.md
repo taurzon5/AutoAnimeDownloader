@@ -31,6 +31,7 @@ torrent being copied from the incomplete folder into the library. Same pattern: 
 
 **Amendment (see [#142](142-qbittorrent-stops-each-placed-torrent-at-its.md)):** this queue belongs to the built-in client. With
 `torrent_client: "qbittorrent"`, qBittorrent's own queue decides what runs (`queuedDL` maps to the
-`queued` slug, its `priority` to `QueuePosition`), and `max_concurrent_downloads` is **ignored**
-until the qBittorrent spec's step 2 sets qBittorrent's cap from it (`QBitBackend.SetMaxActiveDownloads`
-is a no-op). Everything above still holds for rain.
+`queued` slug, its `priority` to `QueuePosition`). `max_concurrent_downloads` sets qBittorrent's
+`max_active_downloads` only when `qbittorrent_manage_settings` is on, with seeding and total caps
+lifted ([#144](144-with-qbittorrent-the-apps-torrents-never-have-a.md)); otherwise qBittorrent's
+own queue applies and the setting is ignored. Everything above still holds for rain.

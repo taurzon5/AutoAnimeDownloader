@@ -1,8 +1,8 @@
 # qBittorrent backend: an external client instead of the built-in one
 
 **Date:** 2026-11-23
-**Status:** step 1 (the backend) implemented on branch `feat/qbittorrent-backend`, not merged;
-steps 2–3 not started — no fixed release. **Since 2026-11-23 rain is being
+**Status:** steps 1 (the backend) and 2 (queue and limits) implemented on branch
+`feat/qbittorrent-backend`, not merged; step 3 (the import) not scheduled — no fixed release. **Since 2026-11-23 rain is being
 dropped** ([megapack-downloads](2026-11-23-megapack-downloads-design.md)), so this backend becomes
 the app's only client (see "Since this was written"); the open questions are answered at the end.
 **Origin:** the user wants to run a qBittorrent fork they will modify themselves (base not chosen:
@@ -209,7 +209,9 @@ app's placement through renames.
    resume/prioritize, the poll loop with callbacks, the connection test (API + CLI), status slugs,
    redaction of the password. Direct mode only; placement renames.
 2. **Queue and limits:** qBittorrent's queue for `max_concurrent_downloads`, share limits for
-   keep forever, `disable_seeding`.
+   keep forever, `disable_seeding`. Implemented: see
+   [decisions/144](../../agents/decisions/144-with-qbittorrent-the-apps-torrents-never-have-a.md),
+   which also records what a real qBittorrent 5.3.0 changed (answer 3 below).
 3. **Import from rain** — not scheduled; only if it is wanted later (answer 4).
 
 Per-file selection comes after these, with the megapack spec (`torrents/filePrio`).
@@ -245,7 +247,11 @@ disagree with any.
    off, share limits, upload limit. What the switch governs is the truly global part: the
    incomplete-file extension, the incomplete folder (`temp_path`), the active-download cap and the
    disk I/O mode (pread recommended).
-3. **`disable_seeding`: keep it, as "almost no upload".** While downloading, each torrent gets the
+3. **`disable_seeding`: keep it, as "almost no upload".** *Corrected in step 2:* the smallest limit
+   does not work, because the upload limit also carries the download's own requests (1 B/s stalled
+   a download before it had its file list), and 0 upload slots is unlimited too. The user chose a
+   setting, `qbittorrent_disable_seeding_upload_kib`, 16 KiB/s by default. Originally: while
+   downloading, each torrent gets the
    smallest upload limit qBittorrent accepts (0 means unlimited there, so not 0); as soon as an
    episode is in the library, the app removes the torrent and keeps the files — in direct mode the
    files are the library. The setting's hint says "almost no upload" instead of "no upload at

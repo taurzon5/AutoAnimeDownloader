@@ -63,10 +63,23 @@ type QBitBackend struct {
 	// reopened holds the torrents a redownload reopened (RedownloadPlacement), until qBittorrent shows
 	// it took the recheck: until then its old "complete" state is stale and must neither fire
 	// onComplete nor let FinalizePlacement rename anything (decisions/140).
-	reopened    map[string]time.Time
-	pollFailing bool
-	stopLoop    chan struct{}
-	loopDone    chan struct{}
+	reopened map[string]time.Time
+	// maxActive is max_concurrent_downloads (SetMaxActiveDownloads), applied to qBittorrent's queue
+	// only when the app manages its settings; queueDirty asks the next poll to apply a change.
+	maxActive      int
+	maxActiveKnown bool
+	queueDirty     bool
+	// uploadDisabled is disable_seeding (SetUploadDisabled). floorsUsed holds every upload floor the
+	// backend set in this run, so turning disable_seeding off also lifts a floor whose value changed
+	// since. shareSent and uploadSent hold the limit last sent to a torrent and when, so a limit
+	// qBittorrent doesn't take is not sent again on every poll.
+	uploadDisabled bool
+	floorsUsed     map[int64]bool
+	shareSent      map[string]qbitSent
+	uploadSent     map[string]qbitSent
+	pollFailing    bool
+	stopLoop       chan struct{}
+	loopDone       chan struct{}
 }
 
 // QBitSettings is what the backend needs from config.json.
@@ -77,6 +90,20 @@ type QBitSettings struct {
 	APIKey   string
 	Category string
 	PathMap  []QBitPathMapping
+	// ManageSettings lets the app set qBittorrent's global settings it relies on (for now its
+	// download queue, from max_concurrent_downloads). Off, it only reads them (decisions/144).
+	ManageSettings bool
+	// UploadFloorKiB is disable_seeding's upload limit per torrent, in KiB/s; 0 = the default.
+	UploadFloorKiB int
+}
+
+// uploadFloor is disable_seeding's upload limit in bytes per second.
+func (s QBitSettings) uploadFloor() int64 {
+	kib := s.UploadFloorKiB
+	if kib <= 0 {
+		kib = qbitDefaultUploadFloorKiB
+	}
+	return int64(kib) * 1024
 }
 
 // QBitPathMapping is one folder as each side sees it.
@@ -103,6 +130,16 @@ const qbitProgressScale = 10000
 // the backend stops waiting to see qBittorrent's recheck start.
 const qbitRecheckGrace = 2 * time.Minute
 
+// qbitLimitResend is how long the backend waits before sending a torrent the same limit again when
+// qBittorrent still reports another one (a failed call, or a call it ignored).
+const qbitLimitResend = time.Minute
+
+// qbitSent is a limit sent to a torrent, and when.
+type qbitSent struct {
+	limit int64
+	at    time.Time
+}
+
 // NewQBitBackend returns a backend whose state (placements.json, the download root id) lives in
 // dataDir, next to where rain keeps the same files. settings is read on every Ensure, so a changed
 // URL or password applies on the next pass without a restart.
@@ -121,6 +158,9 @@ func NewQBitBackend(dataDir string, settings func() (QBitSettings, error)) *QBit
 		recheckFirst:  map[string]bool{},
 		retryApplyAt:  map[string]time.Time{},
 		reopened:      map[string]time.Time{},
+		shareSent:     map[string]qbitSent{},
+		uploadSent:    map[string]qbitSent{},
+		floorsUsed:    map[int64]bool{},
 	}
 }
 
@@ -160,6 +200,8 @@ func (b *QBitBackend) Ensure(savePath string) (bool, error) {
 		// Every pass, as rain's manager does: a library moved or replaced while the app runs is
 		// reported on the next pass, not on the next reconnect (decisions/034).
 		b.checkSwap(savePath)
+		// Every pass too: a queue changed by hand in qBittorrent goes back to the app's.
+		b.syncQueue(ctx, client, settings)
 		return false, nil
 	}
 
@@ -218,7 +260,45 @@ func (b *QBitBackend) Ensure(savePath string) (bool, error) {
 	writeRootMarkers(b.idPath, savePath, id)
 	logger.Logger.Info().Str("webapi", version).Str("category", settings.Category).
 		Msg("Connected to qBittorrent")
+	b.syncQueue(ctx, client, settings)
 	return true, nil
+}
+
+// syncQueue sets qBittorrent's download queue to max_concurrent_downloads when the app manages its
+// settings: queueing on, that many downloads at once (0 = no limit), and no cap on seeding or on
+// active torrents, which would hold downloads back too. It reads the preferences first and writes
+// only when they differ. A failure is logged, not returned: downloads still run on qBittorrent's
+// own queue.
+func (b *QBitBackend) syncQueue(ctx context.Context, client *qbitClient, settings QBitSettings) {
+	b.mu.Lock()
+	limit, known := b.maxActive, b.maxActiveKnown
+	b.queueDirty = false
+	b.mu.Unlock()
+	if !settings.ManageSettings || !known {
+		return
+	}
+	want := qbitWantedQueue(limit)
+	have, err := client.queuePrefs(ctx)
+	if err == nil && have == want {
+		return
+	}
+	if err == nil {
+		err = client.setQueuePrefs(ctx, want)
+	}
+	if err != nil {
+		logger.Logger.Warn().Err(err).Msg("Failed to set qBittorrent's download queue; it keeps its own until the next pass")
+		return
+	}
+	logger.Logger.Info().Int("max_active_downloads", want.MaxActiveDownloads).Msg("Set qBittorrent's download queue")
+}
+
+// qbitWantedQueue is the queue the app gives a qBittorrent it manages.
+func qbitWantedQueue(maxActive int) qbitQueuePrefs {
+	downloads := maxActive
+	if downloads <= 0 {
+		downloads = -1
+	}
+	return qbitQueuePrefs{QueueingEnabled: true, MaxActiveDownloads: downloads, MaxActiveUploads: -1, MaxActiveTorrents: -1}
 }
 
 // checkRootMarkers is SessionManager.checkRoot for the qBittorrent backend: the same pair of markers,
@@ -343,7 +423,72 @@ func (b *QBitBackend) poll() {
 			onFailed(ev.hash, ev.err)
 		}
 	}
+	b.enforceLimits(ctx, client)
+	b.mu.Lock()
+	dirty, settings := b.queueDirty, b.current
+	b.mu.Unlock()
+	if dirty {
+		b.syncQueue(ctx, client, settings)
+	}
 	b.applyPlacements(ctx)
+}
+
+// enforceLimits keeps the app's torrents on the app's limits, whoever changed them: no share limit
+// (qBittorrent's global one, or one set by hand, could stop the torrent or remove it with the
+// library's files), and with disable_seeding the upload floor. Turning disable_seeding off lifts
+// the floor from the torrents that still carry it, and leaves a limit set by hand alone
+// (decisions/144).
+func (b *QBitBackend) enforceLimits(ctx context.Context, client *qbitClient) {
+	b.mu.Lock()
+	now := time.Now()
+	floorLimit := b.current.uploadFloor()
+	if b.uploadDisabled {
+		b.floorsUsed[floorLimit] = true
+	}
+	// due reports whether limit should be sent to the torrent: not when the same limit went out less
+	// than qbitLimitResend ago. A different limit goes out at once.
+	due := func(sent map[string]qbitSent, hash string, limit int64) bool {
+		if last, ok := sent[hash]; ok && last.limit == limit && now.Sub(last.at) < qbitLimitResend {
+			return false
+		}
+		sent[hash] = qbitSent{limit: limit, at: now}
+		return true
+	}
+	var share, floor, lift []string
+	for hash, t := range b.ownTorrentsLocked() {
+		if t.hasShareLimit() && due(b.shareSent, hash, -1) {
+			share = append(share, hash)
+		}
+		if t.UpLimit == nil {
+			continue
+		}
+		switch limit := *t.UpLimit; {
+		case b.uploadDisabled && limit != floorLimit && due(b.uploadSent, hash, floorLimit):
+			floor = append(floor, hash)
+		case !b.uploadDisabled && (limit == floorLimit || b.floorsUsed[limit]) && limit > 0 && due(b.uploadSent, hash, 0):
+			lift = append(lift, hash)
+		}
+	}
+	b.mu.Unlock()
+
+	sort.Strings(share)
+	sort.Strings(floor)
+	sort.Strings(lift)
+	if len(share) > 0 {
+		if err := client.setNoShareLimit(ctx, share...); err != nil {
+			logger.Logger.Warn().Err(err).Int("count", len(share)).Msg("Failed to remove qBittorrent's share limit from the app's torrents; retrying in a minute")
+		}
+	}
+	if len(floor) > 0 {
+		if err := client.setUploadLimit(ctx, floorLimit, floor...); err != nil {
+			logger.Logger.Warn().Err(err).Int("count", len(floor)).Msg("Failed to limit the upload of the app's torrents for disable_seeding; retrying in a minute")
+		}
+	}
+	if len(lift) > 0 {
+		if err := client.setUploadLimit(ctx, 0, lift...); err != nil {
+			logger.Logger.Warn().Err(err).Int("count", len(lift)).Msg("Failed to lift disable_seeding's upload limit; retrying in a minute")
+		}
+	}
 }
 
 // mergeLocked folds a sync/maindata answer into raw.
@@ -380,6 +525,8 @@ func (b *QBitBackend) forgetLocked(hash string) {
 	delete(b.recheckFirst, hash)
 	delete(b.retryApplyAt, hash)
 	delete(b.reopened, hash)
+	delete(b.shareSent, hash)
+	delete(b.uploadSent, hash)
 }
 
 // decodeLocked refreshes decoded[hash] from raw[hash]. An entry that doesn't decode is left out.
@@ -620,6 +767,9 @@ func (b *QBitBackend) Add(magnet string) (string, error) {
 	req := qbitAddRequest{Magnet: magnet, Category: settings.Category}
 	_, placed := b.placements.get(hash)
 	b.mu.Lock()
+	if b.uploadDisabled {
+		req.UploadLimit = settings.uploadFloor()
+	}
 	if placed {
 		req.SavePath = qbitMapPath(root, settings.PathMap, true)
 		req.StopAtMetadata = true
@@ -954,11 +1104,29 @@ func (b *QBitBackend) PrioritizeAll(hashes []string) error {
 	return nil
 }
 
-// SetMaxActiveDownloads, SetUploadDisabled and SetDirectMode are no-ops for now: qBittorrent's queue
-// and share limits come in the spec's step 2, and this backend is always direct mode.
-func (b *QBitBackend) SetMaxActiveDownloads(int) {}
-func (b *QBitBackend) SetUploadDisabled(bool)    {}
-func (b *QBitBackend) SetDirectMode(bool)        {}
+// SetMaxActiveDownloads records max_concurrent_downloads. It reaches qBittorrent's queue only when
+// the app manages its settings: on the next Ensure, or on the next poll when it changed (PUT /config
+// applies it at once). Otherwise qBittorrent's own queue decides.
+func (b *QBitBackend) SetMaxActiveDownloads(n int) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.maxActiveKnown && b.maxActive == n {
+		return
+	}
+	b.maxActive, b.maxActiveKnown = n, true
+	b.queueDirty = true
+}
+
+// SetUploadDisabled records disable_seeding: new torrents are added with the upload floor, and the
+// poll loop puts the floor on (or lifts it from) the torrents already there.
+func (b *QBitBackend) SetUploadDisabled(disabled bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.uploadDisabled = disabled
+}
+
+// SetDirectMode is a no-op: this backend is always direct mode.
+func (b *QBitBackend) SetDirectMode(bool) {}
 
 func (b *QBitBackend) SetPlacement(req PlacementRequest) error {
 	_, err := b.placements.register(req)
@@ -1188,6 +1356,11 @@ type QBitTestResult struct {
 	LibraryVisible bool   `json:"library_visible"`
 	LibraryPath    string `json:"library_path,omitempty"` // the library as qBittorrent sees it
 	Problem        string `json:"problem,omitempty"`
+	// QueueingEnabled and MaxActiveDownloads are qBittorrent's own download queue (-1 = no limit):
+	// what applies instead of max_concurrent_downloads when the app doesn't manage its settings.
+	// Absent when qBittorrent didn't answer its preferences.
+	QueueingEnabled    *bool `json:"queueing_enabled,omitempty"`
+	MaxActiveDownloads *int  `json:"max_active_downloads,omitempty"`
 }
 
 // TestQBittorrent signs in, reads the versions and checks that qBittorrent sees the library: the
@@ -1212,6 +1385,9 @@ func TestQBittorrent(settings QBitSettings, libraryRoot string) (QBitTestResult,
 	if !webAPIAtLeast(out.WebAPIVersion, qbitMinWebAPI) {
 		out.Problem = fmt.Sprintf("qBittorrent 5.0 or later is required (Web API %s+)", qbitMinWebAPI)
 		return out, nil
+	}
+	if queue, err := client.queuePrefs(ctx); err == nil {
+		out.QueueingEnabled, out.MaxActiveDownloads = &queue.QueueingEnabled, &queue.MaxActiveDownloads
 	}
 	if libraryRoot == "" {
 		return out, nil
