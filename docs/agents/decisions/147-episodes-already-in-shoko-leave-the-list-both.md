@@ -52,8 +52,13 @@ Pinned by:
     `windowEnd(firstPending)`.
   - Both wait for per-file selection, which comes with qBittorrent's file priorities (the megapack
     spec).
-  - The debug pass ignores Shoko ([#58](058-runanimedebug-mirrors-processanimeepisodes.md)).
+  - The debug pass ignored Shoko at first. It now mirrors the pass from the last sync on disk, and
+    marks the episodes `in_shoko` ([#58](058-runanimedebug-mirrors-processanimeepisodes.md)).
   - Manual downloads don't look at Shoko either: the user picked the torrent.
+- **The anime page doesn't offer Download first for an episode in Shoko** (`episodeActions`): it
+  stays in the ⋯ menu, for a copy the user really wants. A file Shoko can't reach right now still
+  counts (a re-download would be a duplicate), with a warning on the row
+  (`shoko_file_unavailable`, the spec's proposed default).
 - **The counts read Shoko's episodes as there.** They have no record, so without
   `withShokoOwned` the progress bar's yellow segment and the "behind" chip would count them as
   still to download, forever.

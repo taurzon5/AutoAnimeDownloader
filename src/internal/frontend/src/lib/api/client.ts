@@ -277,6 +277,8 @@ export interface Config {
   shoko_refresh_hours?: number
   /** Follow Shoko's changes as they happen (its event hub); the refresh stays the safety net. */
   shoko_watch?: boolean
+  /** Read all of Shoko again every N days; 0 = never on its own. */
+  shoko_full_resync_days?: number
 }
 
 export interface PathMapping {
@@ -529,6 +531,8 @@ export interface AnimeEpisodeInfo {
   /** The user already has it in Shoko: never searched or downloaded. shoko_file is its path there. */
   in_shoko?: boolean
   shoko_file?: string
+  /** Shoko can't reach that file right now (an unplugged drive); it still counts as in Shoko. */
+  shoko_file_unavailable?: boolean
 }
 
 export interface AnimeDetailResponse {

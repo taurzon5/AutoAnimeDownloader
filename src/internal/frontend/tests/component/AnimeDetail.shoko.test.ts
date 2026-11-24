@@ -48,7 +48,8 @@ describe('AnimeDetail — Shoko', () => {
       shoko: { status: 'matched', series_id: 1, series_name: 'Sousou no Frieren' },
       episodes: [
         { episode_number: 1, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: false, in_shoko: true, shoko_file: 'Frieren/01.mkv' },
-        { episode_number: 2, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: false },
+        { episode_number: 2, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: false, in_shoko: true, shoko_file: 'Frieren/02.mkv', shoko_file_unavailable: true },
+        { episode_number: 3, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: false },
       ],
     }
     vi.mocked(client.getAnimeDetail).mockResolvedValue(detail)
@@ -62,5 +63,7 @@ describe('AnimeDetail — Shoko', () => {
     expect(screen.getAllByText('In Shoko').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Frieren/01.mkv').length).toBeGreaterThan(0)
     expect(screen.getByTestId('shoko-panel-status').textContent).toContain('In Shoko as Sousou no Frieren')
+    // Shoko can't reach episode 2's file: still in Shoko, with a warning.
+    expect(screen.getAllByText(/Shoko can't reach its file right now/).length).toBeGreaterThan(0)
   })
 })

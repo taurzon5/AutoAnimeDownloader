@@ -253,6 +253,7 @@
     if (ep.is_watched) notes.push(m.detail_badge_watched());
     if (ep.is_manually_managed) notes.push(m.detail_flag_no_delete_short());
     if (ep.is_blocked) notes.push(m.detail_flag_no_download_short());
+    if (ep.in_shoko && ep.shoko_file_unavailable) notes.push(m.detail_shoko_unavailable());
     // The report mark goes on the same line as the other notes: it's a short phrase, not a
     // live state — deriveAnimeChip stays out of this on purpose.
     if (issue) notes.push(m.detail_lastcheck_episode_note());

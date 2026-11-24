@@ -232,6 +232,9 @@ func clientOf(c *files.Config) string {
 // /shoko/login) and a refresh of at least an hour. Off, nothing is checked, as for the other
 // features' fields.
 func validateShoko(c *files.Config) string {
+	if c.ShokoFullResyncDays < 0 {
+		return "Shoko's full resync must be 0 (never) or more days"
+	}
 	if !c.ShokoEnabled {
 		return ""
 	}

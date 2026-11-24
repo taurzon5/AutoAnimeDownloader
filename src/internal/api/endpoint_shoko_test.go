@@ -149,6 +149,7 @@ func TestUpdateConfig_ValidatesShoko(t *testing.T) {
 		},
 		"on without a sign-in":  func(c *files.Config) { c.ShokoEnabled, c.ShokoAPIKey = true, "" },
 		"on without an address": func(c *files.Config) { c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "", "k" },
+		"negative full resync":  func(c *files.Config) { c.ShokoFullResyncDays = -1 },
 	} {
 		c := files.DefaultConfig()
 		c.CompletedAnimePath = t.TempDir()

@@ -15,6 +15,7 @@ Pinned by:
 - `TestShokoWatchCatchUpSeesADeletionMadeWhileAway`, `TestWatchQueueKeepsEveryEvent` and
   `TestShokoOffClearsWhatRematchUses`.
 - `TestShokoLiveWatch`, against a real Shoko.
+- `TestShokoFullResyncEveryNDays` and `TestStoreFullDue`.
 
 **What it looks like:**
 - Shoko says a file changed, but the app neither runs a sync nor starts a check pass. It reads
@@ -50,8 +51,9 @@ Pinned by:
   - *The daily refresh* (`shoko_refresh_hours`): newer-only, as the user asked ("after one full
     sync, only scan for newer files and series"). It catches files imported while nothing listened
     (`shoko_watch` off, or Shoko unreachable), never a deletion or an unlink.
-  - *An unlink while connected sends nothing:* it is seen at the next reconnection, or by a Full
-    resync. That is the one gap left.
+  - *An unlink while connected sends nothing:* it is seen at the next reconnection, or by a full
+    resync, now also automatic every `shoko_full_resync_days` (30 by default, `Store.FullDue`, the
+    spec's proposed default). The gap is at most that long.
   - The watcher backs off from 5 s to 5 min while Shoko is unreachable.
 - **No event is dropped.** The events go into a set the refresher takes whole (`watchQueue`), not
   a bounded channel: a burst bigger than any buffer would otherwise lose a `FileDeleted`, and only

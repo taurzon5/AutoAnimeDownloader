@@ -41,6 +41,10 @@ type AnimeEpisodeInfo struct {
 	// downloads it; ShokoFile is that file's path in its Shoko import folder (the Shoko spec §3).
 	InShoko   bool   `json:"in_shoko,omitempty"`
 	ShokoFile string `json:"shoko_file,omitempty"`
+	// ShokoFileUnavailable: Shoko can't reach that file right now (an unplugged drive). It still
+	// counts as in Shoko, since downloading it again would make a duplicate (the Shoko spec's
+	// proposed default); the page warns instead.
+	ShokoFileUnavailable bool `json:"shoko_file_unavailable,omitempty"`
 }
 
 // AnimeShokoInfo is how the anime lines up with Shoko, from the last pass: "matched" (with the
@@ -208,6 +212,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 			if f, ok := shokoStatus.Owned[node.Episode]; ok && inShoko {
 				info.InShoko = true
 				info.ShokoFile = f.Path
+				info.ShokoFileUnavailable = !f.Accessible
 			}
 
 			episodes = append(episodes, info)

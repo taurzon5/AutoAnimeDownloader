@@ -230,6 +230,7 @@
     shoko_api_key: "",
     shoko_refresh_hours: 24,
     shoko_watch: true,
+    shoko_full_resync_days: 30,
   };
 
   // The Shoko group: the sign-in (the password is sent once and kept nowhere, not even here once
@@ -510,6 +511,11 @@
       group: "shoko" as GroupId,
       ok: !config.shoko_enabled || (config.shoko_refresh_hours ?? 0) >= 1,
       message: m.config_val_shoko_refresh,
+    },
+    {
+      group: "shoko" as GroupId,
+      ok: (config.shoko_full_resync_days ?? 0) >= 0,
+      message: m.config_val_shoko_full_resync,
     },
     {
       group: "downloads" as GroupId,
@@ -1150,8 +1156,23 @@
                 suffix="h"
               />
             </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_full_resync_days"
+                label={$locale && m.config_label_shoko_full_resync()}
+                subtitle={$locale && m.config_hint_shoko_full_resync()}
+                type="number"
+                bind:value={config.shoko_full_resync_days}
+                min="0"
+                inline={true}
+                suffix={$locale && m.config_suffix_days()}
+              />
+            </div>
             <div class="space-y-1.5 p-4.5">
               <Button variant="ghost" disabled={!shokoStatus?.signed_in} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+              {#if shokoStatus?.last_full_sync && !shokoStatus.last_full_sync.startsWith("0001")}
+                <p class="text-caption text-body" data-testid="shoko-last-full">{$locale && m.config_shoko_last_full_sync({ when: new Date(shokoStatus.last_full_sync).toLocaleString() })}</p>
+              {/if}
               <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_sync()}</p>
             </div>
           {/if}

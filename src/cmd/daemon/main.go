@@ -162,7 +162,12 @@ func runDebugAnime(animeId int) {
 		logger.Logger.Fatal().Err(err).Msg("Failed to load configs")
 	}
 
-	summary, err := daemon.RunAnimeDebug(animeId, configs, fileManager)
+	// The last Shoko sync on disk, without syncing: the dry run marks what is in Shoko as the pass would.
+	var inShoko *daemon.ShokoService
+	if dir, err := datadir.Path(); err == nil {
+		inShoko = daemon.NewShokoService(dir)
+	}
+	summary, err := daemon.RunAnimeDebug(animeId, configs, fileManager, inShoko)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Debug run failed")
 		os.Exit(1)

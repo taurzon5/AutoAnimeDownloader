@@ -276,3 +276,24 @@ func TestStoreSyncReadsASeriesMatchedByHand(t *testing.T) {
 		t.Fatal("the episodes of a series matched by hand were not read")
 	}
 }
+
+func TestStoreFullDue(t *testing.T) {
+	f := newFakeShoko(t)
+	c, _ := NewClient(f.server.URL, "key-1")
+	store := NewStore(t.TempDir())
+	if store.FullDue(30, t0) {
+		t.Fatal("due before the first full sync (Due covers that one)")
+	}
+	if err := store.Sync(context.Background(), c, f.server.URL, nil, nil, false, t0); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		days  int
+		after time.Duration
+		want  bool
+	}{{30, 29 * 24 * time.Hour, false}, {30, 30 * 24 * time.Hour, true}, {0, 365 * 24 * time.Hour, false}, {-1, 365 * 24 * time.Hour, false}} {
+		if got := store.FullDue(tc.days, t0.Add(tc.after)); got != tc.want {
+			t.Errorf("FullDue(%d, +%v) = %v, want %v", tc.days, tc.after, got, tc.want)
+		}
+	}
+}

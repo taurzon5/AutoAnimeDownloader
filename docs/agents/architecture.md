@@ -639,7 +639,8 @@ The daemon half is `daemon/shoko.go`, `ShokoService`, held by the `State` (`SetS
 syncs when due, matches each anime (MAL ids from `anilist.MALFactsOf`, a query of its own) and
 hands `processAnimeEpisodes` each anime's owned episodes, which leave the list both selections walk
 ([decisions/147](decisions/147-episodes-already-in-shoko-leave-the-list-both.md)). The anime page reads the last pass's outcome (`AnimeStatus`); there is no
-per-request match. `ShokoService.Watch` (a goroutine from `main.go`) keeps the store current between
+per-request match. `RunAnimeDebug` takes the service too and drops the episodes in Shoko from the
+last sync on disk, as the pass would. `ShokoService.Watch` (a goroutine from `main.go`) keeps the store current between
 passes: an event refreshes its series and works the matches out again (`rematch`) without a pass. Manual downloads (`ManualDownloadEpisode`) don't look at Shoko: the user picked
 the torrent.
 

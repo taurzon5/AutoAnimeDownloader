@@ -110,6 +110,14 @@ func (s *Store) Due(url string, every time.Duration, now time.Time) bool {
 	return s.state.LastFullSync.IsZero() || s.state.URL != url || now.Sub(s.state.LastSync) >= every
 }
 
+// FullDue reports whether the last full sync is days old or older; never with days <= 0, or
+// before the first full sync (which Due already makes the next sync).
+func (s *Store) FullDue(days int, now time.Time) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return days > 0 && !s.state.LastFullSync.IsZero() && now.Sub(s.state.LastFullSync) >= time.Duration(days)*24*time.Hour
+}
+
 // Sync brings the state up to date (the Shoko spec §6). The first sync, a sync from another server
 // and a full one read every series, then the owned episodes of the series that match a tracked
 // MAL id. After that only files imported since the newest one seen are read: their series are read

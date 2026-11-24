@@ -15,6 +15,7 @@ import (
 
 	"AutoAnimeDownloader/src/internal/anilist"
 	"AutoAnimeDownloader/src/internal/files"
+	"AutoAnimeDownloader/src/internal/nyaa"
 )
 
 // liveShoko serves Shoko's API for Frieren and its event hub. delete() drops episode 2 and sends
@@ -26,6 +27,7 @@ type liveShoko struct {
 	send     chan string
 	dialed   atomic.Int32
 	episodes atomic.Int32 // reads of the series' episodes
+	lists    atomic.Int32 // reads of every series: full syncs
 }
 
 func newLiveShoko(t *testing.T) *liveShoko {
@@ -37,6 +39,7 @@ func newLiveShoko(t *testing.T) *liveShoko {
 		}
 		switch r.URL.Path {
 		case "/api/v3/Series":
+			l.lists.Add(1)
 			io.WriteString(w, `{"Total":1,"List":[{"IDs":{"ID":1,"MAL":[52991]},"Name":"Sousou no Frieren","Sizes":{"Total":{"Episodes":28}}}]}`)
 		case "/api/v3/File":
 			io.WriteString(w, `{"Total":0,"List":[]}`)
@@ -243,5 +246,75 @@ func TestWatchQueueKeepsEveryEvent(t *testing.T) {
 	}
 	if ids, catchUp := q.take(); len(ids) != 0 || catchUp {
 		t.Fatal("take did not empty the queue")
+	}
+}
+
+// Every shoko_full_resync_days the pass reads all of Shoko again, for what nothing announced (an
+// unlink); the daily refresh in between stays newer-only, and 0 turns the full resync off.
+func TestShokoFullResyncEveryNDays(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	for _, days := range []int{30, 0} {
+		l := newLiveShoko(t)
+		svc := NewShokoService(t.TempDir())
+		cfg := &files.Config{ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24, ShokoFullResyncDays: days}
+		animes := []anilist.MediaList{frierenAnime()}
+		t0 := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+		for _, at := range []time.Time{t0, t0.Add(25 * time.Hour), t0.Add(29 * 24 * time.Hour)} {
+			svc.ForPass(context.Background(), cfg, animes, nil, at)
+		}
+		if n := l.lists.Load(); n != 1 {
+			t.Fatalf("days=%d: %d full reads within 29 days, want only the first", days, n)
+		}
+		svc.ForPass(context.Background(), cfg, animes, nil, t0.Add(30*24*time.Hour))
+		want := int32(2)
+		if days == 0 {
+			want = 1
+		}
+		if n := l.lists.Load(); n != want {
+			t.Fatalf("days=%d: %d full reads after 30 days, want %d", days, n, want)
+		}
+	}
+}
+
+// The debug run mirrors the pass (decisions/058): the episodes in Shoko are marked and not
+// searched, read from the last sync.
+func TestRunAnimeDebugLeavesOutTheEpisodesInShoko(t *testing.T) {
+	list := `{"data": {"Page": {"mediaList": [{"id": 1, "status": "CURRENT", "progress": 0, "media": {
+		"id": 21, "episodes": 12, "format": "TV", "status": "RELEASING",
+		"title": {"english": "My Anime", "romaji": "Boku no Anime"},
+		"synonyms": [], "relations": {"edges": []},
+		"coverImage": {"large": "", "medium": ""},
+		"airingSchedule": {"nodes": [{"id": 10, "episode": 1, "timeUntilAiring": 0}, {"id": 11, "episode": 2, "timeUntilAiring": 0}, {"id": 12, "episode": 3, "timeUntilAiring": 0}]}
+	}}]}}}`
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		answer := list
+		if strings.Contains(string(body), "ShokoMALFacts") {
+			answer = `{"data":{"Page":{"media":[{"id":21,"idMal":52991,"episodes":12}]}}}`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(answer)), Header: make(http.Header)}, nil
+	}))
+	t.Cleanup(nyaa.MockNyaaHttpGet(func(url string) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`<html><body><table class="torrent-list"><tbody></tbody></table></body></html>`)), Header: make(http.Header)}, nil
+	}))
+	l := newLiveShoko(t) // episodes 1 and 2 in Shoko
+	svc := NewShokoService(t.TempDir())
+	cfg := &files.Config{MaxEpisodesPerAnime: 12, EpisodeRetryLimit: 3, AnilistUsernames: []string{"user"},
+		ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24}
+	eps := 12
+	svc.ForPass(context.Background(), cfg, []anilist.MediaList{{Media: anilist.Media{Id: 21, Episodes: &eps}}}, nil, time.Now())
+
+	summary, err := RunAnimeDebug(21, cfg, &debugMockFileManager{}, svc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ep := range summary.Episodes {
+		inShoko := ep.Episode <= 2
+		if ep.InShoko != inShoko || ep.WouldSearch == inShoko {
+			t.Errorf("episode %d: in_shoko %v, would_search %v; want in_shoko %v and searched only when not", ep.Episode, ep.InShoko, ep.WouldSearch, inShoko)
+		}
 	}
 }

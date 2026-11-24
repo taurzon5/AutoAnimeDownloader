@@ -63,7 +63,7 @@ func TestRunAnimeDebug_NoNyaaResults_NoError(t *testing.T) {
 	})
 	defer restoreNyaa()
 
-	summary, err := RunAnimeDebug(21, &files.Config{MaxEpisodesPerAnime: 12, EpisodeRetryLimit: 3, AnilistUsernames: []string{"user"}}, &debugMockFileManager{})
+	summary, err := RunAnimeDebug(21, &files.Config{MaxEpisodesPerAnime: 12, EpisodeRetryLimit: 3, AnilistUsernames: []string{"user"}}, &debugMockFileManager{}, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -114,7 +114,7 @@ func runDebugWithMocks(t *testing.T, anilistJSON string, configs *files.Config) 
 	})
 	defer restoreNyaa()
 
-	summary, err := RunAnimeDebug(21, configs, &debugMockFileManager{})
+	summary, err := RunAnimeDebug(21, configs, &debugMockFileManager{}, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -188,7 +188,7 @@ func TestRunAnimeDebug_FallsBackToSingleEpisodeSearch(t *testing.T) {
 	})
 	defer restoreAnilist()
 
-	summary, err := RunAnimeDebug(21, &files.Config{MaxEpisodesPerAnime: 3, EpisodeRetryLimit: 3, MinSeeders: 1, AnilistUsernames: []string{"user"}}, &debugMockFileManager{})
+	summary, err := RunAnimeDebug(21, &files.Config{MaxEpisodesPerAnime: 3, EpisodeRetryLimit: 3, MinSeeders: 1, AnilistUsernames: []string{"user"}}, &debugMockFileManager{}, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -303,7 +303,7 @@ func TestRunAnimeDebug_StandaloneUsesSavedProgress(t *testing.T) {
 	fm := &debugMockFileManager{settings: map[int]files.AnimeSettings{21: {Progress: 3}}}
 	configs := &files.Config{MaxEpisodesPerAnime: 12, EpisodeRetryLimit: 3, AnilistUsernames: []string{"user"}}
 
-	summary, err := RunAnimeDebug(21, configs, fm)
+	summary, err := RunAnimeDebug(21, configs, fm, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

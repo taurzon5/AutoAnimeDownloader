@@ -214,6 +214,10 @@ a file linked or deleted refreshes that series within seconds. Measured on v5.3.
 
 ## Proposed defaults — say if you disagree
 
+Built on 2026-11-24: the warning on a file Shoko can't reach (`shoko_file_unavailable`), and the
+automatic full resync, `shoko_full_resync_days`, 30 by default (the user: "add the automatic
+sync").
+
 - **Any file linked to the episode counts as In Shoko**, even when Shoko can't reach it right now
   (`Locations[].IsAccessible` false, an unplugged drive): downloading again would make a duplicate.
   The episode shows a warning instead.

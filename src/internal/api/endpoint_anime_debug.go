@@ -36,7 +36,7 @@ func handleAnimeDebug(server *Server) http.HandlerFunc {
 		}
 
 		logger.Logger.Info().Int("anime_id", id).Msg("Debug pass requested through the API")
-		summary, err := daemon.RunAnimeDebug(id, configs, server.FileManager)
+		summary, err := daemon.RunAnimeDebug(id, configs, server.FileManager, server.State.Shoko())
 		if err != nil {
 			logger.Logger.Error().Err(err).Int("anime_id", id).Msg("Debug pass failed")
 			JSONInternalError(w, err)

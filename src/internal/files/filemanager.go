@@ -252,6 +252,10 @@ type Config struct {
 	// ShokoRefreshHours stays, newer-only; a reconnection catches up on deletions and unlinks
 	// (decisions/148).
 	ShokoWatch bool `json:"shoko_watch"`
+	// ShokoFullResyncDays reads all of Shoko again every that many days, on the pass that finds it
+	// due: the newer-only refresh never sees a file deleted or unlinked in Shoko, and the live
+	// events miss an unlink (decisions/148). 0 = never on its own (the Full resync button stays).
+	ShokoFullResyncDays int `json:"shoko_full_resync_days"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -482,6 +486,7 @@ func DefaultConfig() *Config {
 		QBittorrentDisableSeedingUploadKiB: 16,
 		ShokoRefreshHours:                  24,
 		ShokoWatch:                         true,
+		ShokoFullResyncDays:                30,
 	}
 }
 

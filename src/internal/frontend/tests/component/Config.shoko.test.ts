@@ -62,7 +62,7 @@ describe('Config — Shoko', () => {
   beforeEach(() => {
     vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), torrent_client: 'builtin', shoko_enabled: false, shoko_url: '', shoko_api_key: '', shoko_refresh_hours: 24,
       // What GET /config always carries; missing, the page fills them in and reads as unsaved before any edit.
-      auto_delete_downloads: false, check_for_updates: false, incomplete_path: '', rename_files_for_jellyfin: false, shoko_watch: true } as never)
+      auto_delete_downloads: false, check_for_updates: false, incomplete_path: '', rename_files_for_jellyfin: false, shoko_watch: true, shoko_full_resync_days: 30 } as never)
     vi.mocked(client.updateConfig).mockReset().mockResolvedValue({ message: 'ok' })
     vi.mocked(client.shokoLogin).mockReset().mockResolvedValue(undefined)
     vi.mocked(client.getShokoStatus).mockReset().mockResolvedValue({ enabled: false, signed_in: false, series: 0, owned_episodes: 0 })

@@ -353,6 +353,9 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 	s.mu.Lock()
 	full := s.fullRequested
 	s.mu.Unlock()
+	// Every shoko_full_resync_days, all of Shoko again: what the newer-only refresh and the events
+	// never see (a file unlinked from an episode) stops counting (decisions/148).
+	full = full || s.store.FullDue(cfg.ShokoFullResyncDays, now)
 	hours := cfg.ShokoRefreshHours
 	if hours < 1 {
 		hours = 24 // a config.json from before the field, or one written by hand
