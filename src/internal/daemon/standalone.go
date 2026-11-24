@@ -161,7 +161,7 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
 	torrentsNow := backend.List()
-	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes))
+	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes), nil)
 
 	saveEpisodesToFile(fm, result.newEpisodes)
 

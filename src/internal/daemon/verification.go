@@ -254,6 +254,10 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 
 	animes := anilistResponse.Data.Page.MediaList
 
+	// What the user already has in Shoko, by anime: never searched nor downloaded (the Shoko spec).
+	animeSettings, _ := fileManager.LoadAllAnimeSettings()
+	inShoko := state.Shoko().ForPass(ctx, configs, animes, animeSettings, time.Now())
+
 	// Absolute series axis of every anime in the pass AND of every anime_id with an episode on disk:
 	// it's what lets the pass recognize that a pack downloaded under another cour already covers the
 	// pending episode (coverage.go). A partial failure doesn't abort the pass — without the offset the
@@ -310,7 +314,7 @@ outer:
 			default:
 			}
 
-			resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, defaultNyaaSearcher(), disk)
+			resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, defaultNyaaSearcher(), disk, inShoko[a.Media.Id])
 		}(anime)
 	}
 

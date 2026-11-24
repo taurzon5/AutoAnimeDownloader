@@ -6,6 +6,7 @@ import (
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/notifications"
 	"AutoAnimeDownloader/src/internal/nyaa"
+	"AutoAnimeDownloader/src/internal/shoko"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"errors"
 	"fmt"
@@ -105,6 +106,22 @@ func windowEnd(configs *files.Config, firstPending int) int {
 	return firstPending + configs.MaxEpisodesPerAnime - 1
 }
 
+// withoutOwnedElsewhere drops from the episode list those the user already has in Shoko, unless the
+// app has its own record of them.
+func withoutOwnedElsewhere(episodes []anilist.AiringNode, owned map[int]shoko.File, animeID int, saved map[files.EpisodeKey]bool) []anilist.AiringNode {
+	if len(owned) == 0 {
+		return episodes
+	}
+	out := make([]anilist.AiringNode, 0, len(episodes))
+	for _, ep := range episodes {
+		if _, inShoko := owned[ep.Episode]; inShoko && !saved[files.EpisodeKey{AnimeID: animeID, Episode: ep.Episode}] {
+			continue
+		}
+		out = append(out, ep)
+	}
+	return out
+}
+
 func processAnimeEpisodes(
 	configs *files.Config,
 	backend torrents.TorrentBackend,
@@ -115,6 +132,7 @@ func processAnimeEpisodes(
 	blockedMap map[files.EpisodeKey]bool,
 	searcher nyaaSearcher,
 	disk *diskBudget,
+	ownedInShoko map[int]shoko.File,
 ) animeProcessResult {
 	var result animeProcessResult
 	animeTitle := getAnimeTitleSafe(anime)
@@ -139,7 +157,11 @@ func processAnimeEpisodes(
 	// The first selection is the one that counts when there's no pack, and it's the one that produces
 	// the limit deletions: with the limit lifted by guess, handleAlreadySavedEpisode never fired and
 	// keysToDelete came back empty for everyone.
-	sel := selectEpisodes(configs, effectiveMax(configs, episodes), anime, episodes, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
+	// Episodes the user already has in Shoko are neither searched nor downloaded, and take no slot of
+	// max_episodes_per_anime: they leave the list both selections walk. One the app downloaded itself
+	// stays, so its own lifecycle (pruning, deletion) goes on (the Shoko spec §3).
+	pending := withoutOwnedElsewhere(episodes, ownedInShoko, anime.Media.Id, savedEpisodesMap)
+	sel := selectEpisodes(configs, effectiveMax(configs, pending), anime, pending, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
 
 	// Ownership by coverage, BEFORE any search: what an already downloaded pack covers on the series'
 	// absolute axis doesn't go back to Nyaa (see coverage.go).
@@ -177,7 +199,7 @@ func processAnimeEpisodes(
 
 				// Second selection, with the limit lifted: the episodes.json records must cover the WHOLE pack,
 				// otherwise the count lies and pruning would delete what the pack just brought.
-				sel = selectEpisodes(configs, len(episodes)+1, anime, episodes, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
+				sel = selectEpisodes(configs, len(episodes)+1, anime, pending, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
 				sel.toDownload = dropAdopted(sel.toDownload, adopted)
 				sel.toDownload, magnetsForEpisodes = assignBatches(animeTitle, axis, sel.toDownload, batches)
 			case packStats.Input == 0:

@@ -246,6 +246,8 @@ func clearCaches() {
 	searchCache.clear()
 	malListCache.clear()
 	malIDMapCache.clear()
+	mediaFactsCache.clear()
+	malEpisodesCache.clear()
 	// Health is package state too: without resetting it here, a test that simulates a 403 would leave
 	// the next test seeing AniList as down. Same for the budget reading: a test that simulates an
 	// empty bucket would lock the next test's gate.

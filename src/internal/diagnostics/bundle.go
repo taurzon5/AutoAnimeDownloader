@@ -51,6 +51,7 @@ type rawConfig struct {
 	QBittorrentUsername string `json:"qbittorrent_username"`
 	QBittorrentPassword string `json:"qbittorrent_password"`
 	QBittorrentAPIKey   string `json:"qbittorrent_api_key"`
+	ShokoAPIKey         string `json:"shoko_api_key"`
 }
 
 type rawWebhook struct {
@@ -149,7 +150,7 @@ func webhookSecrets(cfg rawConfig) []string {
 	}
 	// The qBittorrent password and API key, wherever a log line might quote them. The username is a
 	// username: configUsernames pseudonymizes it.
-	for _, secret := range []string{cfg.QBittorrentPassword, cfg.QBittorrentAPIKey} {
+	for _, secret := range []string{cfg.QBittorrentPassword, cfg.QBittorrentAPIKey, cfg.ShokoAPIKey} {
 		if secret != "" {
 			secrets = append(secrets, secret)
 		}
@@ -168,7 +169,7 @@ func redactConfig(r *redactor, data []byte) string {
 		switch key {
 		case "anilist_username", "anilist_usernames", "mal_usernames", "qbittorrent_username":
 			cfg[key] = r.value(pseudonymize, v)
-		case "qbittorrent_password", "qbittorrent_api_key":
+		case "qbittorrent_password", "qbittorrent_api_key", "shoko_api_key":
 			if s, ok := v.(string); ok && s != "" {
 				cfg[key] = "<redacted>"
 			}

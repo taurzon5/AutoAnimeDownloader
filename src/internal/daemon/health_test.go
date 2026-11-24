@@ -424,11 +424,11 @@ func TestDownloadFailed_OncePerEpisodeAndTorrent(t *testing.T) {
 		backend := torrents.NewFakeBackend()
 		backend.AddErr = errors.New("refused")
 
-		processAnimeEpisodes(cfg, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil)
+		processAnimeEpisodes(cfg, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
 		if got := received(bodies); !strings.HasPrefix(got, "Download failed|") {
 			t.Errorf("got %q", got)
 		}
-		processAnimeEpisodes(cfg, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil)
+		processAnimeEpisodes(cfg, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
 		noneReceived(t, bodies)
 	})
 }

@@ -235,6 +235,18 @@ type Config struct {
 	// also carries the download's own requests, so a download runs at most a few hundred times it.
 	// At least 1 (decisions/144).
 	QBittorrentDisableSeedingUploadKiB int `json:"qbittorrent_disable_seeding_upload_kib"`
+	// ShokoEnabled turns on the Shoko integration (the Shoko spec): episodes already in the user's
+	// Shoko library are never searched or downloaded, and the anime page shows them as In Shoko.
+	ShokoEnabled bool `json:"shoko_enabled"`
+	// ShokoURL is the Shoko Server's address, e.g. http://127.0.0.1:8111.
+	ShokoURL string `json:"shoko_url"`
+	// ShokoAPIKey is the key Shoko gave the app at sign-in (POST /shoko/login); the password is
+	// never saved. A secret, like the qBittorrent password: masked by GET /config, kept by a PUT
+	// that sends the placeholder only for the same address (decisions/143).
+	ShokoAPIKey string `json:"shoko_api_key"`
+	// ShokoRefreshHours is how often the app reads what is new in Shoko. The first sync reads
+	// everything, later ones only the files imported since.
+	ShokoRefreshHours int `json:"shoko_refresh_hours"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -279,8 +291,14 @@ func (c *Config) MaskSecrets() *Config {
 	if out.QBittorrentAPIKey != "" {
 		out.QBittorrentAPIKey = SecretPlaceholder
 	}
+	if out.ShokoAPIKey != "" {
+		out.ShokoAPIKey = SecretPlaceholder
+	}
 	return &out
 }
+
+// ErrShokoNeedsSignIn is KeepSecrets refusing to reuse the saved Shoko key for another address.
+var ErrShokoNeedsSignIn = errors.New("the Shoko address changed: sign in to Shoko again")
 
 // ErrSecretNeedsRetyping is KeepSecrets refusing to reuse a saved secret for another address.
 var ErrSecretNeedsRetyping = errors.New("the qBittorrent address changed: type the password (and the API key) again")
@@ -306,9 +324,17 @@ func (c *Config) KeepSecrets(saved *Config) error {
 		}
 		*pair.field = *pair.saved
 	}
+	if c.ShokoAPIKey == SecretPlaceholder {
+		if !sameQBittorrentURL(c.ShokoURL, saved.ShokoURL) && saved.ShokoAPIKey != "" {
+			return ErrShokoNeedsSignIn
+		}
+		c.ShokoAPIKey = saved.ShokoAPIKey
+	}
 	return nil
 }
 
+// sameQBittorrentURL compares two server addresses (qBittorrent or Shoko) loosely: case, spaces and a
+// trailing slash aside.
 func sameQBittorrentURL(a, b string) bool {
 	norm := func(u string) string { return strings.ToLower(strings.TrimRight(strings.TrimSpace(u), "/")) }
 	return norm(a) == norm(b)
@@ -363,6 +389,17 @@ type AnimeSettings struct {
 	// the rotation of successive packs has nothing to move it. Absent reads as 0, which is the earlier
 	// behavior. A list anime never uses this field: there its list (AniList or MyAnimeList) rules.
 	Progress int `json:"progress,omitempty"`
+	// Shoko is a Shoko match set by hand on the anime page, in place of the one worked out from the
+	// MAL id (decisions/146); nil = automatic.
+	Shoko *ShokoMatch `json:"shoko,omitempty"`
+}
+
+// ShokoMatch is a Shoko match set by hand: the series and the offset (the anime's episode N is the
+// series' episode N+Offset), or None for "this anime is not in Shoko".
+type ShokoMatch struct {
+	SeriesID int  `json:"series_id,omitempty"`
+	Offset   int  `json:"offset,omitempty"`
+	None     bool `json:"none,omitempty"`
 }
 
 type FileManager struct {
@@ -438,6 +475,7 @@ func DefaultConfig() *Config {
 		QBittorrentCategory:                "autoanimedownloader",
 		QBittorrentPathMap:                 []PathMapping{},
 		QBittorrentDisableSeedingUploadKiB: 16,
+		ShokoRefreshHours:                  24,
 	}
 }
 

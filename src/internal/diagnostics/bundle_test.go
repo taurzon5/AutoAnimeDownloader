@@ -50,17 +50,19 @@ func TestBuildRedactsTheQBittorrentCredentials(t *testing.T) {
   "qbittorrent_url": "http://192.168.1.20:8080",
   "qbittorrent_username": "qbadmin",
   "qbittorrent_password": "s3cretpass",
-  "qbittorrent_api_key": "qbt_apikey_123"
+  "qbittorrent_api_key": "qbt_apikey_123",
+  "shoko_url": "http://192.168.1.30:8111",
+  "shoko_api_key": "shoko_key_456"
 }`)
 	writeFile(t, filepath.Join(dir, logFileName), `{"level":"warn","error":"login as qbadmin with s3cretpass failed","message":"x"}`+"\n")
 
 	bundle := Build(dir, Options{Titles: true}).Bundle
-	for _, leaked := range []string{"qbadmin", "s3cretpass", "qbt_apikey_123", "192.168.1.20"} {
+	for _, leaked := range []string{"qbadmin", "s3cretpass", "qbt_apikey_123", "192.168.1.20", "shoko_key_456"} {
 		if strings.Contains(bundle, leaked) {
 			t.Errorf("bundle leaks %q:\n%s", leaked, bundle)
 		}
 	}
-	for _, want := range []string{`"qbittorrent_password": "<redacted>"`, `"torrent_client": "qbittorrent"`} {
+	for _, want := range []string{`"qbittorrent_password": "<redacted>"`, `"torrent_client": "qbittorrent"`, `"shoko_api_key": "<redacted>"`} {
 		if !strings.Contains(bundle, want) {
 			t.Errorf("bundle misses %q:\n%s", want, bundle)
 		}
