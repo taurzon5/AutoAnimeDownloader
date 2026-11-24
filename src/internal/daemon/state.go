@@ -158,8 +158,11 @@ func (s *State) SetShoko(shoko *ShokoService) {
 	s.shoko = shoko
 }
 
-// Shoko returns the Shoko integration, nil without one.
+// Shoko returns the Shoko integration, nil without one (or without a state, as in some API tests).
 func (s *State) Shoko() *ShokoService {
+	if s == nil {
+		return nil
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.shoko

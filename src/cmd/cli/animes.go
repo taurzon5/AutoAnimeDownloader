@@ -80,8 +80,12 @@ func animesCommand() *cli.Command {
 			{
 				Name:      "settings",
 				Usage:     "Show or update anime settings",
-				ArgsUsage: "<id> [progress <n>]",
-				Action:    handleAnimesSettings,
+				ArgsUsage: "<id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto]",
+				Description: "With one argument, shows the anime's settings. progress sets a standalone anime's\n" +
+					"progress. shoko sets its Shoko match by hand: a Shoko series id (and the offset, its\n" +
+					"episode N being the series' N+offset), none for \"not in Shoko\", or auto to go back to\n" +
+					"the match worked out from the MAL id.",
+				Action: handleAnimesSettings,
 			},
 			{
 				Name:      "debug",
@@ -343,8 +347,33 @@ func handleAnimesSettings(c *cli.Context) error {
 			return err
 		}
 		return printMessage(fmt.Sprintf("Progress set to %d", progress), "Progress updated")
+	case c.NArg() >= 3 && c.NArg() <= 4 && c.Args().Get(1) == "shoko":
+		id, err := parsePositiveInt(c.Args().Get(0), "id")
+		if err != nil {
+			return err
+		}
+		var match api.ShokoMatchRequest
+		switch arg := c.Args().Get(2); {
+		case arg == "none" && c.NArg() == 3:
+			match.None = true
+		case arg == "auto" && c.NArg() == 3:
+			match.Auto = true
+		default:
+			if match.SeriesID, err = parsePositiveInt(arg, "series-id"); err != nil {
+				return err
+			}
+			if c.NArg() == 4 {
+				if match.Offset, err = parseNonNegativeInt(c.Args().Get(3), "offset"); err != nil {
+					return err
+				}
+			}
+		}
+		if err := mapClientError(getClient().UpdateAnimeShoko(id, match)); err != nil {
+			return err
+		}
+		return printMessage("Shoko match updated; the next check pass applies it", "Shoko match updated")
 	default:
-		return fmt.Errorf("usage: animes settings <id> [progress <n>]")
+		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto]")
 	}
 }
 

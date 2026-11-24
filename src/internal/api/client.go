@@ -268,6 +268,30 @@ func (c *Client) UpdateAnimeSettings(id, progress int) error {
 	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)
 }
 
+// UpdateAnimeShoko sets an anime's Shoko match by hand, or clears it (Auto).
+func (c *Client) UpdateAnimeShoko(id int, match ShokoMatchRequest) error {
+	body := map[string]ShokoMatchRequest{"shoko": match}
+	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)
+}
+
+// ShokoLogin signs the daemon in to Shoko; only the API key Shoko returns is saved.
+func (c *Client) ShokoLogin(url, username, password string) error {
+	return c.sendSlow(http.MethodPost, "/api/v1/shoko/login", shokoLoginRequest{URL: url, Username: username, Password: password}, nil)
+}
+
+func (c *Client) ShokoStatus() (*ShokoStatus, error) {
+	var out ShokoStatus
+	if err := c.get("/api/v1/shoko/status", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ShokoSync starts a pass that syncs with Shoko; full reads all of Shoko again.
+func (c *Client) ShokoSync(full bool) error {
+	return c.send(http.MethodPost, "/api/v1/shoko/sync", map[string]bool{"full": full}, nil)
+}
+
 func (c *Client) GetAnimeEpisodes(id int) (*AnimeDetailResponse, error) {
 	var detail AnimeDetailResponse
 	if err := c.get("/api/v1/animes/"+strconv.Itoa(id)+"/episodes", &detail); err != nil {

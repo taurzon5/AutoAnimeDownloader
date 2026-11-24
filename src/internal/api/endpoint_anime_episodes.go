@@ -37,6 +37,21 @@ type AnimeEpisodeInfo struct {
 	// even the AniList total is known —, and then the min/max is the best guess again.
 	BatchStart int `json:"batch_start,omitempty"`
 	BatchEnd   int `json:"batch_end,omitempty"`
+	// InShoko: the user already has this episode in Shoko, so the app never searches for it or
+	// downloads it; ShokoFile is that file's path in its Shoko import folder (the Shoko spec §3).
+	InShoko   bool   `json:"in_shoko,omitempty"`
+	ShokoFile string `json:"shoko_file,omitempty"`
+}
+
+// AnimeShokoInfo is how the anime lines up with Shoko, from the last pass: "matched" (with the
+// series and offset), "partial" (a series shares its MAL id but the episodes don't line up: confirm
+// it by hand), or "none". ByHand: set on the anime page.
+type AnimeShokoInfo struct {
+	Status     string `json:"status"`
+	SeriesID   int    `json:"series_id,omitempty"`
+	SeriesName string `json:"series_name,omitempty"`
+	Offset     int    `json:"offset,omitempty"`
+	ByHand     bool   `json:"by_hand,omitempty"`
 }
 
 type AnimeDetailResponse struct {
@@ -52,6 +67,8 @@ type AnimeDetailResponse struct {
 	// only the download ones), each with its own entry — the "who has it" panel. Empty for a
 	// standalone no account tracks.
 	Accounts []AnimeListAccount `json:"accounts,omitempty"`
+	// Shoko is absent when Shoko is off or the last pass didn't see the anime.
+	Shoko *AnimeShokoInfo `json:"shoko,omitempty"`
 }
 
 // AnimeListAccount is one account's own list entry for the anime.
@@ -167,6 +184,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 		// anime), otherwise the user has nowhere to click to download them by hand.
 		allNodes := anilist.EpisodeList(*mediaList, 1)
 		episodes := make([]AnimeEpisodeInfo, 0, len(allNodes))
+		shokoStatus, inShoko := server.State.Shoko().AnimeStatus(id)
 
 		for _, node := range allNodes {
 			info := AnimeEpisodeInfo{
@@ -185,6 +203,11 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 				info.EpisodeHash = downloaded.hash
 				info.BatchStart = downloaded.batchStart
 				info.BatchEnd = downloaded.batchEnd
+			}
+
+			if f, ok := shokoStatus.Owned[node.Episode]; ok && inShoko {
+				info.InShoko = true
+				info.ShokoFile = f.Path
 			}
 
 			episodes = append(episodes, info)
@@ -208,6 +231,10 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 			CoverImage:    coverImage,
 			Episodes:      episodes,
 			Accounts:      listAccounts(mediaList.Accounts),
+		}
+		if inShoko {
+			m := shokoStatus.Match
+			response.Shoko = &AnimeShokoInfo{Status: string(m.Status), SeriesID: m.SeriesID, SeriesName: m.SeriesName, Offset: m.Offset, ByHand: m.ByHand}
 		}
 
 		JSONSuccess(w, http.StatusOK, response)
