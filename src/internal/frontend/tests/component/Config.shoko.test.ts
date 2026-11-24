@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/svelte'
 import { tick } from 'svelte'
-import { get } from 'svelte/store'
-import { toasts } from '../../src/lib/stores/toast.js'
 import Config from '../../src/routes/Config.svelte'
 import * as client from '../../src/lib/api/client.js'
 
