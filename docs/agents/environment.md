@@ -48,6 +48,19 @@ start. They are not read by the Go code, and they do nothing after the file exis
 > but `FORCE_CONFIG_UPDATE` rewrites the *whole* file, discarding everything the user set
 > through the UI or CLI.
 
+## Docker Compose (`docker/docker-compose.yml`)
+
+Read by Compose, never by the image or the Go code. Set them in `docker/.env` (git-ignored) or the
+shell. This is the file for running the app in Docker; `docker-compose.test.yml` is the
+integration-test stack with the mocks.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AAD_DOCKER_DIR` | `../runtime/docker` (relative to `docker/`) | Host folder holding `data/` (mounted at `/app/data`) and `library/` (mounted at `/library`, the `completed_anime_path`). Both must already exist: the mounts use `create_host_path: false`, so a missing folder fails the start instead of being created owned by root, or on the system disk when a drive is not mounted |
+| `AAD_WEB_PORT` | `8091` | Host port of the web UI, bound to `127.0.0.1` only |
+| `AAD_UID`, `AAD_GID` | `1000` | User the daemon runs as. It must own both folders |
+| `TZ` | `UTC` | Timezone of the log timestamps |
+
 ## OS / Path
 
 | Variable | Where | Description |

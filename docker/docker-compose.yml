@@ -1,0 +1,56 @@
+# Runs the daemon in Docker, kept apart from the rest of the machine: it sees only the two folders
+# below, runs as your user (so everything it writes is yours to delete) and the web UI answers on
+# localhost only. Nothing else on the host is mounted.
+#
+#   mkdir -p runtime/docker/data runtime/docker/library
+#   docker compose -f docker/docker-compose.yml up -d --build
+#   open http://localhost:8091
+#
+# Logs:   docker compose -f docker/docker-compose.yml logs -f
+# Stop:   docker compose -f docker/docker-compose.yml down
+# Wipe:   rm -rf runtime/docker   (after stopping it)
+#
+# Optional settings, in docker/.env (git-ignored) or the shell — docs/agents/environment.md:
+#   AAD_DOCKER_DIR   host folder holding data/ and library/ (default ../runtime/docker, relative
+#                    to this file). Both must exist: a missing one fails the start instead of
+#                    being created owned by root (or on the system disk, for an unmounted drive).
+#   AAD_WEB_PORT     localhost port of the web UI (default 8091)
+#   AAD_UID, AAD_GID the user the daemon runs as (default 1000:1000); it must own both folders
+#   TZ               timezone for the logs (default UTC)
+#
+# Not the integration-test stack: that is docker-compose.test.yml, with mock AniList and Nyaa.
+name: autoanimedownloader
+
+services:
+  daemon:
+    image: autoanimedownloader:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: autoanimedownloader
+    user: "${AAD_UID:-1000}:${AAD_GID:-1000}"
+    # Started and stopped by hand; it does not come back on its own after a reboot.
+    restart: "no"
+    # The shutdown stops the torrent session and any copy into the library (decisions/141);
+    # Docker's default 10 s would kill it mid-way.
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${AAD_WEB_PORT:-8091}:8091"
+    environment:
+      ENVIRONMENT: prod
+      PORT: ":8091"
+      TZ: ${TZ:-UTC}
+      # Read by entrypoint.sh only when it writes the first config.json. The download folder is
+      # derived from it (<library>/.torrents), so both sit on the same mount and hardlinks work.
+      COMPLETED_ANIME_PATH: /library
+    volumes:
+      - type: bind
+        source: ${AAD_DOCKER_DIR:-../runtime/docker}/data
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AAD_DOCKER_DIR:-../runtime/docker}/library
+        target: /library
+        bind:
+          create_host_path: false
