@@ -72,6 +72,33 @@ func (f *fakeShoko) addFile(id, series, episode int, imported time.Time) {
 	}
 }
 
+// removeFile deletes a file, as deleting it in Shoko does.
+func (f *fakeShoko) removeFile(id int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, fl := range f.files {
+		if fl.ID == id {
+			f.files = append(f.files[:i], f.files[i+1:]...)
+			break
+		}
+	}
+	for i := range f.series {
+		for n, ids := range f.series[i].episodes {
+			var keep []int
+			for _, fid := range ids {
+				if fid != id {
+					keep = append(keep, fid)
+				}
+			}
+			if len(keep) == 0 {
+				delete(f.series[i].episodes, n)
+			} else {
+				f.series[i].episodes[n] = keep
+			}
+		}
+	}
+}
+
 func (f *fakeShoko) requestLog() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()

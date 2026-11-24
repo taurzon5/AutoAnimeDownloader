@@ -247,6 +247,11 @@ type Config struct {
 	// ShokoRefreshHours is how often the app reads what is new in Shoko. The first sync reads
 	// everything, later ones only the files imported since.
 	ShokoRefreshHours int `json:"shoko_refresh_hours"`
+	// ShokoWatch follows Shoko's changes as they happen (its SignalR events): a file linked to an
+	// episode or deleted refreshes that series within seconds, instead of at the next refresh.
+	// ShokoRefreshHours stays, newer-only; a reconnection catches up on deletions and unlinks
+	// (decisions/148).
+	ShokoWatch bool `json:"shoko_watch"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -476,6 +481,7 @@ func DefaultConfig() *Config {
 		QBittorrentPathMap:                 []PathMapping{},
 		QBittorrentDisableSeedingUploadKiB: 16,
 		ShokoRefreshHours:                  24,
+		ShokoWatch:                         true,
 	}
 }
 

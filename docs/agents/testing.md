@@ -114,7 +114,8 @@ bash scripts/shoko-live.sh down    # removes the container, keeps its data
   again. `wipe` removes everything; run it rarely.
 - **What it covers:** the sign-in, Frieren's MAL ids (52991 and its shorts' 56885), the owned
   episodes, the newest-first file order and `NewestImport`, a full and an incremental sync, and the
-  match: Frieren at offset 0, the shorts partial.
+  match: Frieren at offset 0, the shorts partial. `TestShokoLiveWatch` connects to the event hub,
+  unlinks and relinks one test file, and checks the `FileMatched` it gets names Frieren.
 
 ## Test Structure
 

@@ -125,7 +125,7 @@ Key endpoints:
 | `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)). With qBittorrent it is qBittorrent's own `moving` state (`qbitStatusSlug`), and `withMoveProgress` measures the bytes already at the final paths ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)) |
 | `POST` | `/api/v1/torrent-client/test` | `handleTorrentClientTest` | `endpoint_torrent_client.go` — signs in to qBittorrent, reads its versions and writes a probe file in the library to check qBittorrent sees it (`torrents.TestQBittorrent`, through `app/getDirectoryContent`). Optional body: the qBittorrent settings being edited (`qbittorrent_url`, user, password, key, `qbittorrent_path_map`, `completed_anime_path`), so the web UI tests before saving; a secret sent as the placeholder uses the saved one. 502 `TORRENT_CLIENT_UNREACHABLE` when it can't connect or sign in; 200 with `problem` when connected but too old or not seeing the library. Also answers qBittorrent's own download queue (`queueing_enabled`, `max_active_downloads`) and `disk_io_type` (absent when it didn't answer its preferences), `sign_in` (`api_key` or `password`), and with `incomplete_path` a second probe there (`incomplete_checked`, `incomplete_visible`, `incomplete_path`). The body takes `incomplete_path` too. Saves nothing. CLI: `torrents test` |
 | `POST` | `/api/v1/shoko/login` | `handleShokoLogin` | `endpoint_shoko.go` — `{url, username, password}`: signs in to Shoko (`shoko.Login`) and saves only `shoko_url` and the API key Shoko returns, never the password. 400 `SHOKO_LOGIN_REFUSED` on a refused login, 502 `SHOKO_UNREACHABLE`. CLI: `shoko login` (password on stdin) |
-| `GET` | `/api/v1/shoko/status` | `handleShokoStatus` | `endpoint_shoko.go` — on/off, signed in, the last sync and full sync, the last error, how many series and owned episodes of followed anime. Never the key. CLI: `shoko status` |
+| `GET` | `/api/v1/shoko/status` | `handleShokoStatus` | `endpoint_shoko.go` — on/off, signed in, the last sync and full sync, the last error, how many series and owned episodes of followed anime, and the event watcher (`watching`, `last_event`, `watch_error`). Never the key. CLI: `shoko status` |
 | `POST` | `/api/v1/shoko/sync` | `handleShokoSync` | `endpoint_shoko.go` — starts a check pass that syncs first; `{"full": true}` reads all of Shoko again (`ShokoService.RequestFullSync`). 202; 503 without the service. CLI: `shoko sync [--full]` |
 | `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
@@ -630,14 +630,17 @@ Reads a Shoko library (v3 API, measured against v5.3.3: the facts are in the Sho
 against v5.3.3"); it never writes to Shoko beyond signing in. It imports no internal package.
 `client.go` is the API; `match.go` is `MatchEntry`/`OwnedOf`, the AniList-to-Shoko match through
 the MAL id ([decisions/146](decisions/146-an-anilist-entry-matches-a-shoko-series-through.md)); `store.go` is the synced state in `shoko.json`, one full sync then
-only files imported since the newest seen (`NewestImport`, `NewestImportIDs`).
+only files imported since the newest seen (`NewestImport`, `NewestImportIDs`); `watch.go` is the
+SignalR client for Shoko's change events (`/signalr/aggregate`, the `shoko` feed), and
+`Store.RefreshSeries` re-reads the series an event names ([decisions/148](decisions/148-shokos-change-events-refresh-only-the-series-they.md)).
 
 The daemon half is `daemon/shoko.go`, `ShokoService`, held by the `State` (`SetShoko` in
 `cmd/daemon/main.go`; nil in tests): `ForPass` runs once per pass after the anime list is built,
 syncs when due, matches each anime (MAL ids from `anilist.MALFactsOf`, a query of its own) and
 hands `processAnimeEpisodes` each anime's owned episodes, which leave the list both selections walk
 ([decisions/147](decisions/147-episodes-already-in-shoko-leave-the-list-both.md)). The anime page reads the last pass's outcome (`AnimeStatus`); there is no
-per-request match. Manual downloads (`ManualDownloadEpisode`) don't look at Shoko: the user picked
+per-request match. `ShokoService.Watch` (a goroutine from `main.go`) keeps the store current between
+passes: an event refreshes its series and works the matches out again (`rematch`) without a pass. Manual downloads (`ManualDownloadEpisode`) don't look at Shoko: the user picked
 the torrent.
 
 ### `src/internal/torrents/` — embedded BitTorrent client

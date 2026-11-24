@@ -200,7 +200,8 @@ autoanimedownloader shoko sync --full
 `login` hits `POST /shoko/login`. It reads the password from standard input: piped, or typed after
 the prompt, where it shows as you type. It saves only the address and the API key Shoko returns.
 Then turn Shoko on with `config set shoko_enabled true`. `status` shows whether it is on and signed
-in, the last sync and how many episodes of followed anime Shoko has. `sync` starts a check pass that
+in, the last sync, how many episodes of followed anime Shoko has, and whether it follows Shoko's
+changes as they happen (`shoko_watch`). `sync` starts a check pass that
 syncs first, and `--full` reads all of Shoko again, so files deleted or moved there stop counting.
 A match that needs checking by hand is set with `animes settings <id> shoko …`, above.
 

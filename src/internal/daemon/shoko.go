@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"context"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"AutoAnimeDownloader/src/internal/anilist"
@@ -20,6 +22,28 @@ type ShokoService struct {
 	fullRequested bool
 	// matches is the last pass's outcome by AniList media id, for the anime page.
 	matches map[int]ShokoAnimeStatus
+	// The last pass's inputs, so a change Shoko reports can be matched again without a pass.
+	lastAnimes   []anilist.MediaList
+	lastFacts    map[int]anilist.MALFacts
+	lastTracked  map[int]bool
+	lastBySeries map[int]bool
+	lastSettings map[int]files.AnimeSettings
+	// The event watcher (Watch): whether it is connected, its last event and its last error.
+	watching   bool
+	lastEvent  time.Time
+	watchError string
+	// settle is how long the watcher waits after an event for more before refreshing: a season
+	// imported at once is one refresh, not one per file. configCheck is how often it reads the
+	// config, while connected and while waiting to.
+	settle      time.Duration
+	configCheck time.Duration
+}
+
+// WatchStatus is the event watcher's state, for GET /shoko/status.
+type WatchStatus struct {
+	Connected bool
+	LastEvent time.Time
+	Error     string
 }
 
 // ShokoAnimeStatus is how one anime lines up with Shoko: the match, and the AniList episode numbers
@@ -31,7 +55,239 @@ type ShokoAnimeStatus struct {
 
 // NewShokoService keeps its store (shoko.json) in dataDir.
 func NewShokoService(dataDir string) *ShokoService {
-	return &ShokoService{store: shoko.NewStore(dataDir)}
+	return &ShokoService{store: shoko.NewStore(dataDir), settle: 10 * time.Second, configCheck: 30 * time.Second}
+}
+
+// WatchState is the event watcher's state.
+func (s *ShokoService) WatchState() WatchStatus {
+	if s == nil {
+		return WatchStatus{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return WatchStatus{Connected: s.watching, LastEvent: s.lastEvent, Error: s.watchError}
+}
+
+// Watch follows Shoko's changes as they happen, until ctx ends (decisions/148). While Shoko and
+// shoko_watch are on, it holds a connection to Shoko's event hub:
+//   - a file linked to an episode or deleted refreshes the series it names, once the events settle,
+//     and the anime page's matches are worked out again from the last pass's anime;
+//   - after every (re)connection it catches up on what happened while it was away (catchUp);
+//   - it doesn't start a pass: an episode deleted in Shoko is downloaded by the next one.
+//
+// The config is read before every connection and every s.configCheck during one: turning it off,
+// or signing in to another Shoko, closes the connection within that time.
+func (s *ShokoService) Watch(ctx context.Context, loadConfig func() (*files.Config, error)) {
+	if s == nil {
+		return
+	}
+	usable := func(cfg *files.Config, err error) bool {
+		return err == nil && cfg != nil && cfg.ShokoEnabled && cfg.ShokoWatch && cfg.ShokoURL != "" && cfg.ShokoAPIKey != ""
+	}
+	backoff := 5 * time.Second
+	for ctx.Err() == nil {
+		cfg, err := loadConfig()
+		if !usable(cfg, err) {
+			s.setWatching(false, "")
+			if !sleepCtx(ctx, s.configCheck) {
+				return
+			}
+			continue
+		}
+		client, err := shoko.NewClient(cfg.ShokoURL, cfg.ShokoAPIKey)
+		if err != nil {
+			s.setWatching(false, err.Error())
+			if !sleepCtx(ctx, s.configCheck) {
+				return
+			}
+			continue
+		}
+		q := &watchQueue{pending: map[int]bool{}, kick: make(chan struct{}, 1)}
+		connCtx, stop := context.WithCancel(ctx)
+		var reconfigured atomic.Bool
+		done := make(chan struct{})
+		go s.settleAndRefresh(connCtx, client, cfg.ShokoURL, q, done)
+		go func() {
+			for sleepCtx(connCtx, s.configCheck) {
+				now, err := loadConfig()
+				if err == nil && (!usable(now, nil) || now.ShokoURL != cfg.ShokoURL || now.ShokoAPIKey != cfg.ShokoAPIKey) {
+					reconfigured.Store(true)
+					stop()
+					return
+				}
+			}
+		}()
+		started := time.Now()
+		err = client.Watch(connCtx,
+			func() {
+				s.setWatching(true, "")
+				logger.Logger.Info().Msg("Following Shoko's changes")
+				q.add(nil, true)
+			},
+			func(ch shoko.Change) {
+				s.mu.Lock()
+				s.lastEvent = time.Now()
+				s.mu.Unlock()
+				q.add(ch.Series, false)
+			})
+		stop()
+		<-done
+		if ctx.Err() != nil {
+			return
+		}
+		if reconfigured.Load() {
+			s.setWatching(false, "")
+			continue
+		}
+		msg := ""
+		if err != nil {
+			msg = err.Error()
+		}
+		s.setWatching(false, msg)
+		if time.Since(started) > 5*time.Minute {
+			backoff = 5 * time.Second
+		}
+		logger.Logger.Warn().Err(err).Dur("retry_in", backoff).Msg("Lost Shoko's event hub; reconnecting")
+		if !sleepCtx(ctx, backoff) {
+			return
+		}
+		backoff = min(backoff*2, 5*time.Minute)
+	}
+}
+
+// watchQueue holds what the watcher still has to refresh: the series events named, and whether a
+// catch-up is due. A set, not a channel: an event is never dropped, however big the burst.
+type watchQueue struct {
+	mu      sync.Mutex
+	pending map[int]bool
+	catchUp bool
+	kick    chan struct{}
+}
+
+func (q *watchQueue) add(series []int, catchUp bool) {
+	q.mu.Lock()
+	for _, id := range series {
+		q.pending[id] = true
+	}
+	q.catchUp = q.catchUp || catchUp
+	q.mu.Unlock()
+	select {
+	case q.kick <- struct{}{}:
+	default: // already kicked
+	}
+}
+
+func (q *watchQueue) take() ([]int, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ids := make([]int, 0, len(q.pending))
+	for id := range q.pending {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	catchUp := q.catchUp
+	q.pending, q.catchUp = map[int]bool{}, false
+	return ids, catchUp
+}
+
+func (s *ShokoService) setWatching(connected bool, errMsg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watching = connected
+	s.watchError = errMsg
+}
+
+// settleAndRefresh refreshes what the queue holds: a catch-up at once, the series of events once no
+// event came for s.settle. It closes done when ctx ends.
+func (s *ShokoService) settleAndRefresh(ctx context.Context, client *shoko.Client, url string, q *watchQueue, done chan<- struct{}) {
+	defer close(done)
+	var timer <-chan time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-q.kick:
+			q.mu.Lock()
+			now := q.catchUp
+			q.mu.Unlock()
+			s.mu.Lock()
+			settle := s.settle
+			s.mu.Unlock()
+			if now {
+				settle = 0
+			}
+			timer = time.After(settle)
+		case <-timer:
+			timer = nil
+			ids, catchUp := q.take()
+			s.mu.Lock()
+			tracked, bySeries := s.lastTracked, s.lastBySeries
+			s.mu.Unlock()
+			if catchUp {
+				s.catchUp(ctx, client, url, ids, tracked, bySeries)
+				continue
+			}
+			if err := s.store.RefreshSeries(ctx, client, url, ids, tracked, bySeries); err != nil {
+				logger.Logger.Warn().Err(err).Msg("Shoko: failed to read the series of a change; the next sync reads it")
+				continue
+			}
+			logger.Logger.Info().Int("count", len(ids)).Msg("Shoko changed; refreshed its series")
+			s.rematch()
+		}
+	}
+}
+
+// catchUp runs after a (re)connection, for what changed while the watcher was away: the newer-only
+// sync (files imported since), then the episodes of every series a followed anime matches read
+// again, plus the series of events that came meanwhile. The second part is what sees a deletion or
+// an unlink made while away, which the newer-only sync can't; it is one request per matched series,
+// and reconnections are rare. Before the first pass it does nothing: the pass's first sync reads
+// everything.
+func (s *ShokoService) catchUp(ctx context.Context, client *shoko.Client, url string, extra []int, tracked, bySeries map[int]bool) {
+	if tracked == nil || s.store.Due(url, 1<<62, time.Now()) {
+		return
+	}
+	if err := s.store.Sync(ctx, client, url, tracked, bySeries, false, time.Now()); err != nil {
+		logger.Logger.Warn().Err(err).Msg("Shoko: the catch-up sync failed; the next pass syncs")
+		return
+	}
+	ids := append([]int(nil), extra...)
+	for _, sr := range s.store.SeriesList() {
+		if shokoTracks(sr, tracked) || bySeries[sr.ID] {
+			ids = append(ids, sr.ID)
+		}
+	}
+	if err := s.store.RefreshSeries(ctx, client, url, ids, tracked, bySeries); err != nil {
+		logger.Logger.Warn().Err(err).Msg("Shoko: the catch-up could not read every followed series; the next full resync does")
+	}
+	s.rematch()
+}
+
+// rematch works out the matches again from the last pass's anime and the store, so the anime page
+// shows a change Shoko reported without waiting for the next pass.
+func (s *ShokoService) rematch() {
+	s.mu.Lock()
+	animes, facts, tracked, settings := s.lastAnimes, s.lastFacts, s.lastTracked, s.lastSettings
+	s.mu.Unlock()
+	if animes == nil {
+		return
+	}
+	matches := s.matchAll(animes, facts, tracked, settings, anilist.PriorityDisposable)
+	s.mu.Lock()
+	s.matches = matches
+	s.mu.Unlock()
+}
+
+// sleepCtx waits d, or less when ctx ends; false then.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 // Store is the synced state, for the status endpoint.
@@ -66,7 +322,8 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 	}
 	if !cfg.ShokoEnabled || cfg.ShokoURL == "" || cfg.ShokoAPIKey == "" {
 		s.mu.Lock()
-		s.matches = nil
+		// The last pass's inputs too: a late event must not bring the matches back (rematch).
+		s.matches, s.lastAnimes, s.lastFacts, s.lastTracked, s.lastBySeries, s.lastSettings = nil, nil, nil, nil, nil, nil
 		s.mu.Unlock()
 		return nil
 	}
@@ -118,6 +375,9 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 
 	out := map[int]map[int]shoko.File{}
 	matches := s.matchAll(animes, facts, tracked, settings, anilist.PriorityCritical)
+	s.mu.Lock()
+	s.lastAnimes, s.lastFacts, s.lastTracked, s.lastBySeries, s.lastSettings = animes, facts, tracked, bySeries, settings
+	s.mu.Unlock()
 	for id, st := range matches {
 		if len(st.Owned) > 0 {
 			out[id] = st.Owned

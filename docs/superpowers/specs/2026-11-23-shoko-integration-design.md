@@ -175,7 +175,14 @@ upgrade possible, partial match, or not in Shoko.
   another episode, media info Shoko re-read. A **Full resync** button in the settings runs the
   first sync again.
 
-Shoko's SignalR events (file matched, file deleted) could replace the polling later.
+**Live changes (built, `shoko_watch`, decisions/148):** the app listens to Shoko's SignalR hub, and
+a file linked or deleted refreshes that series within seconds. Measured on v5.3.3:
+- **The hub and feed:** the hub is `/signalr/aggregate`, and the file events (`ShokoEvent:FileMatched`,
+  `FileDeleted`, both naming the series) are on the `shoko` feed.
+- **No series yet:** `FileDetected` and `FileHashed` don't name a series.
+- **No event:** unlinking a file from an episode sends none. A reconnection's catch-up reads every
+  followed series again, which sees it; otherwise a Full resync does. The daily refresh stays
+  newer-only, as decided.
 
 ## What this does not do (for now)
 

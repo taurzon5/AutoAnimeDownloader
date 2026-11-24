@@ -33,6 +33,11 @@ type ShokoStatus struct {
 	// an anime the app follows have a file there.
 	Series        int `json:"series"`
 	OwnedEpisodes int `json:"owned_episodes"`
+	// Watching: connected to Shoko's event hub (shoko_watch), so changes apply within seconds;
+	// LastEvent is Shoko's last file event, WatchError why the last connection failed.
+	Watching   bool      `json:"watching"`
+	LastEvent  time.Time `json:"last_event,omitempty"`
+	WatchError string    `json:"watch_error,omitempty"`
 }
 
 // handleShokoLogin signs in to Shoko and saves the address and the API key Shoko returns.
@@ -102,6 +107,8 @@ func handleShokoStatus(server *Server) http.HandlerFunc {
 			for _, eps := range snap.Owned {
 				out.OwnedEpisodes += len(eps)
 			}
+			w := svc.WatchState()
+			out.Watching, out.LastEvent, out.WatchError = w.Connected, w.LastEvent, w.Error
 		}
 		JSONSuccess(w, http.StatusOK, out)
 	}

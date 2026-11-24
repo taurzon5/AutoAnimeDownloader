@@ -229,6 +229,7 @@
     shoko_url: "",
     shoko_api_key: "",
     shoko_refresh_hours: 24,
+    shoko_watch: true,
   };
 
   // The Shoko group: the sign-in (the password is sent once and kept nowhere, not even here once
@@ -1117,6 +1118,24 @@
               </p>
               {#if shokoStatus?.last_error}
                 <p class="text-caption text-danger">{$locale && m.config_shoko_last_error({ error: shokoStatus.last_error })}</p>
+              {/if}
+            </div>
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="shoko_watch"
+                bind:checked={config.shoko_watch}
+                label={$locale && m.config_label_shoko_watch()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
+              {#if config.shoko_enabled && config.shoko_watch && shokoStatus?.signed_in}
+                <p class="text-caption {shokoStatus.watching ? 'text-body' : 'text-danger'}" data-testid="shoko-watch-status">
+                  {#if shokoStatus.watching}
+                    {$locale && m.config_shoko_watching()}
+                  {:else}
+                    {$locale && m.config_shoko_not_watching({ error: shokoStatus.watch_error ?? "" })}
+                  {/if}
+                </p>
               {/if}
             </div>
             <div class="p-4.5">

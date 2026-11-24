@@ -32,9 +32,12 @@ type State struct {
 
 // Store keeps the State in a file and syncs it with Shoko.
 type Store struct {
-	path  string
-	mu    sync.Mutex
-	state State
+	path string
+	// syncMu runs one Sync or RefreshSeries at a time: each reads the state, talks to Shoko, then
+	// writes it back, and two at once would overwrite each other.
+	syncMu sync.Mutex
+	mu     sync.Mutex
+	state  State
 }
 
 // NewStore loads the store from dataDir, or starts empty.
@@ -115,6 +118,8 @@ func (s *Store) Due(url string, every time.Duration, now time.Time) bool {
 // hand points at, which may share no MAL id with them. A failure leaves the previous state, with the
 // error recorded.
 func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked, bySeries map[int]bool, full bool, now time.Time) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
 	s.mu.Lock()
 	state := s.state
 	s.mu.Unlock()
@@ -135,6 +140,51 @@ func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked, bySeri
 	}
 	next.LastError = ""
 	s.state = next
+	return s.saveLocked()
+}
+
+// RefreshSeries re-reads the series a change Shoko reported names (Watch): a series not known yet is
+// fetched, and the owned episodes of those that match a followed anime (tracked MAL ids) or a match
+// set by hand (bySeries) are read again. A deletion is seen this way, which the newer-only refresh
+// can't. Before the first full sync (or for another server) it does nothing: the next pass reads
+// everything anyway.
+func (s *Store) RefreshSeries(ctx context.Context, c *Client, url string, ids []int, tracked, bySeries map[int]bool) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	s.mu.Lock()
+	state := s.state
+	s.mu.Unlock()
+	if state.LastFullSync.IsZero() || state.URL != url {
+		return nil
+	}
+	series := map[int]Series{}
+	owned := map[int][]Episode{}
+	for _, id := range ids {
+		sr, known := state.Series[id]
+		if !known {
+			var err error
+			if sr, err = c.SeriesByID(ctx, id); err != nil {
+				return err
+			}
+		}
+		series[id] = sr
+		if !tracksAny(sr, tracked) && !bySeries[id] {
+			continue
+		}
+		eps, err := c.OwnedEpisodes(ctx, id)
+		if err != nil {
+			return err
+		}
+		owned[id] = eps
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, sr := range series {
+		s.state.Series[id] = sr
+	}
+	for id, eps := range owned {
+		s.state.Owned[id] = eps
+	}
 	return s.saveLocked()
 }
 

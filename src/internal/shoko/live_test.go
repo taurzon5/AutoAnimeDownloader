@@ -2,7 +2,12 @@ package shoko
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	url2 "net/url"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -86,5 +91,75 @@ func TestShokoLive(t *testing.T) {
 	}
 	if shorts := MatchEntry(Entry{MalID: 56885, Episodes: 10}, store.SeriesList(), nil); shorts.Status != Partial {
 		t.Fatalf("the shorts' entry = %+v, want Partial", shorts)
+	}
+}
+
+// TestShokoLiveWatch connects to the real Shoko's event hub and checks that relinking a file to its
+// episode (unlink, link: measured to send FileMatched on the "shoko" feed; the unlink sends
+// nothing) is reported with its series.
+func TestShokoLiveWatch(t *testing.T) {
+	if os.Getenv("AAD_LIVE_SHOKO") != "1" {
+		t.Skip("set AAD_LIVE_SHOKO=1 and the AAD_SHOKO_* variables to run against a real Shoko")
+	}
+	url := os.Getenv("AAD_SHOKO_URL")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	key, err := Login(ctx, url, os.Getenv("AAD_SHOKO_USER"), os.Getenv("AAD_SHOKO_PASSWORD"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _ := NewClient(url, key)
+	all, err := c.AllSeries(ctx)
+	if err != nil || len(all) == 0 {
+		t.Fatalf("series: %v", err)
+	}
+	owned, err := c.OwnedEpisodes(ctx, all[0].ID)
+	if err != nil || len(owned) == 0 {
+		t.Fatalf("owned: %+v, %v", owned, err)
+	}
+	fileID := owned[0].Files[0].ID
+	var file struct {
+		SeriesIDs []struct {
+			EpisodeIDs []struct {
+				ID int `json:"ID"`
+			} `json:"EpisodeIDs"`
+		} `json:"SeriesIDs"`
+	}
+	if err := c.get(ctx, "File/"+strconv.Itoa(fileID), url2.Values{"include": {"XRefs"}}, &file); err != nil || len(file.SeriesIDs) == 0 {
+		t.Fatalf("file %d: %+v, %v", fileID, file, err)
+	}
+	episodeID := file.SeriesIDs[0].EpisodeIDs[0].ID
+
+	connected := make(chan struct{}, 1)
+	changes := make(chan Change, 8)
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() { _ = c.Watch(watchCtx, func() { connected <- struct{}{} }, func(ch Change) { changes <- ch }) }()
+	select {
+	case <-connected:
+	case <-ctx.Done():
+		t.Fatal("never connected to the event hub")
+	}
+
+	link := func(method string) {
+		body := strings.NewReader(fmt.Sprintf(`{"EpisodeIDs":[%d]}`, episodeID))
+		req, _ := http.NewRequestWithContext(ctx, method, url+"/api/v3/File/"+strconv.Itoa(fileID)+"/Link", body)
+		req.Header.Set("apikey", key)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp.StatusCode/100 != 2 {
+			t.Fatalf("%s link: %v %v", method, resp, err)
+		}
+		resp.Body.Close()
+	}
+	link(http.MethodDelete)
+	link(http.MethodPost)
+	select {
+	case ch := <-changes:
+		if ch.Event != "FileMatched" || len(ch.Series) != 1 || ch.Series[0] != all[0].ID {
+			t.Fatalf("change = %+v, want FileMatched of series %d", ch, all[0].ID)
+		}
+	case <-ctx.Done():
+		t.Fatal("no event after relinking a file")
 	}
 }

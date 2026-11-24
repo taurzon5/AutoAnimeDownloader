@@ -275,6 +275,8 @@ export interface Config {
   shoko_api_key?: string
   /** How often Shoko is read again, in hours (at least 1). */
   shoko_refresh_hours?: number
+  /** Follow Shoko's changes as they happen (its event hub); the refresh stays the safety net. */
+  shoko_watch?: boolean
 }
 
 export interface PathMapping {
@@ -573,6 +575,10 @@ export interface ShokoStatus {
   last_error?: string
   series: number
   owned_episodes: number
+  /** Connected to Shoko's event hub (shoko_watch). */
+  watching?: boolean
+  last_event?: string
+  watch_error?: string
 }
 
 /** Signs the daemon in to Shoko; only the API key Shoko returns is saved, never the password. */

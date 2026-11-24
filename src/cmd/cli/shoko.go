@@ -78,6 +78,12 @@ func handleShokoStatus(c *cli.Context) error {
 	if st.LastError != "" {
 		fmt.Printf("Last error: %s\n", st.LastError)
 	}
+	switch {
+	case st.Watching:
+		fmt.Println("Following Shoko's changes as they happen")
+	case st.WatchError != "":
+		fmt.Printf("Not following Shoko's changes (retrying): %s\n", st.WatchError)
+	}
 	return nil
 }
 

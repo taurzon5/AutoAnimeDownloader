@@ -348,7 +348,10 @@ func main() {
 	ensureStartupSession(torrentManager, fileManager)
 
 	state := daemon.NewState()
-	state.SetShoko(daemon.NewShokoService(dataDir))
+	shokoService := daemon.NewShokoService(dataDir)
+	state.SetShoko(shokoService)
+	// Shoko's changes as they happen, while Shoko and shoko_watch are on (decisions/148).
+	go shokoService.Watch(context.Background(), fileManager.LoadConfigs)
 
 	// GitHub's latest release, once a day, unless check_for_updates is off (asked before every
 	// check, so turning it off needs no restart). A "dev" build never asks.

@@ -159,3 +159,4 @@ do not edit by hand.
 - [**#145** — With qBittorrent a staged torrent downloads into its incomplete folder as qBittorrent's download path, qBittorrent moves it into the library, and the app then clears the path](145-with-qbittorrent-a-staged-torrent-downloads-into.md)
 - [**#146** — An AniList entry matches a Shoko series through its MAL id, at offset 0 when it has the series' own episode count, and anything that doesn't add up waits to be confirmed by hand](146-an-anilist-entry-matches-a-shoko-series-through.md)
 - [**#147** — Episodes already in Shoko leave the list both selections walk, unless the app has its own record of them, and their MAL ids come from a query of their own](147-episodes-already-in-shoko-leave-the-list-both.md)
+- [**#148** — Shoko's change events refresh only the series they name, after they settle, and the daily refresh stays for what the events don't tell](148-shokos-change-events-refresh-only-the-series-they.md)
