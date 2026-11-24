@@ -16,7 +16,7 @@ FROM golang:1.27-alpine AS go-builder
 WORKDIR /build
 
 # Copy go mod files for dependency caching
-COPY go.mod ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
@@ -57,8 +57,12 @@ EXPOSE 8091
 # Set environment variables
 ENV ENVIRONMENT=prod
 ENV PORT=:8091
+# The data dir is $HOME/.autoAnimeDownloader (internal/datadir). HOME points into /app/data so the
+# state lands in the volume and the daemon reads the config.json entrypoint.sh writes there.
+# Without it root used /root (lost with the container) and any other user got HOME=/ (not writable).
+ENV HOME=/app/data
 
-# ${PORT} ja inclui os dois pontos (":8091"), entao a URL fica http://localhost:8091/...
+# ${PORT} already includes the colon (":8091"), so the URL becomes http://localhost:8091/...
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD wget -qO- "http://localhost${PORT}/api/v1/status" >/dev/null || exit 1
 

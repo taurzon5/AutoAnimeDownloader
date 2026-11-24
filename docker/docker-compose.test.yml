@@ -46,7 +46,9 @@ services:
     ports:
       - "8091:8091"
     volumes:
-      - ../runtime/test-data:/app/data
+      # A named volume, not a host folder: the image keeps the whole data dir here (HOME=/app/data),
+      # and `down -v` removes the volume, so every run starts from an empty state.
+      - daemon-data:/app/data
     environment:
       - ENVIRONMENT=prod
       - PORT=:8091
@@ -94,6 +96,7 @@ services:
 
 volumes:
   go-mod-cache:
+  daemon-data:
 
 networks:
   test-network:
