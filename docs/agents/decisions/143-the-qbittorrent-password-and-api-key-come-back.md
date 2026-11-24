@@ -36,5 +36,6 @@ test (testing unsaved settings would then always fail with the saved password).
 **Amendment (see [#147](147-episodes-already-in-shoko-leave-the-list-both.md)):** the same rule covers a third secret, `shoko_api_key`, the key
 Shoko returns at sign-in. `MaskSecrets` masks it, and `KeepSecrets` keeps it only for the same
 `shoko_url`; another address gets `ErrShokoNeedsSignIn`, since the password isn't kept and can't
-be retyped, so the user signs in again. Bug reports redact it (`diagnostics/bundle.go`). Pinned by
+be retyped, so the user signs in again. An emptied `shoko_url` is the one exception: it signs out,
+and the saved key is cleared with it, with no error (no secret leaves the app that way). Bug reports redact it (`diagnostics/bundle.go`). Pinned by
 `TestShokoKeyIsMaskedAndKeptOnlyForTheSameAddress` and `TestBuildRedactsTheQBittorrentCredentials`.

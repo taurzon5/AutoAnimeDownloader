@@ -76,6 +76,13 @@ func TestShokoKeyIsMaskedAndKeptOnlyForTheSameAddress(t *testing.T) {
 	if err := edit.KeepSecrets(c); err != nil || edit.ShokoAPIKey != "shoko-key-1" {
 		t.Fatalf("same address: %v, key %q", err, edit.ShokoAPIKey)
 	}
+	// The address cleared with the key still saved: signing out, the key goes too.
+	edit = *c
+	edit.ShokoAPIKey = files.SecretPlaceholder
+	edit.ShokoURL = " "
+	if err := edit.KeepSecrets(c); err != nil || edit.ShokoAPIKey != "" {
+		t.Fatalf("an emptied address: %v, key %q; want signed out", err, edit.ShokoAPIKey)
+	}
 	edit = *c
 	edit.ShokoAPIKey = files.SecretPlaceholder
 	edit.ShokoURL = "http://evil.example:8111"
@@ -102,6 +109,11 @@ func TestShokoStatusAndSync(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), `"k"`) {
 		t.Fatal("the status shows the key")
+	}
+	for _, absent := range []string{"last_sync", "last_full_sync", "last_event", "0001-01-01"} {
+		if strings.Contains(w.Body.String(), absent) {
+			t.Errorf("a status never synced carries %q: %s", absent, w.Body.String())
+		}
 	}
 
 	// Without the integration (no service), sync says so instead of starting a pass.

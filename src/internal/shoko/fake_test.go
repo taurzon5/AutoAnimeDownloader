@@ -196,10 +196,12 @@ func (f *fakeShoko) handle(w http.ResponseWriter, r *http.Request) {
 	case len(parts) == 3 && parts[0] == "Series" && parts[2] == "Episode":
 		id, _ := strconv.Atoi(parts[1])
 		var list []map[string]any
+		found := false
 		for _, s := range f.series {
 			if s.ID != id {
 				continue
 			}
+			found = true
 			var numbers []int
 			for n := range s.episodes {
 				numbers = append(numbers, n)
@@ -226,6 +228,10 @@ func (f *fakeShoko) handle(w http.ResponseWriter, r *http.Request) {
 			if t := q.Get("type"); t != "Episode" || f.ignoreType {
 				add("Credits", 1, s.episodes[numbers[0]])
 			}
+		}
+		if !found {
+			w.WriteHeader(http.StatusNotFound)
+			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"Total": len(list), "List": page(list, q, 100)})
 	case path == "File":

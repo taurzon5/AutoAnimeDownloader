@@ -333,6 +333,10 @@ func (c *Config) KeepSecrets(saved *Config) error {
 		}
 		*pair.field = *pair.saved
 	}
+	if c.ShokoAPIKey == SecretPlaceholder && strings.TrimSpace(c.ShokoURL) == "" {
+		// The address cleared: that is signing out of Shoko, so the key goes too.
+		c.ShokoAPIKey = ""
+	}
 	if c.ShokoAPIKey == SecretPlaceholder {
 		if !sameQBittorrentURL(c.ShokoURL, saved.ShokoURL) && saved.ShokoAPIKey != "" {
 			return ErrShokoNeedsSignIn

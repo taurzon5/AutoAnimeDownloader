@@ -3,6 +3,7 @@ package shoko
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -81,6 +82,15 @@ func (s *Store) SeriesList() []Series {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+// HasOwned reports whether the owned episodes of a series were read at all: false for a series no
+// sync has read yet (not followed then), true even when it has none.
+func (s *Store) HasOwned(seriesID int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.state.Owned[seriesID]
+	return ok
 }
 
 // OwnedEpisodes returns the owned episodes of a series, as of the last sync.
@@ -165,25 +175,35 @@ func (s *Store) RefreshSeries(ctx context.Context, c *Client, url string, ids []
 	if state.LastFullSync.IsZero() || state.URL != url {
 		return nil
 	}
+	// One series failing doesn't stop the others: a series Shoko no longer has (404) is dropped, and
+	// any other error is returned once every series was tried.
 	series := map[int]Series{}
 	owned := map[int][]Episode{}
+	var gone []int
+	var firstErr error
 	for _, id := range ids {
 		sr, known := state.Series[id]
+		var err error
 		if !known {
-			var err error
-			if sr, err = c.SeriesByID(ctx, id); err != nil {
-				return err
+			sr, err = c.SeriesByID(ctx, id)
+		}
+		var eps []Episode
+		if err == nil && (tracksAny(sr, tracked) || bySeries[id]) {
+			eps, err = c.OwnedEpisodes(ctx, id)
+			if err == nil {
+				owned[id] = eps
 			}
 		}
-		series[id] = sr
-		if !tracksAny(sr, tracked) && !bySeries[id] {
-			continue
+		switch {
+		case errors.Is(err, ErrNotFound):
+			gone = append(gone, id)
+		case err != nil:
+			if firstErr == nil {
+				firstErr = err
+			}
+		default:
+			series[id] = sr
 		}
-		eps, err := c.OwnedEpisodes(ctx, id)
-		if err != nil {
-			return err
-		}
-		owned[id] = eps
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -193,7 +213,14 @@ func (s *Store) RefreshSeries(ctx context.Context, c *Client, url string, ids []
 	for id, eps := range owned {
 		s.state.Owned[id] = eps
 	}
-	return s.saveLocked()
+	for _, id := range gone {
+		delete(s.state.Series, id)
+		delete(s.state.Owned, id)
+	}
+	if err := s.saveLocked(); err != nil {
+		return err
+	}
+	return firstErr
 }
 
 func sync1(ctx context.Context, c *Client, prev State, tracked, bySeries map[int]bool, full bool) (State, error) {

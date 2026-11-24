@@ -20,6 +20,9 @@ import (
 // ErrUnauthorized is a refused sign-in or API key: Shoko answers 401 to both.
 var ErrUnauthorized = errors.New("shoko refused the credentials")
 
+// ErrNotFound is a series (or file) Shoko no longer has.
+var ErrNotFound = errors.New("shoko has no such item")
+
 // Device is the name Shoko shows for the app's API key.
 const Device = "AutoAnimeDownloader"
 
@@ -105,6 +108,9 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
 		return ErrUnauthorized
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %s", ErrNotFound, path)
 	}
 	if resp.StatusCode/100 != 2 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 512))

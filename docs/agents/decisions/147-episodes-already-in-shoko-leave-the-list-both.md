@@ -6,7 +6,8 @@
 - `internal/daemon/shoko.go`: `ShokoService.ForPass`, called once per pass in `AnimeVerification`.
 - `internal/anilist/shoko_facts.go`: `MALFactsOf` and `EpisodesOfMALIDs`.
 - `internal/daemon/standalone.go`: `DownloadStandaloneAnime` takes the service and matches the one
-  anime (`ShokoService.OwnedFor`, no sync).
+  anime (`ShokoService.OwnedFor`: no sync, but a matched series no sync read yet is read). The
+  debug run uses `OwnedFromLastSync`, which asks Shoko nothing and writes nothing.
 - `internal/api/endpoint_animes.go`: `withShokoOwned`, which counts the episodes in Shoko as there
   for the progress bar and the "behind" count
   ([#88](088-the-progress-bar-derives-downloaded-from-episodes.md)).
@@ -59,6 +60,14 @@ Pinned by:
   stays in the ⋯ menu, for a copy the user really wants. A file Shoko can't reach right now still
   counts (a re-download would be a duplicate), with a warning on the row
   (`shoko_file_unavailable`, the spec's proposed default).
+- **A newly followed anime is read at once.** A sync reads the owned episodes only of the series
+  followed at that time. An anime added to a list since, or as a standalone, would own nothing
+  until the next refresh, up to a day, and its episodes in Shoko would be downloaded meanwhile. So
+  `readUnread` reads every matched series no sync has read yet (`Store.HasOwned`) before the
+  episodes are handed out, in the pass and in `OwnedFor`. The debug run doesn't
+  (`OwnedFromLastSync`): `make debug-anime` is another process on the same data dir, and a write
+  of its stale copy would go around `syncMu` and could undo the daemon's. Pinned by
+  `TestShokoReadsANewlyFollowedSeriesAtOnce` and `TestOwnedFromLastSyncDoesNotAskShoko`.
 - **The counts read Shoko's episodes as there.** They have no record, so without
   `withShokoOwned` the progress bar's yellow segment and the "behind" chip would count them as
   still to download, forever.

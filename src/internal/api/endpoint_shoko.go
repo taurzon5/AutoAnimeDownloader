@@ -23,21 +23,29 @@ type shokoLoginRequest struct {
 // ShokoStatus is GET /api/v1/shoko/status: whether Shoko is on and signed in, and what the last
 // sync read.
 type ShokoStatus struct {
-	Enabled      bool      `json:"enabled"`
-	URL          string    `json:"url,omitempty"`
-	SignedIn     bool      `json:"signed_in"`
-	LastSync     time.Time `json:"last_sync,omitempty"`
-	LastFullSync time.Time `json:"last_full_sync,omitempty"`
-	LastError    string    `json:"last_error,omitempty"`
+	Enabled      bool       `json:"enabled"`
+	URL          string     `json:"url,omitempty"`
+	SignedIn     bool       `json:"signed_in"`
+	LastSync     *time.Time `json:"last_sync,omitempty"`
+	LastFullSync *time.Time `json:"last_full_sync,omitempty"`
+	LastError    string     `json:"last_error,omitempty"`
 	// Series is how many series Shoko has; OwnedEpisodes how many episodes of the series that match
 	// an anime the app follows have a file there.
 	Series        int `json:"series"`
 	OwnedEpisodes int `json:"owned_episodes"`
 	// Watching: connected to Shoko's event hub (shoko_watch), so changes apply within seconds;
 	// LastEvent is Shoko's last file event, WatchError why the last connection failed.
-	Watching   bool      `json:"watching"`
-	LastEvent  time.Time `json:"last_event,omitempty"`
-	WatchError string    `json:"watch_error,omitempty"`
+	Watching   bool       `json:"watching"`
+	LastEvent  *time.Time `json:"last_event,omitempty"`
+	WatchError string     `json:"watch_error,omitempty"`
+}
+
+// timeOrNil leaves a zero time out of the JSON: omitempty doesn't omit a zero time.Time.
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 // handleShokoLogin signs in to Shoko and saves the address and the API key Shoko returns.
@@ -102,13 +110,13 @@ func handleShokoStatus(server *Server) http.HandlerFunc {
 		out := ShokoStatus{Enabled: configs.ShokoEnabled, URL: configs.ShokoURL, SignedIn: configs.ShokoAPIKey != ""}
 		if svc := server.State.Shoko(); svc != nil {
 			snap := svc.Store().Snapshot()
-			out.LastSync, out.LastFullSync, out.LastError = snap.LastSync, snap.LastFullSync, snap.LastError
+			out.LastSync, out.LastFullSync, out.LastError = timeOrNil(snap.LastSync), timeOrNil(snap.LastFullSync), snap.LastError
 			out.Series = len(snap.Series)
 			for _, eps := range snap.Owned {
 				out.OwnedEpisodes += len(eps)
 			}
 			w := svc.WatchState()
-			out.Watching, out.LastEvent, out.WatchError = w.Connected, w.LastEvent, w.Error
+			out.Watching, out.LastEvent, out.WatchError = w.Connected, timeOrNil(w.LastEvent), w.Error
 		}
 		JSONSuccess(w, http.StatusOK, out)
 	}

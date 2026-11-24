@@ -62,6 +62,15 @@ Pinned by:
   off, or signing in to another server, closes the open connection, instead of leaving it until it
   drops on its own. Shoko turned off also clears the last pass's inputs, so a late event's `rematch`
   can't bring the anime page's matches back.
+- **One missing series doesn't sink a batch.** `RefreshSeries` tries every series. One Shoko
+  answers 404 for (measured: a missing series id gives 404 on both `Series/{id}` and its
+  episodes) is dropped from the store, and another error is returned only after the rest were
+  read. An event that comes before the first pass, while nothing yet says which series are
+  followed, stays queued and is retried every settle time, rather than dropped. It is put back
+  quietly (`watchQueue.keep`, no kick): a kick with the reconnection's catch-up flag fires at once,
+  and the refresher would spin until the first pass. Pinned by
+  `TestShokoWatchWaitsForTheFirstPassWithoutSpinning`,
+  `TestStoreRefreshSeriesGoesPastAMissingSeries` and `TestShokoWatchKeepsEventsUntilTheFirstPass`.
 - **One sync at a time.** `Sync` and `RefreshSeries` each read the state, ask Shoko, then write the
   state back. Run together (a pass's sync and a refresh after an event), one would overwrite the
   other, so `syncMu` makes them take turns.

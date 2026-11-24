@@ -69,11 +69,15 @@ func handleShokoStatus(c *cli.Context) error {
 	}
 	fmt.Printf("Shoko: %s, %s\n", map[bool]string{true: "on", false: "off"}[st.Enabled],
 		map[bool]string{true: "signed in to " + st.URL, false: "not signed in"}[st.SignedIn])
-	if st.LastSync.IsZero() {
+	if st.LastSync == nil {
 		fmt.Println("Never synced")
 	} else {
+		full := "never"
+		if st.LastFullSync != nil {
+			full = st.LastFullSync.Local().Format(time.DateTime)
+		}
 		fmt.Printf("Last sync %s (full %s): %d series, %d episodes of followed anime\n",
-			st.LastSync.Local().Format(time.DateTime), st.LastFullSync.Local().Format(time.DateTime), st.Series, st.OwnedEpisodes)
+			st.LastSync.Local().Format(time.DateTime), full, st.Series, st.OwnedEpisodes)
 	}
 	if st.LastError != "" {
 		fmt.Printf("Last error: %s\n", st.LastError)

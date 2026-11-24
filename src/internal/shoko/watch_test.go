@@ -145,3 +145,33 @@ func TestStoreRefreshSeries(t *testing.T) {
 		t.Fatalf("the new series: %+v", eps)
 	}
 }
+
+// One series Shoko no longer has (404) doesn't stop the others: it is dropped, the rest refreshed.
+func TestStoreRefreshSeriesGoesPastAMissingSeries(t *testing.T) {
+	f := newFakeShoko(t)
+	f.addSeries(Series{ID: 1, MAL: []int{52991}, Name: "Frieren", Episodes: 28}, nil)
+	f.addSeries(Series{ID: 2, MAL: []int{777}, Name: "Gone soon", Episodes: 12}, nil)
+	f.addFile(10, 1, 1, t0)
+	f.addFile(11, 1, 2, t0)
+	f.addFile(20, 2, 1, t0)
+	c, _ := NewClient(f.server.URL, "key-1")
+	store := NewStore(t.TempDir())
+	ctx := context.Background()
+	tracked := map[int]bool{52991: true, 777: true}
+	if err := store.Sync(ctx, c, f.server.URL, tracked, nil, false, t0); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.series = f.series[:1] // series 2 removed from Shoko
+	f.mu.Unlock()
+	f.removeFile(11)
+	if err := store.RefreshSeries(ctx, c, f.server.URL, []int{2, 99, 1}, tracked, nil); err != nil {
+		t.Fatalf("RefreshSeries = %v, want the missing series dropped, not an error", err)
+	}
+	if eps := store.OwnedEpisodes(1); len(eps) != 1 {
+		t.Fatalf("series 1 after the batch: %+v, want its deletion applied", eps)
+	}
+	if store.HasOwned(2) {
+		t.Fatal("the series Shoko no longer has is still owned")
+	}
+}

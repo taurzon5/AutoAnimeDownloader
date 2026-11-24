@@ -162,6 +162,7 @@ type watchQueue struct {
 	pending map[int]bool
 	catchUp bool
 	kick    chan struct{}
+	takes   int // how many times the refresher took the queue (tests)
 }
 
 func (q *watchQueue) add(series []int, catchUp bool) {
@@ -177,9 +178,21 @@ func (q *watchQueue) add(series []int, catchUp bool) {
 	}
 }
 
+// keep puts series and the catch-up flag back without a kick (settleAndRefresh retries on its own
+// timer).
+func (q *watchQueue) keep(series []int, catchUp bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, id := range series {
+		q.pending[id] = true
+	}
+	q.catchUp = q.catchUp || catchUp
+}
+
 func (q *watchQueue) take() ([]int, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	q.takes++
 	ids := make([]int, 0, len(q.pending))
 	for id := range q.pending {
 		ids = append(ids, id)
@@ -223,6 +236,19 @@ func (s *ShokoService) settleAndRefresh(ctx context.Context, client *shoko.Clien
 			s.mu.Lock()
 			tracked, bySeries := s.lastTracked, s.lastBySeries
 			s.mu.Unlock()
+			if tracked == nil {
+				// No pass yet: nothing says which series are followed. Keep the events and try again
+				// after the settle time, rather than drop them. Quietly, without a kick: a kick with
+				// the catch-up flag fires at once, and the loop would spin until the first pass.
+				if len(ids) > 0 || catchUp {
+					q.keep(ids, catchUp)
+					s.mu.Lock()
+					settle := s.settle
+					s.mu.Unlock()
+					timer = time.After(settle)
+				}
+				continue
+			}
 			if catchUp {
 				s.catchUp(ctx, client, url, ids, tracked, bySeries)
 				continue
@@ -378,6 +404,9 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 
 	out := map[int]map[int]shoko.File{}
 	matches := s.matchAll(animes, facts, tracked, settings, anilist.PriorityCritical)
+	if s.readUnread(ctx, cfg, matches, tracked, bySeries) {
+		matches = s.matchAll(animes, facts, tracked, settings, anilist.PriorityCritical)
+	}
 	s.mu.Lock()
 	s.lastAnimes, s.lastFacts, s.lastTracked, s.lastBySeries, s.lastSettings = animes, facts, tracked, bySeries, settings
 	s.mu.Unlock()
@@ -393,8 +422,19 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 }
 
 // OwnedFor matches one anime against what the last sync read, without syncing: the add-anime path
-// (DownloadStandaloneAnime), which runs outside the pass. nil with Shoko off.
+// (DownloadStandaloneAnime), which runs outside the pass. A matched series no sync has read yet is
+// read now (readUnread), since a newly added anime is exactly that case. nil with Shoko off.
 func (s *ShokoService) OwnedFor(cfg *files.Config, anime anilist.MediaList, settings files.AnimeSettings) map[int]shoko.File {
+	return s.ownedFor(cfg, anime, settings, true)
+}
+
+// OwnedFromLastSync is OwnedFor without asking Shoko anything and without writing the store: the
+// debug run's view (a dry run, possibly in another process on the same data dir, decisions/058).
+func (s *ShokoService) OwnedFromLastSync(cfg *files.Config, anime anilist.MediaList, settings files.AnimeSettings) map[int]shoko.File {
+	return s.ownedFor(cfg, anime, settings, false)
+}
+
+func (s *ShokoService) ownedFor(cfg *files.Config, anime anilist.MediaList, settings files.AnimeSettings, readNew bool) map[int]shoko.File {
 	if s == nil || !cfg.ShokoEnabled || cfg.ShokoURL == "" || cfg.ShokoAPIKey == "" {
 		return nil
 	}
@@ -406,8 +446,41 @@ func (s *ShokoService) OwnedFor(cfg *files.Config, anime anilist.MediaList, sett
 	if f := facts[anime.Media.Id]; f.MalID > 0 {
 		tracked[f.MalID] = true
 	}
-	matches := s.matchAll([]anilist.MediaList{anime}, facts, tracked, map[int]files.AnimeSettings{anime.Media.Id: settings}, anilist.PriorityCritical)
+	one := map[int]files.AnimeSettings{anime.Media.Id: settings}
+	bySeries := map[int]bool{}
+	if settings.Shoko != nil && settings.Shoko.SeriesID > 0 {
+		bySeries[settings.Shoko.SeriesID] = true
+	}
+	matches := s.matchAll([]anilist.MediaList{anime}, facts, tracked, one, anilist.PriorityCritical)
+	if readNew && s.readUnread(context.Background(), cfg, matches, tracked, bySeries) {
+		matches = s.matchAll([]anilist.MediaList{anime}, facts, tracked, one, anilist.PriorityCritical)
+	}
 	return matches[anime.Media.Id].Owned
+}
+
+// readUnread reads the owned episodes of the matched series no sync has read yet, and reports
+// whether it read any. A sync reads only the series followed at that time: an anime added to a list
+// (or as a standalone) since would otherwise own nothing until the next refresh, up to a day, and
+// the app would download what Shoko has meanwhile.
+func (s *ShokoService) readUnread(ctx context.Context, cfg *files.Config, matches map[int]ShokoAnimeStatus, tracked, bySeries map[int]bool) bool {
+	var ids []int
+	for _, st := range matches {
+		if st.Match.Status == shoko.Matched && st.Match.SeriesID > 0 && !s.store.HasOwned(st.Match.SeriesID) {
+			ids = append(ids, st.Match.SeriesID)
+		}
+	}
+	if len(ids) == 0 {
+		return false
+	}
+	sort.Ints(ids)
+	client, err := shoko.NewClient(cfg.ShokoURL, cfg.ShokoAPIKey)
+	if err == nil {
+		err = s.store.RefreshSeries(ctx, client, cfg.ShokoURL, ids, tracked, bySeries)
+	}
+	if err != nil {
+		logger.Logger.Warn().Err(err).Int("count", len(ids)).Msg("Shoko: could not read the episodes of newly followed series; the next sync does")
+	}
+	return true
 }
 
 // matchAll matches each anime against the store's series and returns, by AniList media id, the match

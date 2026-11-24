@@ -82,7 +82,7 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 	if all, err := fileManager.LoadAllAnimeSettings(); err == nil {
 		animeSettings = all[animeId]
 	}
-	owned := inShoko.OwnedFor(configs, anime, animeSettings)
+	owned := inShoko.OwnedFromLastSync(configs, anime, animeSettings)
 	pending := withoutOwnedElsewhere(episodes, owned, anime.Media.Id, nil)
 	maxEpisodes = effectiveMax(configs, pending)
 	sel := selectEpisodes(configs, maxEpisodes, anime, pending, nil, nil, nil, nil, nil)

@@ -16,6 +16,7 @@ import (
 	"AutoAnimeDownloader/src/internal/anilist"
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/nyaa"
+	"AutoAnimeDownloader/src/internal/shoko"
 )
 
 // liveShoko serves Shoko's API for Frieren and its event hub. delete() drops episode 2 and sends
@@ -316,5 +317,96 @@ func TestRunAnimeDebugLeavesOutTheEpisodesInShoko(t *testing.T) {
 		if ep.InShoko != inShoko || ep.WouldSearch == inShoko {
 			t.Errorf("episode %d: in_shoko %v, would_search %v; want in_shoko %v and searched only when not", ep.Episode, ep.InShoko, ep.WouldSearch, inShoko)
 		}
+	}
+}
+
+// An anime followed since the last sync (added to a list, or as a standalone) has its series read
+// on the next pass, without waiting a day for the refresh.
+func TestShokoReadsANewlyFollowedSeriesAtOnce(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	l := newLiveShoko(t)
+	svc := NewShokoService(t.TempDir())
+	cfg := &files.Config{ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24}
+	t0 := time.Now()
+	svc.ForPass(context.Background(), cfg, nil, nil, t0) // nothing followed yet: series 1 not read
+	if got := svc.OwnedFor(cfg, frierenAnime(), files.AnimeSettings{}); len(got) != 2 {
+		t.Fatalf("adding Frieren as a standalone: owned %+v, want episodes 1 and 2", got)
+	}
+
+	svc2 := NewShokoService(t.TempDir())
+	svc2.ForPass(context.Background(), cfg, nil, nil, t0)
+	got := svc2.ForPass(context.Background(), cfg, []anilist.MediaList{frierenAnime()}, nil, t0.Add(time.Hour))
+	if len(got[154587]) != 2 {
+		t.Fatalf("Frieren added to a list an hour after the sync: owned %+v, want episodes 1 and 2", got)
+	}
+}
+
+// An event that comes before the first pass (the store synced in an earlier run) is kept until the
+// pass says which series are followed, not dropped.
+func TestShokoWatchKeepsEventsUntilTheFirstPass(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	l := newLiveShoko(t)
+	dir := t.TempDir()
+	cfg := &files.Config{ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24, ShokoWatch: true}
+	NewShokoService(dir).ForPass(context.Background(), cfg, []anilist.MediaList{frierenAnime()}, nil, time.Now()) // an earlier run
+
+	svc := NewShokoService(dir) // the daemon restarted: no pass yet
+	svc.settle = 20 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Watch(ctx, func() (*files.Config, error) { return cfg, nil })
+	waitFor(t, "the watcher to connect", func() bool { return svc.WatchState().Connected })
+	l.deleteEpisode2()
+	time.Sleep(100 * time.Millisecond)
+	svc.ForPass(context.Background(), cfg, []anilist.MediaList{frierenAnime()}, nil, time.Now())
+	waitFor(t, "the kept event to apply after the first pass", func() bool {
+		st, _ := svc.AnimeStatus(154587)
+		return len(st.Owned) == 1
+	})
+}
+
+// Before the first pass the kept catch-up is retried every settle time, not in a spin (a kick with
+// the catch-up flag would fire at once).
+func TestShokoWatchWaitsForTheFirstPassWithoutSpinning(t *testing.T) {
+	svc := NewShokoService(t.TempDir())
+	svc.settle = 50 * time.Millisecond
+	q := &watchQueue{pending: map[int]bool{}, kick: make(chan struct{}, 1)}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	client, _ := shoko.NewClient("http://127.0.0.1:1", "key")
+	q.add([]int{1}, true)
+	svc.settleAndRefresh(ctx, client, "http://127.0.0.1:1", q, done)
+	q.mu.Lock()
+	takes, kept := q.takes, q.pending[1] && q.catchUp
+	q.mu.Unlock()
+	if takes > 8 || !kept {
+		t.Fatalf("took the queue %d times in 300 ms with a 50 ms settle (want a handful), kept %v", takes, kept)
+	}
+}
+
+// The debug run's view asks Shoko nothing and writes nothing (it may run in another process on the
+// same data dir, decisions/058): a series no sync read stays unread there.
+func TestOwnedFromLastSyncDoesNotAskShoko(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	l := newLiveShoko(t)
+	svc := NewShokoService(t.TempDir())
+	cfg := &files.Config{ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24}
+	svc.ForPass(context.Background(), cfg, nil, nil, time.Now()) // synced, Frieren's series not read
+	before := l.episodes.Load()
+	if got := svc.OwnedFromLastSync(cfg, frierenAnime(), files.AnimeSettings{}); len(got) != 0 {
+		t.Fatalf("OwnedFromLastSync = %+v, want nothing for a series no sync read", got)
+	}
+	if l.episodes.Load() != before || svc.Store().HasOwned(1) {
+		t.Fatal("the debug view asked Shoko or wrote the store")
 	}
 }
