@@ -1,8 +1,9 @@
 # Shoko integration: what you already have counts, and only its upgrades are looked for
 
 **Date:** 2026-11-23
-**Status:** designed, not implemented — read from Shoko Server's source, not yet tried against a
-running server; the user's decisions are recorded at the end
+**Status:** step 1 (read-only matching and the sync) being built on branch `feat/shoko-sync`. The
+API below was measured against a real Shoko Server v5.3.3 on 2026-11-24 (see "Measured against
+v5.3.3"); the user's decisions are recorded at the end
 **Origin:** "design a spec that takes shoko anime entries and then compares to the series we are
 looking to download, if they exist in shoko, get details and look for upgrades, no downloads for
 upgrades by default, if they are good, show that they already exist in shoko group and are a match
@@ -46,6 +47,37 @@ Per file, the two blocks that make a quality judgment possible:
   stream — video (codec, profile, width, height, bit depth, frame rate, HDR), audio (codec,
   channels, language, title, default/forced), subtitles (codec ASS/SRT/PGS, language,
   default/forced).
+
+### Measured against v5.3.3 (2026-11-24)
+
+These were measured against `shokoanime/server:v5.3.3` in a throwaway container, with one series
+fetched from AniDB through Shoko (`POST /api/v3/Series/AniDB/{id}/Refresh?createSeriesEntry=true`)
+and dummy files linked to its episodes by hand (`POST /api/v3/File/{id}/Link`). They correct the
+table above where they differ.
+
+- **Sign-in:** `POST /api/auth` with `{"user","pass","device"}` answers `{"apikey": "…"}`. A wrong
+  password answers 401, and so does a request with no `apikey` header or a wrong one.
+- **Episodes owned, in one request per series:**
+  `GET /api/v3/Series/{id}/Episode?includeFiles=true&includeDataFrom=AniDB&type=Episode&pageSize=0`
+  lists only the episodes that have files, since `includeMissing` defaults to off. Each comes with
+  `AniDB.EpisodeNumber`, `AniDB.Type` and its `Files`: `ID`, `Size`, `Imported`, and `Locations[]`
+  with `RelativePath` and `IsAccessible`.
+  - Without `includeDataFrom=AniDB` there is no `AniDB` block, so no episode number.
+  - The type filter takes `Episode` (28 regular episodes for Frieren). `Normal` is not a value
+    and is silently ignored: 97 came back, credits and trailers included.
+  - A file's own `SeriesIDs` cross-references name Shoko and AniDB episode *ids*, not numbers.
+- **The incremental read:** `GET /api/v3/File?sortOrder=-ImportedAt&exclude=Unrecognized&include=XRefs`.
+  - The criterion is `ImportedAt`; the file field is called `Imported`.
+  - **An unknown sort key is ignored without an error:** `-Imported` and `-Bogus` both answered
+    200 in ID order. A test must check the order, not the status code.
+  - Unidentified files have no `Imported` and sort last; `exclude=Unrecognized` drops them.
+  - `Imported` is set when a file is identified, a manual link included.
+- **A series' MAL ids aren't only its cours:** Frieren (AniDB 17617, 28 episodes) lists MAL 52991
+  (the series) and 56885 (a set of shorts). So "the offset is the sum of the episodes of the MAL ids
+  listed before it" applies only when the entry's episode count differs from the series' count. An
+  entry with the series' own count is a plain match at offset 0.
+- **Episode counts:** `Sizes.Total.Episodes` (regular episodes), `Sizes.Local.Episodes` (those with
+  files).
 
 ## Design
 
