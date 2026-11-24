@@ -36,6 +36,7 @@
   import TorrentDeleteDialog from "../components/TorrentDeleteDialog.svelte";
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
+  import ShokoMatchPanel from "../components/ShokoMatchPanel.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -226,6 +227,8 @@
     if (ep.is_blocked) return { variant: "danger" as const, label: m.detail_chip_blocked() };
     if (ep.is_manually_managed) return { variant: "neutral" as const, label: m.detail_chip_manual() };
     if (ep.is_downloaded) return { variant: "ok" as const, label: m.detail_badge_downloaded() };
+    // Already in the user's Shoko library: the app never searches for it (the Shoko spec §3).
+    if (ep.in_shoko) return { variant: "ok" as const, label: m.detail_chip_in_shoko() };
     if (ep.is_aired) return { variant: "warn" as const, label: m.detail_chip_aired() };
     return { variant: "neutral" as const, label: m.detail_badge_upcoming() };
   }
@@ -262,6 +265,7 @@
       return `${formatPercent(torrent.progress, fmtLocale)} · ↓ ${formatSpeed(torrent.download_speed, fmtLocale)} · ${formatEta(torrent.eta_seconds, fmtLocale)}`;
     }
     if (ep.is_downloaded) return formatDate(ep.download_date);
+    if (ep.in_shoko && ep.shoko_file) return ep.shoko_file;
     if (!ep.is_aired) return formatTimeUntilAiring(ep.time_until_airing, ep.is_aired);
     return "—";
   }
@@ -950,6 +954,8 @@
     statusLabel={listStatusLabel}
     totalEpisodes={anime?.total_episodes ?? 0}
   />
+
+  <ShokoMatchPanel animeId={animeId} shoko={detail?.shoko} />
 
   {#if loading}
     <Loading message={m.detail_loading()} />

@@ -14,7 +14,12 @@
     updateConfig,
     triggerCheck,
     testTorrentClient,
+    shokoLogin,
+    getShokoStatus,
+    shokoSync,
+    SECRET_PLACEHOLDER,
     type Config,
+    type ShokoStatus,
     type TorrentClientTestResult,
   } from "../lib/api/client.js";
   import Loading from "../components/Loading.svelte";
@@ -32,7 +37,7 @@
     onboardingDone,
   } from "../lib/stores/onboarding.js";
 
-  type GroupId = "library" | "anilist" | "downloads" | "search" | "client";
+  type GroupId = "library" | "anilist" | "downloads" | "search" | "client" | "shoko";
 
   $: T = $locale && {
     title: m.config_title(),
@@ -158,6 +163,7 @@
     { id: "anilist" as GroupId, label: m.config_section_anilist(), advanced: false },
     { id: "downloads" as GroupId, label: m.config_section_downloads(), advanced: false },
     { id: "client" as GroupId, label: m.config_section_client(), advanced: false },
+    { id: "shoko" as GroupId, label: m.config_section_shoko(), advanced: false },
     { id: "search" as GroupId, label: m.config_section_search(), advanced: true },
   ]) || [];
 
@@ -219,7 +225,55 @@
     qbittorrent_path_map: [],
     qbittorrent_manage_settings: false,
     qbittorrent_disable_seeding_upload_kib: 16,
+    shoko_enabled: false,
+    shoko_url: "",
+    shoko_api_key: "",
+    shoko_refresh_hours: 24,
   };
+
+  // The Shoko group: the sign-in (the password is sent once and kept nowhere, not even here once
+  // sent) and what the last sync read.
+  let shokoUser = "";
+  let shokoPassword = "";
+  let shokoSigningIn = false;
+  let shokoStatus: ShokoStatus | null = null;
+  $: if (activeGroup === "shoko" && !shokoStatus) loadShokoStatus();
+
+  async function loadShokoStatus() {
+    try {
+      shokoStatus = await getShokoStatus();
+    } catch {
+      shokoStatus = null;
+    }
+  }
+
+  async function signInToShoko() {
+    shokoSigningIn = true;
+    try {
+      const url = (config.shoko_url ?? "").trim();
+      await shokoLogin(url, shokoUser, shokoPassword);
+      // The key is saved on the server: this copy must say so, or the next Save would send the old
+      // (empty) one back and wipe it.
+      config.shoko_api_key = SECRET_PLACEHOLDER;
+      config.shoko_url = url.replace(/\/+$/, "");
+      shokoPassword = "";
+      toast.success(m.config_shoko_login_ok());
+      await loadShokoStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      shokoSigningIn = false;
+    }
+  }
+
+  async function fullShokoSync() {
+    try {
+      await shokoSync(true);
+      toast.success(m.config_shoko_sync_started());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   // The connection test of the "Torrent client" group: the result of the last run, or its error.
   let qbitTesting = false;
@@ -442,6 +496,11 @@
       group: "client" as GroupId,
       ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
       message: m.config_val_qbittorrent_url,
+    },
+    {
+      group: "shoko" as GroupId,
+      ok: !config.shoko_enabled || (config.shoko_refresh_hours ?? 0) >= 1,
+      message: m.config_val_shoko_refresh,
     },
     {
       group: "downloads" as GroupId,
@@ -1002,6 +1061,71 @@
                 inline={true}
                 suffix="GiB"
               />
+            </div>
+          {/if}
+
+          {#if activeGroup === "shoko"}
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="shoko_enabled"
+                bind:checked={config.shoko_enabled}
+                label={$locale && m.config_label_shoko_enabled()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_url"
+                label={$locale && m.config_label_shoko_url()}
+                subtitle={$locale && m.config_hint_shoko_url()}
+                bind:value={config.shoko_url}
+                placeholder="http://127.0.0.1:8111"
+              />
+            </div>
+            <div class="space-y-3 p-4.5">
+              <Input id="shoko_username" label={$locale && m.config_label_shoko_username()} bind:value={shokoUser} />
+              <Input
+                id="shoko_password"
+                type="password"
+                label={$locale && m.config_label_shoko_password()}
+                subtitle={$locale && m.config_hint_shoko_password()}
+                bind:value={shokoPassword}
+              />
+              <Button variant="ghost" disabled={shokoSigningIn || !config.shoko_url?.trim() || !shokoUser} on:click={signInToShoko}>
+                {shokoSigningIn ? ($locale && m.config_shoko_signing_in()) : ($locale && m.config_btn_shoko_login())}
+              </Button>
+              <p class="text-caption text-body" data-testid="shoko-status">
+                {#if shokoStatus?.signed_in}
+                  {$locale && m.config_shoko_signed_in({ url: shokoStatus.url ?? "" })}
+                  {#if shokoStatus.last_sync && !shokoStatus.last_sync.startsWith("0001")}
+                    {$locale && m.config_shoko_last_sync({ when: new Date(shokoStatus.last_sync).toLocaleString(), series: String(shokoStatus.series), episodes: String(shokoStatus.owned_episodes) })}
+                  {:else}
+                    {$locale && m.config_shoko_never_synced()}
+                  {/if}
+                {:else}
+                  {$locale && m.config_shoko_not_signed_in()}
+                {/if}
+              </p>
+              {#if shokoStatus?.last_error}
+                <p class="text-caption text-danger">{$locale && m.config_shoko_last_error({ error: shokoStatus.last_error })}</p>
+              {/if}
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_refresh_hours"
+                label={$locale && m.config_label_shoko_refresh()}
+                subtitle={$locale && m.config_hint_shoko_refresh()}
+                type="number"
+                bind:value={config.shoko_refresh_hours}
+                min="1"
+                inline={true}
+                suffix="h"
+              />
+            </div>
+            <div class="space-y-1.5 p-4.5">
+              <Button variant="ghost" disabled={!shokoStatus?.signed_in} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_sync()}</p>
             </div>
           {/if}
 

@@ -268,6 +268,13 @@ export interface Config {
   qbittorrent_manage_settings?: boolean
   /** disable_seeding's upload limit per torrent with qBittorrent, KiB/s, at least 1. */
   qbittorrent_disable_seeding_upload_kib?: number
+  /** Episodes already in Shoko are never searched or downloaded. */
+  shoko_enabled?: boolean
+  shoko_url?: string
+  /** The key Shoko gave the app at sign-in; a saved one comes back as SECRET_PLACEHOLDER. */
+  shoko_api_key?: string
+  /** How often Shoko is read again, in hours (at least 1). */
+  shoko_refresh_hours?: number
 }
 
 export interface PathMapping {
@@ -517,6 +524,9 @@ export interface AnimeEpisodeInfo {
   /** The pack's real range (from the torrent name). Absent/0 = unknown — falls back to min/max. */
   batch_start?: number
   batch_end?: number
+  /** The user already has it in Shoko: never searched or downloaded. shoko_file is its path there. */
+  in_shoko?: boolean
+  shoko_file?: string
 }
 
 export interface AnimeDetailResponse {
@@ -533,6 +543,54 @@ export interface AnimeDetailResponse {
    * entry. Absent for a standalone no account tracks.
    */
   accounts?: AnimeListAccount[]
+  /** How the anime lines up with Shoko in the last pass; absent with Shoko off. */
+  shoko?: AnimeShokoInfo
+}
+
+/** "matched" (series and offset), "partial" (check it by hand) or "none"; by_hand = set on this page. */
+export interface AnimeShokoInfo {
+  status: 'matched' | 'partial' | 'none'
+  series_id?: number
+  series_name?: string
+  offset?: number
+  by_hand?: boolean
+}
+
+/** The Shoko match set by hand: exactly one of a series (with an offset), none, or auto. */
+export interface ShokoMatchRequest {
+  series_id?: number
+  offset?: number
+  none?: boolean
+  auto?: boolean
+}
+
+export interface ShokoStatus {
+  enabled: boolean
+  url?: string
+  signed_in: boolean
+  last_sync?: string
+  last_full_sync?: string
+  last_error?: string
+  series: number
+  owned_episodes: number
+}
+
+/** Signs the daemon in to Shoko; only the API key Shoko returns is saved, never the password. */
+export async function shokoLogin(url: string, username: string, password: string): Promise<void> {
+  return apiRequest<void>('POST', '/shoko/login', { url, username, password })
+}
+
+export async function getShokoStatus(): Promise<ShokoStatus> {
+  return apiRequest<ShokoStatus>('GET', '/shoko/status')
+}
+
+/** Starts a check pass that syncs with Shoko first; full reads all of Shoko again. */
+export async function shokoSync(full: boolean): Promise<void> {
+  return apiRequest<void>('POST', '/shoko/sync', { full })
+}
+
+export async function updateAnimeShoko(animeId: number, match: ShokoMatchRequest): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { shoko: match })
 }
 
 /** One account's own list entry for an anime (the detail screen's "on lists" panel). */

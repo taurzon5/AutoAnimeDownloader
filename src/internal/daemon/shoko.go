@@ -89,7 +89,11 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 	s.mu.Lock()
 	full := s.fullRequested
 	s.mu.Unlock()
-	every := time.Duration(max(cfg.ShokoRefreshHours, 1)) * time.Hour
+	hours := cfg.ShokoRefreshHours
+	if hours < 1 {
+		hours = 24 // a config.json from before the field, or one written by hand
+	}
+	every := time.Duration(hours) * time.Hour
 	if full || s.store.Due(cfg.ShokoURL, every, now) {
 		client, err := shoko.NewClient(cfg.ShokoURL, cfg.ShokoAPIKey)
 		if err == nil {

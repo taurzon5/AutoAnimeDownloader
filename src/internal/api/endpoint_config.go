@@ -93,6 +93,10 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 			return
 		}
+		if msg := validateShoko(&config); msg != "" {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
+			return
+		}
 
 		// The hardlink library needs hardlinks; not every filesystem supports them. Probe at
 		// save time, with the same function the runtime uses. Direct mode links nothing, so it
@@ -224,6 +228,22 @@ func clientOf(c *files.Config) string {
 }
 
 // validateTorrentClient checks torrent_client and the qBittorrent settings. "" when valid.
+// validateShoko, while Shoko is on: signed in (the sign-in sets shoko_url and shoko_api_key; POST
+// /shoko/login) and a refresh of at least an hour. Off, nothing is checked, as for the other
+// features' fields.
+func validateShoko(c *files.Config) string {
+	if !c.ShokoEnabled {
+		return ""
+	}
+	if strings.TrimSpace(c.ShokoURL) == "" || c.ShokoAPIKey == "" {
+		return "Sign in to Shoko before turning it on"
+	}
+	if c.ShokoRefreshHours < 1 {
+		return "Shoko's refresh must be at least 1 hour"
+	}
+	return ""
+}
+
 func validateTorrentClient(c *files.Config) string {
 	switch c.TorrentClient {
 	case "", files.TorrentClientBuiltin, files.TorrentClientQBittorrent:

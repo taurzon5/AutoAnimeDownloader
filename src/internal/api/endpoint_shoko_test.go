@@ -138,3 +138,28 @@ func TestAnimeSettingsShokoMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateConfig_ValidatesShoko(t *testing.T) {
+	for name, edit := range map[string]func(c *files.Config){
+		"refresh under an hour": func(c *files.Config) {
+			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoRefreshHours = true, "http://x:8111", "k", 0
+		},
+		"on without a sign-in":  func(c *files.Config) { c.ShokoEnabled, c.ShokoAPIKey = true, "" },
+		"on without an address": func(c *files.Config) { c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "", "k" },
+	} {
+		c := files.DefaultConfig()
+		c.CompletedAnimePath = t.TempDir()
+		edit(c)
+		server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
+		if w := putConfig(t, server, c); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: PUT = %d, want 400", name, w.Code)
+		}
+	}
+	c := files.DefaultConfig()
+	c.CompletedAnimePath = t.TempDir()
+	c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "http://127.0.0.1:8111", "k"
+	server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
+	if w := putConfig(t, server, c); w.Code != http.StatusOK {
+		t.Fatalf("a signed-in Shoko = %d %s", w.Code, w.Body.String())
+	}
+}
