@@ -1,6 +1,6 @@
 # 101. The disk guard counts what the queue still has to write, not only free space
 
-**Location:** `daemon/diskbudget.go` (`diskBudget`, `newDiskBudget`, `add`); `checkBudgetSpace`'s
+**Location:** `daemon/diskbudget.go` (`diskBudget`, `newDiskBudget`, `add`); `checkRootBudgetSpace`'s
 reservations in `daemon/helpers.go`; built once per pass in `daemon/verification.go` and in
 `DownloadStandaloneAnime`; used by `packsThatFit`, `attemptDownloadWithRetries` and
 `RedownloadMissingFiles`;
@@ -54,3 +54,5 @@ filesystem.
 **Don't "fix" by:** summing reservations per record instead of per hash (a pack would count once
 per episode); checking free space alone in `packsThatFit`; or splitting `reserve` into a check and a
 separate count (the parallel animes would race between the two).
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** the budget counts per download root (`withRoots`, `onRootLocked`, roots on one filesystem together), and `reserve` takes the order of roots and returns the one it reserved on. A manual add reserves through a nil budget (`addAndPrioritize`), and `RedownloadMissingFiles` checks each torrent's own root (`checkOn`) and counts its bytes there (`addOn`).

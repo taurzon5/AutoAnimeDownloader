@@ -37,6 +37,7 @@
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
   import ShokoMatchPanel from "../components/ShokoMatchPanel.svelte";
+  import AnimeRootPicker from "../components/AnimeRootPicker.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -963,6 +964,7 @@
   />
 
   <ShokoMatchPanel animeId={animeId} shoko={detail?.shoko} />
+  <AnimeRootPicker {animeId} />
 
   {#if loading}
     <Loading message={m.detail_loading()} />

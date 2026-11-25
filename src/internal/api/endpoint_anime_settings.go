@@ -20,6 +20,9 @@ type animeSettingsRequest struct {
 	// Shoko a pack brings, "remove" removes them (skipped, or deleted once downloaded), "default"
 	// follows the global setting again (decisions/153). Absent leaves it as it is.
 	ShokoPackEpisodes *string `json:"shoko_pack_episodes"`
+	// Root is the download root this anime's new torrents go to first (decisions/154): a root's
+	// name, or "" to drop the override. Absent leaves it as it is.
+	Root *string `json:"root"`
 }
 
 // ShokoPackDefault is the value of shoko_pack_episodes that clears the anime's own setting.
@@ -81,6 +84,18 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 				return
 			}
 
+			if req.Root != nil && *req.Root != "" {
+				configs, err := server.FileManager.LoadConfigs()
+				if err != nil {
+					JSONInternalError(w, err)
+					return
+				}
+				if _, ok := configs.RootNamed(*req.Root); !ok {
+					JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "No download folder is named "+strconv.Quote(*req.Root))
+					return
+				}
+			}
+
 			existing, err := server.FileManager.LoadAnimeSettings(id)
 			if err != nil {
 				logger.Logger.Error().Err(err).Int("anime_id", id).Msg("Failed to load anime settings")
@@ -108,6 +123,13 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 				settings.ShokoPackEpisodes = *p
 				if *p == ShokoPackDefault {
 					settings.ShokoPackEpisodes = ""
+				}
+			}
+			if req.Root != nil {
+				settings.Root = nil
+				if *req.Root != "" {
+					root := *req.Root
+					settings.Root = &root
 				}
 			}
 

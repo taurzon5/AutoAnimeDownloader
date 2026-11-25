@@ -33,33 +33,39 @@ func stubSameFilesystem(t *testing.T, same bool) {
 // On another drive the incomplete folder has its own floor, and the library also counts what
 // staging torrents hold and have not moved yet. On the library's own drive neither applies: the
 // move is a hard link.
-func TestCheckBudgetSpace_TwoVolumes(t *testing.T) {
+func TestCheckRootBudgetSpace_TwoVolumes(t *testing.T) {
 	configs, staging := stagingConfig(t)
 
 	configs.IncompleteMinFreeDiskGB = 1 << 30 // no disk has this much free
 	stubSameFilesystem(t, false)
-	if err := checkBudgetSpace(configs, 0, 0, 0, 0); !errors.Is(err, ErrInsufficientDiskSpace) || !strings.Contains(err.Error(), staging) {
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, 0, 0, 0); !errors.Is(err, ErrInsufficientDiskSpace) || !strings.Contains(err.Error(), staging) {
 		t.Fatalf("the incomplete folder's floor must refuse, naming its folder, got %v", err)
 	}
 	stubSameFilesystem(t, true)
-	if err := checkBudgetSpace(configs, 0, 0, 0, 0); err != nil {
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, 0, 0, 0); err != nil {
 		t.Fatalf("on the library's drive the incomplete folder's floor does not apply, got %v", err)
 	}
 
 	configs.IncompleteMinFreeDiskGB = 0
 	const huge = int64(1) << 62
 	stubSameFilesystem(t, false)
-	if err := checkBudgetSpace(configs, 0, 0, 0, huge); !errors.Is(err, ErrInsufficientDiskSpace) || !strings.Contains(err.Error(), configs.CompletedAnimePath) {
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, 0, huge, 0); !errors.Is(err, ErrInsufficientDiskSpace) || !strings.Contains(err.Error(), configs.CompletedAnimePath) {
 		t.Fatalf("what staging torrents still have to move must count on the library, got %v", err)
 	}
 	stubSameFilesystem(t, true)
-	if err := checkBudgetSpace(configs, 0, 0, 0, huge); err != nil {
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, 0, huge, 0); err != nil {
 		t.Fatalf("on one drive nothing more lands on the library, got %v", err)
+	}
+
+	// On one drive, what staging torrents bound for other roots still download lands here first.
+	stubSameFilesystem(t, true)
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, 0, 0, huge); !errors.Is(err, ErrInsufficientDiskSpace) {
+		t.Fatalf("other roots' staging downloads must count on the incomplete folder's drive, got %v", err)
 	}
 
 	configs.IncompletePath = ""
 	stubSameFilesystem(t, false)
-	if err := checkBudgetSpace(configs, 0, 0, huge, huge); err != nil {
+	if err := checkRootBudgetSpace(configs, configs.CompletedAnimePath, 0, 0, huge, huge, 0); err != nil {
 		t.Fatalf("without an incomplete folder only the library counts, got %v", err)
 	}
 }

@@ -309,7 +309,7 @@ type passAlerts struct {
 }
 
 func alertsAfterPass(cfg *files.Config, in passAlerts) {
-	// A statfs error skips the disk alert silently — same reasoning as checkDiskSpace.
+	// A statfs error skips the disk alert silently — same reasoning as checkRootBudgetSpace.
 	if path, floor, total, free, err := diskAlertVolume(cfg); err == nil {
 		trackVolumeDiskLow(cfg, path, floor, total, free, diskFullEpisodes(in.problems))
 	}

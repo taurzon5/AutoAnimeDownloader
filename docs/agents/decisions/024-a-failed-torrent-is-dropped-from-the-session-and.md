@@ -44,3 +44,5 @@ have nothing to recover, and the kept folder would become permanent junk when th
 another infohash — the directory is per torrent id and nothing sweeps the download path.
 `PiecesHave` is the progress source that survives `Stop` (`BytesCompleted` zeroes when rain frees
 the pieces), and the failure arrives here already stopped.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** a third failure is not dropped either: `ErrDownloadRootUnavailable`, a download root whose drive is gone. The torrent waits, as for the incomplete folder, and is started again once the folder is back (`resumeTorrentsWaitingForStaging`, qBittorrent's `guardStaging`).

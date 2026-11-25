@@ -4,8 +4,10 @@ import (
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -106,11 +108,17 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 				return
 			}
+			if msg := validateDownloadRoots(config.DownloadRoots); msg != "" {
+				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
+				return
+			}
 			// Hardlink mode ignores incomplete_path, so a stale value there doesn't block a save.
 			if config.IncompletePath != "" {
-				if err := files.ProbeIncompleteFolder(config.IncompletePath, config.CompletedAnimePath); err != nil {
-					JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
-					return
+				for _, root := range config.Roots() {
+					if err := files.ProbeIncompleteFolder(config.IncompletePath, root.Path); err != nil {
+						JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
+						return
+					}
 				}
 			}
 		} else if server.Librarian != nil {
@@ -260,6 +268,51 @@ func validateShoko(c *files.Config) string {
 	return ""
 }
 
+// validateDownloadRoots checks download_roots, direct mode's several download folders
+// (decisions/154): names unique and not empty, paths absolute, distinct, not inside one another,
+// existing and writable. Empty is one root, the library. "" when valid.
+func validateDownloadRoots(roots []files.DownloadRoot) string {
+	names := map[string]bool{}
+	for i, r := range roots {
+		name := strings.TrimSpace(r.Name)
+		if name == "" {
+			return "Every download folder needs a name"
+		}
+		if names[name] {
+			return fmt.Sprintf("Two download folders are named %q", name)
+		}
+		names[name] = true
+		if !filepath.IsAbs(r.Path) {
+			return fmt.Sprintf("Download folder %q must be an absolute path", name)
+		}
+		if r.MinFreeGB != nil && *r.MinFreeGB < 0 {
+			return fmt.Sprintf("Download folder %q: the free space to keep must be 0 or more GiB", name)
+		}
+		clean := filepath.Clean(r.Path)
+		for _, other := range roots[:i] {
+			o := filepath.Clean(other.Path)
+			if o == clean {
+				return fmt.Sprintf("Download folders %q and %q are the same folder", other.Name, name)
+			}
+			if rel, err := filepath.Rel(o, clean); err == nil && !strings.HasPrefix(rel, "..") {
+				return fmt.Sprintf("Download folder %q is inside %q", name, other.Name)
+			}
+			if rel, err := filepath.Rel(clean, o); err == nil && !strings.HasPrefix(rel, "..") {
+				return fmt.Sprintf("Download folder %q is inside %q", other.Name, name)
+			}
+		}
+		// Never created: a drive that isn't mounted would otherwise fill the disk its mount point
+		// sits on, as for the incomplete folder (decisions/141).
+		if info, err := os.Stat(r.Path); err != nil || !info.IsDir() {
+			return fmt.Sprintf("Download folder %q (%s) must be an existing folder", name, r.Path)
+		}
+		if err := files.ProbeWritable(r.Path); err != nil {
+			return fmt.Sprintf("Download folder %q: %v", name, err)
+		}
+	}
+	return ""
+}
+
 // validateTorrentClient checks torrent_client and the qBittorrent settings. "" when valid.
 func validateTorrentClient(c *files.Config) string {
 	switch c.TorrentClient {
@@ -287,6 +340,14 @@ func validateTorrentClient(c *files.Config) string {
 	}
 	if len(c.QBittorrentPathMap) > 0 && !underAnyMapping(c.CompletedAnimePath, c.QBittorrentPathMap) {
 		return "The library folder is not under any app folder of the qBittorrent path map"
+	}
+	// Each download folder is a torrent's save path in qBittorrent (decisions/154).
+	if len(c.QBittorrentPathMap) > 0 {
+		for _, r := range c.Roots() {
+			if !underAnyMapping(r.Path, c.QBittorrentPathMap) {
+				return fmt.Sprintf("Download folder %q is not under any app folder of the qBittorrent path map", r.Name)
+			}
+		}
 	}
 	// qBittorrent downloads staged torrents there itself (decisions/145).
 	if staging := c.StagingPath(); staging != "" && len(c.QBittorrentPathMap) > 0 && !underAnyMapping(staging, c.QBittorrentPathMap) {

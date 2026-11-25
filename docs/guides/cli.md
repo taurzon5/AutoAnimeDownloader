@@ -104,6 +104,8 @@ autoanimedownloader animes settings 154587 shoko none   # not in Shoko
 autoanimedownloader animes settings 154587 shoko auto   # back to the match from the MAL id
 autoanimedownloader animes settings 154587 shoko-packs remove   # a pack's episodes already in Shoko are removed
 autoanimedownloader animes settings 154587 shoko-packs default  # back to shoko_full_packs
+autoanimedownloader animes settings 154587 root hdd    # new torrents of this anime go to the hdd download folder first
+autoanimedownloader animes settings 154587 root none   # back to the fill order
 autoanimedownloader animes episodes 154587
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3

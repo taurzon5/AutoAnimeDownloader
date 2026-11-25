@@ -131,7 +131,7 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 			// Same numbering axis as production: without it debug would report "no pack covers" for every
 			// entry whose pack is numbered by season or by series (packAxis).
 			axis := newPackAxis(anime, part, resolveSeriesIndex([]int{animeId}, nil), mediaTotalEpisodes(anime))
-			if batches := chooseCoveringPacks(configs, nil, windowPacks, packDetail(searcher, mediaTotalEpisodes(anime)), axis, firstPending, windowEnd(configs, firstPending)); batches.len() > 0 {
+			if batches := chooseCoveringPacks(configs, nil, nil, windowPacks, packDetail(searcher, mediaTotalEpisodes(anime)), axis, firstPending, windowEnd(configs, firstPending)); batches.len() > 0 {
 				// The episodes in Shoko the pack brings join it when the anime keeps them, through
 				// the same checks as the pass's second selection (decisions/149); their row keeps
 				// would_search false.

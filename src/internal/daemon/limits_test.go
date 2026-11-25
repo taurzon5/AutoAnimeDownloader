@@ -360,29 +360,29 @@ func TestCheckDiskSpace(t *testing.T) {
 	}
 
 	if free >= uint64(giB) {
-		if err := checkDiskSpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 1}, 0, 0); err != nil {
+		if err := checkLibrarySpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 1}, 0, 0); err != nil {
 			t.Errorf("with 1 GiB required want nil, got %v", err)
 		}
-		if err := checkDiskSpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 1}, 1, 0); err != nil {
+		if err := checkLibrarySpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 1}, 1, 0); err != nil {
 			t.Errorf("a 1-byte torrent must fit, got %v", err)
 		}
 	}
 	// A floor larger than what's free always trips the policy.
-	err = checkDiskSpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: int(free>>30) + 1}, 0, 0)
+	err = checkLibrarySpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: int(free>>30) + 1}, 0, 0)
 	if !errors.Is(err, ErrInsufficientDiskSpace) {
 		t.Errorf("want ErrInsufficientDiskSpace, got %v", err)
 	}
-	if err := checkDiskSpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 0}, 0, 0); err != nil {
+	if err := checkLibrarySpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 0}, 0, 0); err != nil {
 		t.Errorf("0 turns the policy off, got %v", err)
 	}
 	// Size larger than the whole volume: blocked even with the GiB policy off.
-	err = checkDiskSpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 0}, math.MaxInt64, 0)
+	err = checkLibrarySpace(&files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 0}, math.MaxInt64, 0)
 	if !errors.Is(err, ErrInsufficientDiskSpace) {
 		t.Errorf("a torrent larger than the disk must be blocked even with the guard off, got %v", err)
 	}
 	// A statfs error doesn't block.
 	missing := filepath.Join(dir, "does-not-exist")
-	if err := checkDiskSpace(&files.Config{CompletedAnimePath: missing, MinFreeDiskGB: 100}, 0, 0); err != nil {
+	if err := checkLibrarySpace(&files.Config{CompletedAnimePath: missing, MinFreeDiskGB: 100}, 0, 0); err != nil {
 		t.Errorf("a statfs failure must not block, got %v", err)
 	}
 }
@@ -399,10 +399,10 @@ func TestCheckDiskSpace_ReservedAloneTripsTheGiBFloor(t *testing.T) {
 	}
 	reserved := int64(free) - int64(minGB-1)*giB
 	cfg := &files.Config{CompletedAnimePath: dir, MinFreeDiskGB: minGB}
-	if err := checkDiskSpace(cfg, 0, 0); err != nil {
+	if err := checkLibrarySpace(cfg, 0, 0); err != nil {
 		t.Fatalf("without reserved the floor must pass, got %v", err)
 	}
-	if err := checkDiskSpace(cfg, 0, reserved); !errors.Is(err, ErrInsufficientDiskSpace) {
+	if err := checkLibrarySpace(cfg, 0, reserved); !errors.Is(err, ErrInsufficientDiskSpace) {
 		t.Errorf("reserved alone must trip the GiB floor, got %v", err)
 	}
 }
@@ -415,11 +415,11 @@ func TestCheckDiskSpace_PolicyOffStillRefusesBiggerThanFreeMinusReserved(t *test
 	}
 	cfg := &files.Config{CompletedAnimePath: dir, MinFreeDiskGB: 0}
 	reserved := int64(free) / 2
-	if err := checkDiskSpace(cfg, int64(free)-reserved+1, reserved); !errors.Is(err, ErrInsufficientDiskSpace) {
+	if err := checkLibrarySpace(cfg, int64(free)-reserved+1, reserved); !errors.Is(err, ErrInsufficientDiskSpace) {
 		t.Errorf("want refuse when size+reserved > free with policy off, got %v", err)
 	}
 	if reserved > 0 {
-		if err := checkDiskSpace(cfg, reserved-1, reserved); err != nil {
+		if err := checkLibrarySpace(cfg, reserved-1, reserved); err != nil {
 			t.Errorf("size+reserved still under free must pass with policy off, got %v", err)
 		}
 	}
@@ -681,7 +681,7 @@ func TestPackThatLosesReserveFallsBackToSingles(t *testing.T) {
 	var once sync.Once
 	afterPacksThatFit = func() {
 		once.Do(func() {
-			if _, err := disk.reserve(configs, nyaa.TorrentResult{MagnetLink: fakeMagnet(1), Size: size}); err != nil {
+			if _, _, err := disk.reserve(configs, nyaa.TorrentResult{MagnetLink: fakeMagnet(1), Size: size}, nil); err != nil {
 				t.Errorf("filling the budget between packsThatFit and Add: %v", err)
 			}
 		})
@@ -711,7 +711,7 @@ func TestPackThatLosesReserveFallsBackToNextPack(t *testing.T) {
 	var once sync.Once
 	afterPacksThatFit = func() {
 		once.Do(func() {
-			if _, err := disk.reserve(configs, nyaa.TorrentResult{MagnetLink: fakeMagnet(1), Size: size}); err != nil {
+			if _, _, err := disk.reserve(configs, nyaa.TorrentResult{MagnetLink: fakeMagnet(1), Size: size}, nil); err != nil {
 				t.Errorf("filling the budget between packsThatFit and Add: %v", err)
 			}
 		})
@@ -861,4 +861,10 @@ func TestWillBatch_PackFailureWaitsForTheLoop(t *testing.T) {
 			}
 		})
 	}
+}
+
+// checkLibrarySpace is the gate for the library root alone, with nothing staged: what the volume
+// guard's tests exercise (decisions/093).
+func checkLibrarySpace(c *files.Config, size, reserved int64) error {
+	return checkRootBudgetSpace(c, c.CompletedAnimePath, size, reserved, 0, 0, 0)
 }

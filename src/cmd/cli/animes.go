@@ -81,14 +81,16 @@ func animesCommand() *cli.Command {
 			{
 				Name:      "settings",
 				Usage:     "Show or update anime settings",
-				ArgsUsage: "<id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default]",
+				ArgsUsage: "<id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default | root <name> | root none]",
 				Description: "With one argument, shows the anime's settings. progress sets a standalone anime's\n" +
 					"progress. shoko sets its Shoko match by hand: a Shoko series id (and the offset, its\n" +
 					"episode N being the series' N+offset), none for \"not in Shoko\", or auto to go back to\n" +
 					"the match worked out from the MAL id. shoko-packs sets what a pack chosen for the missing\n" +
 					"episodes does with the episodes it brings that are already in Shoko: download keeps them,\n" +
 					"remove skips them (qBittorrent) or deletes them once downloaded, default follows the\n" +
-					"config's shoko_full_packs.",
+					"config's shoko_full_packs. root sends the anime's new torrents to that download folder\n" +
+					"first (direct mode with download_roots; a full folder falls through to the others);\n" +
+					"none drops the override.",
 				Action: handleAnimesSettings,
 			},
 			{
@@ -389,8 +391,24 @@ func handleAnimesSettings(c *cli.Context) error {
 			return err
 		}
 		return printMessage("Pack setting updated; the next check applies it", "Pack setting updated")
+	case c.NArg() == 3 && c.Args().Get(1) == "root":
+		id, err := parsePositiveInt(c.Args().Get(0), "id")
+		if err != nil {
+			return err
+		}
+		root := c.Args().Get(2)
+		if root == "none" {
+			root = ""
+		}
+		if err := mapClientError(getClient().UpdateAnimeRoot(id, root)); err != nil {
+			return err
+		}
+		if root == "" {
+			return printMessage("Download folder override removed", "Download folder override removed")
+		}
+		return printMessage("New torrents of this anime go to "+root+" first", "Download folder set")
 	default:
-		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default]")
+		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default | root <name> | root none]")
 	}
 }
 

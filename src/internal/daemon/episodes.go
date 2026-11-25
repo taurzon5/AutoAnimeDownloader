@@ -98,7 +98,7 @@ func effectiveMax(configs *files.Config, episodes []anilist.AiringNode) int {
 
 // windowEnd is the last episode the packs must cover in this cycle: the other side of
 // max_episodes_per_anime. With the ceiling off the window is open, which is expensive on purpose
-// (the brakes become max_batch_torrent_size_gb, per torrent, and checkDiskSpace).
+// (the brakes become max_batch_torrent_size_gb, per torrent, and checkRootBudgetSpace).
 func windowEnd(configs *files.Config, firstPending int) int {
 	if configs.MaxEpisodesPerAnime <= 0 || configs.LiftsEpisodeLimit() {
 		return math.MaxInt
@@ -224,7 +224,13 @@ func processAnimeEpisodes(
 		if windowPacks, ok := packsForWindow(packs, totalEpisodes, sel.toDownload); !isAnimeMovie(anime) && ok {
 			firstPending := sel.toDownload[0].Episode
 			axis := newPackAxis(anime, animePart, seriesIndex, totalEpisodes)
-			batches := chooseCoveringPacks(configs, disk, windowPacks, packDetail(searcher, totalEpisodes), axis, firstPending, windowEnd(configs, firstPending))
+			packTarget := torrentTarget{anime: anime, batch: true}
+			if series, ok := seriesIndex[anime.Media.Id]; ok {
+				packTarget.series = &series
+			}
+			order := rootOrder(configs, backend, packTarget, disk.override(anime.Media.Id))
+			orderFor := func(magnet string) []files.DownloadRoot { return placedOrder(configs, backend, magnet, order) }
+			batches := chooseCoveringPacks(configs, disk, orderFor, windowPacks, packDetail(searcher, totalEpisodes), axis, firstPending, windowEnd(configs, firstPending))
 			switch {
 			case batches.len() > 0:
 				logger.Logger.Info().
@@ -451,7 +457,7 @@ func processAnimeEpisodes(
 
 type resolvedMagnets struct {
 	// candidates carries the whole TorrentResult, not just the magnet, because Size is what the disk
-	// guard needs at Add time (checkDiskSpace).
+	// guard needs at Add time (checkRootBudgetSpace).
 	candidates    []nyaa.TorrentResult
 	skipSubfolder bool
 	overrideName  string
@@ -657,7 +663,7 @@ var afterPacksThatFit func()
 // reserve. packsThatFit is a snapshot; a parallel anime can spend the last bytes before this
 // one Adds, and without the retry the pack that no longer fits would keep the window
 // (decisions/097 via the #101 race).
-func chooseCoveringPacks(configs *files.Config, disk *diskBudget, packs []nyaa.TorrentResult, detail func(nyaa.TorrentResult) (nyaa.BatchInfo, bool), axis packAxis, firstPending, windowEnd int) *packSet {
+func chooseCoveringPacks(configs *files.Config, disk *diskBudget, orderFor func(magnet string) []files.DownloadRoot, packs []nyaa.TorrentResult, detail func(nyaa.TorrentResult) (nyaa.BatchInfo, bool), axis packAxis, firstPending, windowEnd int) *packSet {
 	remaining := append([]nyaa.TorrentResult(nil), packs...)
 	for {
 		fit := packsThatFit(configs, disk, remaining)
@@ -677,7 +683,11 @@ func chooseCoveringPacks(configs *files.Config, disk *diskBudget, packs []nyaa.T
 				continue
 			}
 			seen[key] = true
-			undo, err := disk.reserve(configs, item.torrent)
+			var order []files.DownloadRoot
+			if orderFor != nil {
+				order = orderFor(item.torrent.MagnetLink)
+			}
+			_, undo, err := disk.reserve(configs, item.torrent, order)
 			if err != nil {
 				logger.Logger.Info().Err(err).Str("torrent", item.torrent.Name).Msg("Skipping pack: it does not fit on disk")
 				for _, u := range undos {
@@ -1124,13 +1134,17 @@ func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentB
 
 		// Per candidate, because each has a size: the next one in the list may fit where the first
 		// didn't.
-		undo, err := disk.reserve(configs, candidates[i])
+		override := target.root
+		if override == "" {
+			override = disk.override(target.anime.Media.Id)
+		}
+		root, undo, err := disk.reserve(configs, candidates[i], placedOrder(configs, backend, candidates[i].MagnetLink, rootOrder(configs, backend, target, override)))
 		if err != nil {
 			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping candidate: it does not fit on disk")
 			continue
 		}
 
-		if err := registerPlacement(configs, backend, candidates[i].MagnetLink, target); err != nil {
+		if err := registerPlacement(configs, backend, candidates[i].MagnetLink, target, root); err != nil {
 			undo()
 			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping candidate: it could not be placed in the library")
 			continue

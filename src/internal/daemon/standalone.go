@@ -161,13 +161,13 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
 	torrentsNow := backend.List()
-	// What Shoko already has stays out, as in the pass (decisions/147).
-	var animeSettings files.AnimeSettings
-	if all, err := fm.LoadAllAnimeSettings(); err == nil {
-		animeSettings = all[mediaID]
-	}
+	// What Shoko already has stays out, as in the pass (decisions/147); the download roots and this
+	// anime's root override, as in the pass (decisions/154).
+	all, _ := fm.LoadAllAnimeSettings()
+	animeSettings := all[mediaID]
 	owned := shokoOwned{episodes: inShoko.OwnedFor(configs, *anime, animeSettings), trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings)}
-	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes), owned)
+	disk := newDiskBudget(torrentsNow, savedEpisodes).withRoots(configs, backend, all)
+	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, disk, owned)
 
 	saveEpisodesToFile(fm, result.newEpisodes)
 
@@ -186,6 +186,7 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 	if err != nil {
 		return 0, err
 	}
+	target.root = animeRoot(fm, mediaID)
 	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs, target)
 	if err != nil || hash == "" {
 		return 0, fmt.Errorf("failed to add torrent to embedded client: %w", err)

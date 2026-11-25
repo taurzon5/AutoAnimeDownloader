@@ -208,6 +208,10 @@ type Config struct {
 	// one sequential write per file (decisions/141). Empty = off: torrents write straight to the
 	// library. The app never creates this folder (ProbeIncompleteFolder).
 	IncompletePath string `json:"incomplete_path"`
+	// DownloadRoots are the folders direct mode downloads into, in fill order (the direct-library
+	// -mode spec, PR 2). Empty = one root, completed_anime_path, named "library". Hardlink mode
+	// ignores them. See Config.Roots and decisions/154.
+	DownloadRoots []DownloadRoot `json:"download_roots"`
 	// IncompleteMinFreeDiskGB is MinFreeDiskGB for the IncompletePath volume, in GiB. Only checked
 	// when that folder is on another filesystem than the library.
 	IncompleteMinFreeDiskGB int `json:"incomplete_min_free_disk_gb"`
@@ -299,6 +303,50 @@ const SecretPlaceholder = "__saved__"
 // IsDirectMode reports whether torrents are written straight to their library path.
 func (c *Config) IsDirectMode() bool {
 	return c.LibraryMode == LibraryModeDirect
+}
+
+// DownloadRoot is one folder direct mode downloads into: a name the user picks (what an anime's
+// override and the status page show), an absolute path, and how far its drive fills.
+type DownloadRoot struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// MinFreeGB is how many GiB this folder's drive keeps free: it takes new torrents until a
+	// torrent would leave less, then the next folder in the list does. nil = min_free_disk_gb
+	// (decisions/154).
+	MinFreeGB *int `json:"min_free_gb,omitempty"`
+}
+
+// LibraryRootName is the name of the one root a config without download_roots has.
+const LibraryRootName = "library"
+
+// Roots returns the folders new torrents can go to, in fill order: download_roots in direct mode,
+// else the library (completed_anime_path) alone, named LibraryRootName (decisions/154).
+func (c *Config) Roots() []DownloadRoot {
+	if c.IsDirectMode() && len(c.DownloadRoots) > 0 {
+		return c.DownloadRoots
+	}
+	return []DownloadRoot{{Name: LibraryRootName, Path: c.CompletedAnimePath}}
+}
+
+// RootMinFreeGB is how many GiB the root at path keeps free: its own min_free_gb, else
+// min_free_disk_gb (the library's, and any path that is no root).
+func (c *Config) RootMinFreeGB(path string) int {
+	for _, r := range c.Roots() {
+		if r.Path == path && r.MinFreeGB != nil {
+			return *r.MinFreeGB
+		}
+	}
+	return c.MinFreeDiskGB
+}
+
+// RootNamed is the root called name, if there is one.
+func (c *Config) RootNamed(name string) (DownloadRoot, bool) {
+	for _, r := range c.Roots() {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return DownloadRoot{}, false
 }
 
 // UsesQBittorrent reports whether the external qBittorrent client is selected.
@@ -444,6 +492,9 @@ type AnimeSettings struct {
 	// episodes in Shoko a pack brings, ShokoPackRemove removes them; empty = the global setting
 	// (decisions/153).
 	ShokoPackEpisodes string `json:"shoko_pack_episodes,omitempty"`
+	// Root is the name of the download root this anime's new torrents go to, ahead of the fill
+	// order (decisions/154); nil = no override. A root with no space falls through to the others.
+	Root *string `json:"root,omitempty"`
 }
 
 // The values of AnimeSettings.ShokoPackEpisodes.
@@ -526,6 +577,7 @@ func DefaultConfig() *Config {
 		Notifications:                      NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
 		Priorities:                         nyaa.DefaultPriorities(),
 		LibraryMode:                        LibraryModeHardlink,
+		DownloadRoots:                      []DownloadRoot{},
 		IncompleteFiles:                    IncompleteFilesPart,
 		IncompleteMinFreeDiskGB:            10,
 		EpisodeNumbering:                   EpisodeNumberingSeason,

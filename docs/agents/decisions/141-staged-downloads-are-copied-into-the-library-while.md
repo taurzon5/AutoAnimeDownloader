@@ -6,7 +6,7 @@
 overlay in `List`/`Get`; `internal/torrents/placement.go` — `PlacementRequest.IncompleteRoot`,
 `Placement.DiskPath`/`StagingPath`/`StagingDir`, the rules in `placedStorage.Open`,
 `ErrIncompleteFolderUnavailable`, `RemovePlacedFiles`; `internal/files/probe.go` —
-`ProbeIncompleteFolder`, the disk-full case in both probes; `internal/daemon/helpers.go` — `checkBudgetSpace`, the early return in
+`ProbeIncompleteFolder`, the disk-full case in both probes; `internal/daemon/helpers.go` — `checkRootBudgetSpace`, the early return in
 `HandleTorrentFailure`; `internal/daemon/diskbudget.go` — `staged`/`stagedPending`;
 `internal/daemon/placement.go` — `resumeTorrentsWaitingForStaging`, `adoptMovedStaging`,
 `pruneStagingLeftovers`; `internal/daemon/health.go` — `diskAlertVolume`;
@@ -83,7 +83,7 @@ asks for a folder inside the drive.
 
 **A full drive is reachable.** Both folder probes treat "disk full" as a pass: aborting the pass
 would skip the cleanup that frees space ([#48](048-max-episodes-per-anime-never-limited-batches-the.md)), and
-`checkBudgetSpace` already refuses the downloads. The `disk_low` alert follows whichever drive has
+`checkRootBudgetSpace` already refuses the downloads. The `disk_low` alert follows whichever drive has
 less room above its floor (`diskAlertVolume`).
 
 **Don't "fix" by:** renaming staging files straight into the library (fails across drives, and
@@ -100,3 +100,7 @@ during the move. `FinalizePlacement` waits for that and clears the download path
 writes into the library directly, and "never `.part` in staging" holds. "Never create the
 folder" holds only because the app keeps staged torrents stopped while their folder is missing:
 qBittorrent itself creates a missing download folder when it can write the parent (measured).
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** the disk alert for a full drive (`diskAlertVolume`) still names the library and the incomplete folder, not each download root. A download root follows this entry's never-create rule: validation requires it to exist, `availableRoots` leaves out one that is gone, and rain's `Open` refuses to write into it (`ErrDownloadRootUnavailable`, the torrent waits as for a missing incomplete folder).
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** with the incomplete folder on a download root's drive, that root also counts what staging torrents bound for other roots still download (`checkRootBudgetSpace`'s `stagedOtherBytes`): those bytes land on its drive first. Pinned by `TestCheckRootBudgetSpace_TwoVolumes`.

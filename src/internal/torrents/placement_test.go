@@ -709,3 +709,21 @@ func TestCopyStagedFiles_FailureLeavesNoCopies(t *testing.T) {
 		t.Fatal("the first file's copy must be removed when the move fails")
 	}
 }
+
+// A placement in a download root whose folder is gone (an unmounted drive) never creates it: Open
+// fails with ErrDownloadRootUnavailable, and the torrent waits (decisions/154).
+func TestPlacedStorage_OpenRefusesAMissingDownloadRoot(t *testing.T) {
+	_, ps, lib := newPlaced(t, false, "ep.mkv")
+	gone := filepath.Join(lib, "unmounted")
+	p, _ := ps.store.get(testHash)
+	p.RootPath = gone
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ps.Open("ep.mkv", 4); !errors.Is(err, ErrDownloadRootUnavailable) {
+		t.Fatalf("Open = %v, want ErrDownloadRootUnavailable", err)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Fatal("the missing root must not be created")
+	}
+}

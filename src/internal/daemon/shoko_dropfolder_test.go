@@ -37,7 +37,7 @@ func (c *countingImporter) RequestImport(*files.Config) {
 // finished writing, and returns the file's final path.
 func placedCompleted(t *testing.T, configs *files.Config, backend *torrents.FakeBackend) string {
 	t.Helper()
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 5}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 5}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"ep05.mkv"})
@@ -251,7 +251,7 @@ func TestRemoveEpisodes_HandedToShokoKeepsTheFile(t *testing.T) {
 		configs := dropFolderConfig(lib, "http://shoko:8111")
 		backend := torrents.NewFakeBackend()
 		backend.LibraryRoot = lib
-		if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+		if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 			t.Fatal(err)
 		}
 		p, err := backend.PlaceFiles(directHash, []string{"ep01.mkv"})
@@ -295,7 +295,7 @@ func TestRemoveEpisodes_HandedToShokoPackKeepsEveryFile(t *testing.T) {
 	configs := dropFolderConfig(lib, "http://shoko:8111")
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), batch: true}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), batch: true}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"Show/ep01.mkv", "Show/ep02.mkv"})

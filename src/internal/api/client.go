@@ -299,6 +299,13 @@ func (c *Client) ShokoSync(full bool) error {
 	return c.send(http.MethodPost, "/api/v1/shoko/sync", map[string]bool{"full": full}, nil)
 }
 
+// UpdateAnimeRoot sets the download root an anime's new torrents go to first; "" drops the
+// override (decisions/154).
+func (c *Client) UpdateAnimeRoot(id int, root string) error {
+	body := map[string]string{"root": root}
+	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)
+}
+
 func (c *Client) GetAnimeEpisodes(id int) (*AnimeDetailResponse, error) {
 	var detail AnimeDetailResponse
 	if err := c.get("/api/v1/animes/"+strconv.Itoa(id)+"/episodes", &detail); err != nil {

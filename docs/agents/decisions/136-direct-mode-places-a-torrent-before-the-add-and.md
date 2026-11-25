@@ -70,3 +70,5 @@ file); storing absolute paths; letting a second `SetPlacement` overwrite the fir
 installing `CustomStorage` unconditionally (hardlink mode would stop being what it was) or dropping
 it when direct mode is turned off while placements exist; renaming `.part` files while the torrent
 runs; deleting the `Open` fallback to the final name.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** a placement in a download root other than the library stores a second absolute path, `RootPath` (and `RootName`). A placement in the library keeps it empty, so the moved-library rule above still holds for it; a moved root is followed by name (`followMovedRoots`).

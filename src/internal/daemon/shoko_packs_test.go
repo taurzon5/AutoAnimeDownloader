@@ -15,7 +15,7 @@ import (
 // chosen for episode 3) and the three files on disk.
 func packInLibrary(t *testing.T, configs *files.Config, backend *torrents.FakeBackend, finished bool) ([]files.EpisodeStruct, []string) {
 	t.Helper()
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), batch: true}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), batch: true}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"Pack/Show - 01.mkv", "Pack/Show - 02.mkv", "Pack/Show - 03.mkv"})
