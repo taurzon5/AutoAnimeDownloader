@@ -150,6 +150,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	// Outside the direct-mode branch: placements made in direct mode keep staging after a switch
 	// back. After Ensure: following a moved folder adds the torrent back to the session.
 	adoptMovedStaging(backend, configs.StagingPath())
+	followMovedRoots(configs, backend)
 	resumeTorrentsWaitingForStaging(backend)
 
 	// downloadedTorrents is an in-memory snapshot of the embedded client (cheap, no I/O).
@@ -275,7 +276,9 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	// write counts against the free space, and so does every torrent this pass adds
 	// (decisions/101). From the same snapshot, so a torrent dropStalledTorrents just removed
 	// still reserves its bytes until the next pass — the safe side.
-	disk := newDiskBudget(downloadedTorrents, savedEpisodes)
+	// Per download root, with each anime's root override (decisions/154).
+	rootSettings, _ := fileManager.LoadAllAnimeSettings()
+	disk := newDiskBudget(downloadedTorrents, savedEpisodes).withRoots(configs, backend, rootSettings)
 
 	// Phase 2: process each anime concurrently, bounded by maxConcurrentAnimes.
 	sem := make(chan struct{}, maxConcurrentAnimes)

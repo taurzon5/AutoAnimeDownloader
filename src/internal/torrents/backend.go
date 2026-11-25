@@ -172,6 +172,10 @@ type TorrentBackend interface {
 	// MovePlacementStaging re-points an unfinished staging torrent at root, the incomplete folder
 	// it was moved to (decisions/141). The torrent finds its files there on its next start.
 	MovePlacementStaging(hash, root string) error
+	// MovePlacementRoot re-points a placement at its download root's new path ("" = the library),
+	// after the user moved that folder (decisions/154). rain opens the files there from then on;
+	// qBittorrent keeps its own save path, which the user changes there.
+	MovePlacementRoot(hash, root string) error
 	// FinalizePlacement gives a completed placed torrent's files their final library paths and
 	// marks the placement completed: it renames .part files, or moves the files of a staging
 	// torrent from the incomplete folder into the library (decisions/141), or only sets the mark.

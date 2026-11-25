@@ -36,7 +36,7 @@ type FileManagerInterface interface {
 	RemoveStandaloneAnime(mediaID int) error
 }
 
-// ErrInsufficientDiskSpace is returned by checkDiskSpace when leftover free space would fall
+// ErrInsufficientDiskSpace is returned by checkRootBudgetSpace when leftover free space would fall
 // below Config.MinFreeDiskGB, or when the torrent to be added doesn't fit in what's left.
 var ErrInsufficientDiskSpace = errors.New("insufficient free disk space")
 
@@ -46,15 +46,41 @@ const giB = int64(notifications.GiB)
 // DiskLow is true exactly when the daemon would refuse a new torrent of size 0: the add-gate,
 // including what the session still has to write, against the GiB floor. GET /status's disk_low
 // is this flag and nothing else (decisions/093).
-func DiskLow(configs *files.Config, session []torrents.TorrentInfo, saved []files.EpisodeStruct) bool {
+func DiskLow(configs *files.Config, backend torrents.TorrentBackend, session []torrents.TorrentInfo, saved []files.EpisodeStruct) bool {
 	if configs == nil {
 		return false
 	}
-	return newDiskBudget(session, saved).check(configs, 0) != nil
+	// Per download root, as the add-gate counts: low only when no root takes a torrent
+	// (decisions/154).
+	return newDiskBudget(session, saved).withRoots(configs, backend, nil).check(configs, 0) != nil
 }
 
-// checkDiskSpace blocks ADDING new torrents when the library volume is full OR when the requested
-// torrent doesn't fit in it.
+// RootDisk is one download root's volume for GET /status: Low when it can't take a new torrent of
+// size 0 now, counting what the session still writes there (decisions/154).
+type RootDisk struct {
+	Name, Path  string
+	Total, Free uint64
+	Low         bool
+}
+
+// RootDisks reports every download root's volume. A root whose volume doesn't answer reports zeros.
+func RootDisks(configs *files.Config, backend torrents.TorrentBackend, session []torrents.TorrentInfo, saved []files.EpisodeStruct) []RootDisk {
+	if configs == nil {
+		return nil
+	}
+	budget := newDiskBudget(session, saved).withRoots(configs, backend, nil)
+	var out []RootDisk
+	for _, r := range configs.Roots() {
+		d := RootDisk{Name: r.Name, Path: r.Path}
+		d.Total, d.Free, _ = files.DiskSpace(r.Path)
+		d.Low = budget.checkOn(configs, r.Path, 0) != nil
+		out = append(out, d)
+	}
+	return out
+}
+
+// checkRootBudgetSpace blocks ADDING a new torrent to a download root when its volume is full OR
+// when the torrent doesn't fit in it (decisions/093, decisions/154).
 //
 // torrentSizeBytes is the size Nyaa announced, 0 when unknown (hand-pasted magnet) — and then the
 // guard falls back to the GiB-floor check it always was. Without it a 61 GiB pack got into a
@@ -76,24 +102,24 @@ func DiskLow(configs *files.Config, session []torrents.TorrentInfo, saved []file
 // A statfs error does NOT block: a volume that doesn't answer (network, permission) is no proof of
 // a full disk, and turning it into "stop downloading everything" is worse than the risk the guard
 // covers.
-func checkDiskSpace(configs *files.Config, torrentSizeBytes, reservedBytes int64) error {
-	// The library volume, which holds the download directory by construction
-	// (Config.DownloadPath). The incomplete folder's drive is checkBudgetSpace's.
-	return checkVolumeSpace(configs.CompletedAnimePath, configs.MinFreeDiskGB, torrentSizeBytes, reservedBytes)
-}
-
-// checkBudgetSpace is the add gate with the incomplete folder (decisions/141). Without one, or
-// with one on the library's own filesystem (where finishing is a hard link, not a copy), it is
-// checkDiskSpace. With one on another drive, both volumes must take the torrent: the library
-// also counts what staging torrents hold and have not moved yet (stagedPending), and the
-// incomplete folder's volume counts what staging torrents still have to download (staged), with
-// its own floor, incomplete_min_free_disk_gb.
-func checkBudgetSpace(configs *files.Config, torrentSizeBytes, reservedBytes, stagedBytes, stagedPendingBytes int64) error {
+//
+// Per root: the root's volume takes the torrent on top of what is reserved there and keeps the
+// root's own min_free_gb (min_free_disk_gb when unset); a root over its limit passes the torrent to
+// the next one. With the incomplete folder on another drive (decisions/141), the root also counts
+// what staging torrents hold and have not moved yet (stagedPending), and the incomplete folder's
+// volume counts what staging torrents still download (staged), with incomplete_min_free_disk_gb.
+// With it on this root's drive, finishing is a rename, and stagedOtherBytes, what staging torrents
+// bound for other volumes still download, lands here first, so it counts.
+func checkRootBudgetSpace(configs *files.Config, root string, torrentSizeBytes, reservedBytes, stagedBytes, stagedPendingBytes, stagedOtherBytes int64) error {
+	minFree := configs.RootMinFreeGB(root)
 	staging := configs.StagingPath()
-	if staging == "" || sameFilesystem(staging, configs.CompletedAnimePath) {
-		return checkDiskSpace(configs, torrentSizeBytes, reservedBytes)
+	if staging == "" {
+		return checkVolumeSpace(root, minFree, torrentSizeBytes, reservedBytes)
 	}
-	if err := checkDiskSpace(configs, torrentSizeBytes, reservedBytes+stagedPendingBytes); err != nil {
+	if sameFilesystem(staging, root) {
+		return checkVolumeSpace(root, minFree, torrentSizeBytes, reservedBytes+stagedOtherBytes)
+	}
+	if err := checkVolumeSpace(root, minFree, torrentSizeBytes, reservedBytes+stagedPendingBytes); err != nil {
 		return err
 	}
 	return checkVolumeSpace(staging, configs.IncompleteMinFreeDiskGB, torrentSizeBytes, stagedBytes)
@@ -150,6 +176,11 @@ func HandleTorrentFailure(hash string, cause error, backend torrents.TorrentBack
 	// as the folder is back; until then the pass reports the folder (decisions/141).
 	if errors.Is(cause, torrents.ErrIncompleteFolderUnavailable) {
 		logger.Logger.Warn().Str("hash", hash).Msg("The incomplete downloads folder is unavailable; the torrent waits for it")
+		return
+	}
+	// The same for a download root whose drive is gone (decisions/154).
+	if errors.Is(cause, torrents.ErrDownloadRootUnavailable) {
+		logger.Logger.Warn().Str("hash", hash).Msg("The torrent's download folder is unavailable; the torrent waits for it")
 		return
 	}
 	if backend != nil {

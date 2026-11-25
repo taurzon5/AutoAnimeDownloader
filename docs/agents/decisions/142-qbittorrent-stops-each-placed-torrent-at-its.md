@@ -78,3 +78,5 @@ starting a placed torrent before its renames (or dropping `stopCondition`); send
 `deleteFiles=true` for a placed torrent; firing `onComplete` for a torrent first seen complete;
 mapping `missingFiles` to a generic error; dropping `useDownloadPath=false` "because the default is
 off"; requiring 200 `Ok.` from a login or 200 from an add; giving the probe a hidden name.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** a placed torrent is added with its own download root as save path (`Placement.RootOr`), the library for one from before; `applyPlacement` checks the save path against that root. A root the user moves must be moved in qBittorrent too: the backend only re-points the placement.

@@ -477,11 +477,12 @@ func (b *QBitBackend) guardStaging(ctx context.Context, client *qbitClient) {
 	var stop, back []string
 	for hash, t := range b.ownTorrentsLocked() {
 		p, ok := b.placements.get(hash)
-		if !ok || p.IncompleteRoot == "" || p.Completed {
+		if !ok {
 			delete(b.stagingGone, hash)
 			continue
 		}
-		if !isDir(p.IncompleteRoot) {
+		// Its incomplete folder, or its download root, is gone (decisions/141, decisions/154).
+		if p.missingFolder() != "" {
 			switch {
 			case qbitIsFailed(t):
 				b.stagingGone[hash] = true
@@ -502,9 +503,9 @@ func (b *QBitBackend) guardStaging(ctx context.Context, client *qbitClient) {
 	sort.Strings(stop)
 	if len(stop) > 0 {
 		if err := client.stop(ctx, stop...); err != nil {
-			logger.Logger.Warn().Err(err).Int("count", len(stop)).Msg("Failed to stop qBittorrent downloads whose incomplete folder is gone")
+			logger.Logger.Warn().Err(err).Int("count", len(stop)).Msg("Failed to stop qBittorrent downloads whose folder is gone")
 		} else {
-			logger.Logger.Warn().Int("count", len(stop)).Msg("The incomplete downloads folder is gone; stopped the downloads in it until it is back")
+			logger.Logger.Warn().Int("count", len(stop)).Msg("A download folder is gone; stopped the downloads in it until it is back")
 		}
 	}
 	sort.Strings(back)
@@ -514,10 +515,10 @@ func (b *QBitBackend) guardStaging(ctx context.Context, client *qbitClient) {
 			err = client.start(ctx, hash)
 		}
 		if err != nil {
-			logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Failed to restart a qBittorrent download whose incomplete folder is back")
+			logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Failed to restart a qBittorrent download whose folder is back")
 			continue
 		}
-		logger.Logger.Info().Str("hash", hash).Msg("The incomplete downloads folder is back; restarted the torrent")
+		logger.Logger.Info().Str("hash", hash).Msg("A download folder is back; restarted the torrent")
 	}
 }
 
@@ -720,6 +721,13 @@ func qbitIsChecking(state string) bool {
 // deleted outside the app: the same ErrPlacedFileMissing rain reports, so the daemon flags the row
 // instead of downloading them again (decisions/139).
 func (b *QBitBackend) stopError(t qbitTorrent) error {
+	// Its download root is gone (an unmounted drive): it waits, as for the incomplete folder
+	// (decisions/154).
+	if qbitIsFailed(t) || t.State == "missingFiles" {
+		if p, ok := b.placements.get(t.Hash); ok && p.RootPath != "" && !isDir(p.RootPath) {
+			return fmt.Errorf("%w: %s", ErrDownloadRootUnavailable, p.RootPath)
+		}
+	}
 	if qbitIsFailed(t) {
 		// The incomplete folder is gone (its drive unmounted): the daemon waits instead of dropping
 		// the torrent, and the poll restarts it once the folder is back (decisions/141).
@@ -924,7 +932,8 @@ func (b *QBitBackend) Add(magnet string) (string, error) {
 		req.UploadLimit = settings.uploadFloor()
 	}
 	if placed {
-		req.SavePath = qbitMapPath(root, settings.PathMap, true)
+		// The placement's own download root (decisions/154), the library for one from before.
+		req.SavePath = qbitMapPath(placement.RootOr(root), settings.PathMap, true)
 		req.StopAtMetadata = true
 		b.awaitingStart[hash] = true
 		delete(b.applied, hash)
@@ -1017,13 +1026,17 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 	if !ok {
 		return nil
 	}
-	if got := filepath.Clean(qbitMapPath(t.SavePath, settings.PathMap, false)); got != filepath.Clean(root) {
+	want := root
+	if p, ok := b.placements.get(hash); ok {
+		want = p.RootOr(root)
+	}
+	if got := filepath.Clean(qbitMapPath(t.SavePath, settings.PathMap, false)); got != filepath.Clean(want) {
 		// Its file names are relative to another folder: renaming them by library paths would scatter
 		// them. Left alone, loudly, once.
 		b.mu.Lock()
 		b.applied[hash] = true
 		b.mu.Unlock()
-		return fmt.Errorf("qBittorrent saves it in %s, not in the library %s, so its files cannot be placed", got, root)
+		return fmt.Errorf("qBittorrent saves it in %s, not in its download root %s, so its files cannot be placed", got, want)
 	}
 
 	list, err := client.files(ctx, hash)
@@ -1046,9 +1059,10 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 		for i, f := range list {
 			paths[i] = f.Name
 		}
-		exists := func(rel string) bool { return pathExists(filepath.Join(root, rel)) }
+		placedRoot := p.RootOr(root)
+		exists := func(rel string) bool { return pathExists(filepath.Join(placedRoot, rel)) }
 		taken := func(rel string) bool {
-			owner := b.placements.ownerOf(rel)
+			owner := b.placements.ownerOf(placedRoot, root, rel)
 			return owner != "" && owner != hash
 		}
 		planned, err := planFiles(p.PlacementRequest, paths, exists, taken)
@@ -1099,9 +1113,9 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 	delete(b.recheckFirst, hash)
 	delete(b.retryApplyAt, hash)
 	b.applied[hash] = true
-	if (start || recheck) && staged && !isDir(p.IncompleteRoot) {
-		// Started now, qBittorrent would create the missing incomplete folder; guardStaging starts
-		// it once the folder is back.
+	if (start || recheck) && p.missingFolder() != "" {
+		// Started now, qBittorrent would create the missing incomplete folder or download root;
+		// guardStaging starts it once the folder is back.
 		b.stagingGone[hash] = true
 		start, recheck = false, false
 	}
@@ -1443,7 +1457,7 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 		}
 		if !qbitWaitFor(b.moveWait, func() bool {
 			for i, pf := range p.Files {
-				if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
+				if !hasSize(filepath.Join(p.RootOr(root), pf.Path), sizes[i]) {
 					return false
 				}
 			}
@@ -1474,7 +1488,7 @@ func (b *QBitBackend) finalizeStaged(client *qbitClient, hash string, p Placemen
 	}
 	if !qbitWaitFor(b.moveWait, func() bool {
 		for i, pf := range p.Files {
-			if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
+			if !hasSize(filepath.Join(p.RootOr(root), pf.Path), sizes[i]) {
 				return false
 			}
 		}
@@ -1504,6 +1518,12 @@ func qbitWaitFor(timeout time.Duration, ok func() bool) bool {
 
 func (b *QBitBackend) ForgetPlacement(hash string) error {
 	return b.placements.forget(hash)
+}
+
+// MovePlacementRoot only re-points the placement: qBittorrent keeps the save path it was given, so a
+// moved folder is moved in qBittorrent by the user too (decisions/154).
+func (b *QBitBackend) MovePlacementRoot(hash, root string) error {
+	return b.placements.setRoot(hash, root)
 }
 
 func (b *QBitBackend) SetPlacementKept(hash string, kept bool) error {

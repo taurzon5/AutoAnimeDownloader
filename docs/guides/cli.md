@@ -99,6 +99,8 @@ autoanimedownloader animes remove 154587 --yes
 autoanimedownloader animes remove 154587 --yes --delete-episodes
 autoanimedownloader animes settings 154587
 autoanimedownloader animes settings 154587 progress 12
+autoanimedownloader animes settings 154587 root hdd    # new torrents of this anime go to the hdd download folder first
+autoanimedownloader animes settings 154587 root none   # back to the fill order
 autoanimedownloader animes episodes 154587
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3

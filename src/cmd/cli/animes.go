@@ -80,8 +80,11 @@ func animesCommand() *cli.Command {
 			{
 				Name:      "settings",
 				Usage:     "Show or update anime settings",
-				ArgsUsage: "<id> [progress <n>]",
-				Action:    handleAnimesSettings,
+				ArgsUsage: "<id> [progress <n> | root <name> | root none]",
+				Description: "With one argument, shows the anime's settings. progress sets a standalone anime's\n" +
+					"progress. root sends the anime's new torrents to that download folder first (direct mode\n" +
+					"with download_roots; a full folder falls through to the others); none drops the override.",
+				Action: handleAnimesSettings,
 			},
 			{
 				Name:      "debug",
@@ -343,8 +346,24 @@ func handleAnimesSettings(c *cli.Context) error {
 			return err
 		}
 		return printMessage(fmt.Sprintf("Progress set to %d", progress), "Progress updated")
+	case c.NArg() == 3 && c.Args().Get(1) == "root":
+		id, err := parsePositiveInt(c.Args().Get(0), "id")
+		if err != nil {
+			return err
+		}
+		root := c.Args().Get(2)
+		if root == "none" {
+			root = ""
+		}
+		if err := mapClientError(getClient().UpdateAnimeRoot(id, root)); err != nil {
+			return err
+		}
+		if root == "" {
+			return printMessage("Download folder override removed", "Download folder override removed")
+		}
+		return printMessage("New torrents of this anime go to "+root+" first", "Download folder set")
 	default:
-		return fmt.Errorf("usage: animes settings <id> [progress <n>]")
+		return fmt.Errorf("usage: animes settings <id> [progress <n> | root <name> | root none]")
 	}
 }
 

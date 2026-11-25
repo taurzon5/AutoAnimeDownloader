@@ -25,6 +25,89 @@ type torrentTarget struct {
 	// episode is the local episode number for a single-episode torrent; 0 for a pack.
 	episode int
 	batch   bool
+	// root is the anime's download root override (AnimeSettings.Root) for a manual download; the
+	// pass reads it from the disk budget instead (decisions/154).
+	root string
+}
+
+// placedOrder is order for a torrent whose hash already has a placement (a retry of a failed one, a
+// re-add of a Kept one): register keeps the first placement (decisions/136), so the torrent goes
+// where it went, and the budget must count it on that root, not on the one the order would pick.
+func placedOrder(configs *files.Config, backend torrents.TorrentBackend, magnet string, order []files.DownloadRoot) []files.DownloadRoot {
+	if backend == nil {
+		return order
+	}
+	hash, err := torrents.InfoHash(magnet)
+	if err != nil {
+		return order
+	}
+	p, ok := backend.Placement(hash)
+	if !ok {
+		return order
+	}
+	root := files.DownloadRoot{Name: p.RootName, Path: p.RootOr(configs.CompletedAnimePath)}
+	if root.Name == "" {
+		root.Name = files.LibraryRootName
+	}
+	// Its root is gone (an unmounted drive): nowhere to put it, rather than create the folder.
+	if p.RootPath != "" && !dirExists(p.RootPath) {
+		return []files.DownloadRoot{}
+	}
+	return []files.DownloadRoot{root}
+}
+
+// availableRoots is download_roots without the ones whose folder isn't there (an unmounted drive):
+// a torrent placed there would create the folder on the disk its mount point sits on. The library
+// is left to its own probe (library_missing). decisions/154.
+func availableRoots(configs *files.Config) []files.DownloadRoot {
+	var out []files.DownloadRoot
+	for _, r := range configs.Roots() {
+		if r.Path == configs.CompletedAnimePath || dirExists(r.Path) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// rootOrder is where a torrent of target may go, in the order tried (decisions/154): the anime's
+// override, the root that already holds its series (so a new season lands next to the others),
+// then download_roots in the order listed. The disk budget takes the first one with space, each
+// root kept to its own min_free_gb, so one drive fills before the next is used.
+func rootOrder(configs *files.Config, backend torrents.TorrentBackend, target torrentTarget, override string) []files.DownloadRoot {
+	roots := availableRoots(configs)
+	out := make([]files.DownloadRoot, 0, len(roots))
+	seen := map[string]bool{}
+	add := func(r files.DownloadRoot) {
+		if !seen[r.Path] {
+			seen[r.Path] = true
+			out = append(out, r)
+		}
+	}
+	if override != "" {
+		for _, r := range roots {
+			if r.Name == override {
+				add(r)
+			}
+		}
+	}
+	if id := seriesID(target); id != 0 && backend != nil && len(roots) > 1 {
+		for _, p := range backend.Placements() {
+			if p.SeriesID != id {
+				continue
+			}
+			held := p.RootOr(configs.CompletedAnimePath)
+			for _, r := range roots {
+				if r.Path == held {
+					add(r)
+				}
+			}
+			break
+		}
+	}
+	for _, r := range roots {
+		add(r)
+	}
+	return out
 }
 
 // manualTarget is the target of a manual download. Only direct mode needs the series chain, so
@@ -69,7 +152,7 @@ func lookupSeries(mediaID int) *anilist.Series {
 // registerPlacement tells the backend where a torrent's files go, BEFORE the add: rain asks for
 // the storage synchronously inside the add. A no-op in hardlink mode. A magnet whose hash can't
 // be read is left to Add, which reports the same error.
-func registerPlacement(configs *files.Config, backend torrents.TorrentBackend, magnet string, target torrentTarget) error {
+func registerPlacement(configs *files.Config, backend torrents.TorrentBackend, magnet string, target torrentTarget, root files.DownloadRoot) error {
 	if !configs.IsDirectMode() {
 		return nil
 	}
@@ -78,6 +161,13 @@ func registerPlacement(configs *files.Config, backend torrents.TorrentBackend, m
 		return nil
 	}
 	req := placementRequest(configs, hash, target)
+	// The download root the disk budget chose (decisions/154). The library stays implicit: its
+	// placements resolve against wherever completed_anime_path is, so a moved library keeps its
+	// seeds (decisions/136).
+	req.RootName = root.Name
+	if root.Path != "" && root.Path != configs.CompletedAnimePath {
+		req.RootPath = root.Path
+	}
 	pinSeriesDir(backend, &req)
 	if err := backend.SetPlacement(req); err != nil {
 		return fmt.Errorf("failed to place torrent %s in the library: %w", hash, err)
@@ -297,11 +387,16 @@ func pruneOrphanPlacements(backend torrents.TorrentBackend, saved []files.Episod
 // download queue starts every stopped incomplete torrent on its own.
 func resumeTorrentsWaitingForStaging(backend torrents.TorrentBackend) {
 	for _, t := range backend.List() {
-		if !t.Completed || t.Status != torrents.StatusStopped || !errors.Is(t.StopError, torrents.ErrIncompleteFolderUnavailable) {
+		if !t.Completed || t.Status != torrents.StatusStopped {
+			continue
+		}
+		staging := errors.Is(t.StopError, torrents.ErrIncompleteFolderUnavailable)
+		root := errors.Is(t.StopError, torrents.ErrDownloadRootUnavailable)
+		if !staging && !root {
 			continue
 		}
 		p, ok := backend.Placement(t.Hash)
-		if !ok || p.IncompleteRoot == "" || !dirExists(p.IncompleteRoot) {
+		if !ok || (staging && (p.IncompleteRoot == "" || !dirExists(p.IncompleteRoot))) || (root && (p.RootPath == "" || !dirExists(p.RootPath))) {
 			continue
 		}
 		if err := backend.Resume(t.Hash); err != nil {
@@ -309,6 +404,31 @@ func resumeTorrentsWaitingForStaging(backend torrents.TorrentBackend) {
 			continue
 		}
 		logger.Logger.Info().Str("hash", t.Hash).Msg("The incomplete downloads folder is back; restarted the torrent")
+	}
+}
+
+// followMovedRoots re-points the placements of a download root the user moved: its folder is gone,
+// and download_roots now names that root at another path (decisions/154). rain adds the torrent
+// back so it re-checks the moved files, as for a moved incomplete folder (decisions/141). A root
+// that is gone and not re-pointed is left alone: its drive may just be unmounted.
+func followMovedRoots(configs *files.Config, backend torrents.TorrentBackend) {
+	for _, p := range backend.Placements() {
+		if p.RootPath == "" || p.RootName == "" || dirExists(p.RootPath) {
+			continue
+		}
+		r, ok := configs.RootNamed(p.RootName)
+		if !ok || r.Path == p.RootPath || !dirExists(r.Path) {
+			continue
+		}
+		to := r.Path
+		if to == configs.CompletedAnimePath {
+			to = "" // the library stays implicit (decisions/136)
+		}
+		if err := backend.MovePlacementRoot(p.Hash, to); err != nil {
+			logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Failed to follow a moved download folder")
+			continue
+		}
+		logger.Logger.Info().Str("hash", p.Hash).Str("path", r.Path).Msg("Followed a moved download folder")
 	}
 }
 
@@ -440,7 +560,7 @@ type RedownloadResult struct {
 func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBackend, saved []files.EpisodeStruct, only []string) (RedownloadResult, error) {
 	var result RedownloadResult
 	var errs []error
-	budget := newDiskBudget(backend.List(), saved)
+	budget := newDiskBudget(backend.List(), saved).withRoots(configs, backend, nil)
 	wanted := make(map[string]bool, len(only))
 	for _, h := range only {
 		wanted[strings.ToLower(h)] = true
@@ -453,7 +573,7 @@ func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBacke
 			continue
 		}
 		missing := missingBytes(backend, p)
-		if err := budget.check(configs, missing); err != nil {
+		if err := budget.checkOn(configs, p.RootOr(configs.CompletedAnimePath), missing); err != nil {
 			logger.Logger.Warn().Err(err).Str("hash", p.Hash).Msg("Redownload missing files: not enough disk space for this torrent")
 			result.SkippedNoSpace++
 			continue
@@ -462,7 +582,7 @@ func RedownloadMissingFiles(configs *files.Config, backend torrents.TorrentBacke
 			errs = append(errs, fmt.Errorf("torrent %s: %w", p.Hash, err))
 			continue
 		}
-		budget.add(missing)
+		budget.addOn(p.RootOr(configs.CompletedAnimePath), missing)
 		result.Redownloaded++
 	}
 	return result, errors.Join(errs...)

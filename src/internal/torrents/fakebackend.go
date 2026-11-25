@@ -397,6 +397,10 @@ func (f *FakeBackend) ForgetPlacement(hash string) error {
 	return f.placementStore().forget(hash)
 }
 
+func (f *FakeBackend) MovePlacementRoot(hash, root string) error {
+	return f.placementStore().setRoot(hash, root)
+}
+
 func (f *FakeBackend) SetPlacementKept(hash string, kept bool) error {
 	f.mu.Lock()
 	err := f.KeepErr
@@ -415,10 +419,11 @@ func (f *FakeBackend) PlaceFiles(hash string, torrentPaths []string) (Placement,
 	if !ok {
 		return Placement{}, fmt.Errorf("fake: no placement for %s", hash)
 	}
-	root := f.libraryRoot()
+	library := f.libraryRoot()
+	root := p.RootOr(library)
 	exists := func(rel string) bool { return pathExists(filepath.Join(root, rel)) }
 	files, err := planFiles(p.PlacementRequest, torrentPaths, exists, func(rel string) bool {
-		owner := store.ownerOf(rel)
+		owner := store.ownerOf(root, library, rel)
 		return owner != "" && owner != hash
 	})
 	if err != nil {

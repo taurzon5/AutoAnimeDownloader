@@ -36,6 +36,7 @@
   import TorrentDeleteDialog from "../components/TorrentDeleteDialog.svelte";
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
+  import AnimeRootPicker from "../components/AnimeRootPicker.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -950,6 +951,8 @@
     statusLabel={listStatusLabel}
     totalEpisodes={anime?.total_episodes ?? 0}
   />
+
+  <AnimeRootPicker {animeId} />
 
   {#if loading}
     <Loading message={m.detail_loading()} />

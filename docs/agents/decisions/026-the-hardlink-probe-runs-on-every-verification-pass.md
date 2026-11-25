@@ -12,7 +12,7 @@ The probe aborts the pass instead of merely warning: downloading episodes that p
 direct mode needs no hardlinks, only a library it can write to. Same position, same abort.
 
 **Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** one result is a pass on purpose: a probe write refused because the
-disk is full. The folder is reachable, `checkBudgetSpace` already refuses the downloads, and
+disk is full. The folder is reachable, `checkRootBudgetSpace` already refuses the downloads, and
 aborting the pass would skip the cleanup that frees space
 ([#48](048-max-episodes-per-anime-never-limited-batches-the.md)). Every other probe failure still
 aborts the pass. The incomplete folder's probe (`files.ProbeIncompleteFolder`) follows the same rule.

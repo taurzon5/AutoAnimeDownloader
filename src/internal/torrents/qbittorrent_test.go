@@ -1144,3 +1144,56 @@ func TestQBit_StagedTorrentWaitsForItsFolderAndRestarts(t *testing.T) {
 		t.Fatalf("calls once the folder is back = %v, want %v (C, paused by the user, stays stopped)", got, want)
 	}
 }
+
+// A torrent in a download root whose drive is gone never runs there: qBittorrent would create the
+// folder on the system disk. A running one is stopped, one qBittorrent fails reports
+// ErrDownloadRootUnavailable (the daemon waits), and once the folder is back it is rechecked and
+// started (decisions/154).
+func TestQBit_TorrentWaitsForItsDownloadRootAndRestarts(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	root := filepath.Join(t.TempDir(), "hdd")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SetPlacement(PlacementRequest{Hash: qbHashA, SeriesDir: "Show", Kind: PlacementEpisode, Season: 1, RootPath: root, RootName: "hdd"}); err != nil {
+		t.Fatal(err)
+	}
+	var failures []error
+	b.SetCallbacks(nil, func(hash string, err error) { failures = append(failures, err) })
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	q.fake.deliverMetadata(qbHashA, qbitFile{Index: 0, Name: "a.mkv", Size: 4})
+	b.poll()
+	if p, _ := b.Placement(qbHashA); !strings.HasPrefix(p.Files[0].Path, root) {
+		t.Fatalf("placed at %s, want under its root %s", p.Files[0].Path, root)
+	}
+
+	hidden := root + ".unmounted"
+	if err := os.Rename(root, hidden); err != nil {
+		t.Fatal(err)
+	}
+	n := len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"stop " + qbHashA}) {
+		t.Fatalf("calls with the root gone = %v, want the download stopped", got)
+	}
+	q.fake.setState(qbHashA, "error")
+	b.poll()
+	if len(failures) != 1 || !errors.Is(failures[0], ErrDownloadRootUnavailable) {
+		t.Fatalf("failures = %v, want ErrDownloadRootUnavailable", failures)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("the missing root must not be created")
+	}
+
+	if err := os.Rename(hidden, root); err != nil {
+		t.Fatal(err)
+	}
+	n = len(q.fake.callLog())
+	b.poll()
+	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"recheck " + qbHashA, "start " + qbHashA}) {
+		t.Fatalf("calls once the root is back = %v, want a recheck and a start", got)
+	}
+}

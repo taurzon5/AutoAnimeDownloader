@@ -558,6 +558,24 @@ func (m *SessionManager) ForgetPlacement(hash string) error {
 	return m.placements.forget(hash)
 }
 
+// MovePlacementRoot needs the session, like MovePlacementStaging: the torrent is added back so rain
+// re-checks the moved files. Without a session only the placement changes.
+func (m *SessionManager) MovePlacementRoot(hash, root string) error {
+	err := func() error {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		if m.session == nil {
+			return m.placements.setRoot(hash, root)
+		}
+		return m.session.MovePlacementRoot(hash, root)
+	}()
+	if err != nil {
+		return err
+	}
+	m.queue.enforce(m)
+	return nil
+}
+
 func (m *SessionManager) SetPlacementKept(hash string, kept bool) error {
 	return m.placements.setKept(hash, kept)
 }

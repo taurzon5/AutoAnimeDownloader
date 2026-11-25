@@ -163,6 +163,29 @@
 
   let activeGroup: GroupId = "library";
 
+  // Download folders (decisions/154): the first add also lists the library, which stops being a
+  // folder of its own once the list has one.
+  function addDownloadRoot() {
+    const roots = [...(config.download_roots ?? [])];
+    if (roots.length === 0 && config.completed_anime_path?.trim()) {
+      roots.push({ name: "library", path: config.completed_anime_path.trim() });
+    }
+    roots.push({ name: "", path: "" });
+    config.download_roots = roots;
+  }
+  function removeDownloadRoot(i: number) {
+    config.download_roots = (config.download_roots ?? []).filter((_, k) => k !== i);
+  }
+  /** Moves a folder up (-1) or down (+1) in the fill order: the first is the highest priority. */
+  function moveDownloadRoot(i: number, by: number) {
+    const roots = [...(config.download_roots ?? [])];
+    const j = i + by;
+    if (j < 0 || j >= roots.length) return;
+    [roots[i], roots[j]] = [roots[j], roots[i]];
+    config.download_roots = roots;
+  }
+  $: rootNames = (config.download_roots ?? []).map((r) => r.name.trim());
+
   /** The state a Toggle's forwarded change event left its switch in. */
   function isOn(e: Event): boolean {
     return (e.target as HTMLInputElement).checked;
@@ -193,6 +216,7 @@
     auto_delete_downloads: false,
     incomplete_files: "part",
     incomplete_path: "",
+    download_roots: [],
     incomplete_min_free_disk_gb: 10,
     episode_numbering: "season",
     disable_seeding: false,
@@ -384,6 +408,14 @@
       message: m.config_val_completed_path,
     },
     {
+      group: "library" as GroupId,
+      // Direct mode only, as on the server; the server also checks the folders exist.
+      ok:
+        config.library_mode !== "direct" ||
+        ((config.download_roots ?? []).every((r) => r.name.trim() && r.path.trim()) && new Set(rootNames).size === rootNames.length),
+      message: m.config_val_download_roots,
+    },
+    {
       group: "downloads" as GroupId,
       ok: config.check_interval > 0,
       message: m.config_val_interval,
@@ -469,6 +501,11 @@
         throw new Error(invalid.message);
       }
 
+      // An empty Keep Free is "use Min Free Disk Space": sent as absent, never as "" (the daemon
+      // reads a number).
+      config.download_roots = (config.download_roots ?? []).map(({ min_free_gb, ...root }) =>
+        typeof min_free_gb === "number" && Number.isFinite(min_free_gb) ? { ...root, min_free_gb } : root,
+      );
       const result = await updateConfig(config);
       baseline = snapshot(config);
       toast.success(result?.restart_required ? m.config_restart_required() : m.config_saved());
@@ -761,6 +798,43 @@
                   bind:value={config.incomplete_path}
                   placeholder="/mnt/nvme/aad-incomplete"
                 />
+              </div>
+
+              <!-- Several download folders, filled in order (decisions/154). The library is a root
+                   only while the list is empty, so the first add lists it too. -->
+              <div class="space-y-2.5 p-4.5" data-testid="download-roots">
+                <p class="text-copy font-semibold text-heading">{$locale && m.config_label_download_roots()}</p>
+                <p class="text-caption text-subtle">{$locale && m.config_hint_download_roots()}</p>
+                {#each config.download_roots ?? [] as _, i}
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-end" data-testid="download-root">
+                    <div class="sm:w-40">
+                      <Input id={`download_root_name_${i}`} label={$locale && m.config_label_root_name()} bind:value={config.download_roots[i].name} />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <Input id={`download_root_path_${i}`} label={$locale && m.config_label_root_path()} bind:value={config.download_roots[i].path} placeholder="/mnt/disk2/anime" />
+                    </div>
+                    <div class="sm:w-32">
+                      <Input
+                        id={`download_root_min_free_${i}`}
+                        type="number"
+                        min="0"
+                        label={$locale && m.config_label_root_min_free()}
+                        bind:value={config.download_roots[i].min_free_gb}
+                        placeholder={String(config.min_free_disk_gb ?? 0)}
+                      />
+                    </div>
+                    <div class="flex gap-1.5">
+                      <Button variant="ghost" disabled={i === 0} on:click={() => moveDownloadRoot(i, -1)}>
+                        <span aria-hidden="true">↑</span><span class="sr-only">{$locale && m.config_btn_root_up()}</span>
+                      </Button>
+                      <Button variant="ghost" disabled={i === (config.download_roots ?? []).length - 1} on:click={() => moveDownloadRoot(i, 1)}>
+                        <span aria-hidden="true">↓</span><span class="sr-only">{$locale && m.config_btn_root_down()}</span>
+                      </Button>
+                      <Button variant="ghost" on:click={() => removeDownloadRoot(i)}>{$locale && m.config_btn_remove_root()}</Button>
+                    </div>
+                  </div>
+                {/each}
+                <Button variant="ghost" on:click={addDownloadRoot}>{$locale && m.config_btn_add_root()}</Button>
               </div>
 
               {#if config.incomplete_path}

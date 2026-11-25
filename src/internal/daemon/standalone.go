@@ -161,7 +161,9 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
 	torrentsNow := backend.List()
-	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes))
+	rootSettings, _ := fm.LoadAllAnimeSettings()
+	disk := newDiskBudget(torrentsNow, savedEpisodes).withRoots(configs, backend, rootSettings)
+	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, disk)
 
 	saveEpisodesToFile(fm, result.newEpisodes)
 
@@ -180,6 +182,7 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 	if err != nil {
 		return 0, err
 	}
+	target.root = animeRoot(fm, mediaID)
 	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs, target)
 	if err != nil || hash == "" {
 		return 0, fmt.Errorf("failed to add torrent to embedded client: %w", err)

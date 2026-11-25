@@ -12,6 +12,9 @@ import (
 // zero, or a body without the field would wipe the saved progress.
 type animeSettingsRequest struct {
 	Progress *int `json:"progress"`
+	// Root is the download root this anime's new torrents go to first (decisions/154): a root's
+	// name, or "" to drop the override. Absent leaves it as it is.
+	Root *string `json:"root"`
 }
 
 func handleAnimeSettings(server *Server) http.HandlerFunc {
@@ -43,6 +46,17 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Progress must be non-negative")
 				return
 			}
+			if req.Root != nil && *req.Root != "" {
+				configs, err := server.FileManager.LoadConfigs()
+				if err != nil {
+					JSONInternalError(w, err)
+					return
+				}
+				if _, ok := configs.RootNamed(*req.Root); !ok {
+					JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "No download folder is named "+strconv.Quote(*req.Root))
+					return
+				}
+			}
 
 			existing, err := server.FileManager.LoadAnimeSettings(id)
 			if err != nil {
@@ -57,6 +71,13 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 			}
 			if req.Progress != nil {
 				settings.Progress = *req.Progress
+			}
+			if req.Root != nil {
+				settings.Root = nil
+				if *req.Root != "" {
+					root := *req.Root
+					settings.Root = &root
+				}
 			}
 
 			if err := server.FileManager.SaveAnimeSettings(id, settings); err != nil {

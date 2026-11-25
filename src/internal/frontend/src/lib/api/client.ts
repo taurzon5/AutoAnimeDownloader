@@ -150,6 +150,8 @@ export interface StatusResponse {
    * frontend would disagree with the daemon.
    */
   disk_low: boolean
+  /** One entry per download folder (decisions/154); with one folder it is the library. */
+  disks?: StatusDisk[]
   /**
    * Optional on purpose: the WebSocket's `status_update` carries only three fields, and Status
    * synthesizes a StatusResponse from it. Also absent on a daemon older than the frontend.
@@ -238,6 +240,8 @@ export interface Config {
   incomplete_files: "part" | "in_place"
   /** Direct mode: existing folder where torrents download before moving into the library ("" = off). */
   incomplete_path: string
+  /** Direct mode's download folders, in fill order; empty = the library alone (decisions/154). */
+  download_roots: DownloadRoot[]
   incomplete_min_free_disk_gb: number
   /** Direct mode + Jellyfin renaming: "season" numbers a split cour across its season (S02E13). */
   episode_numbering: "season" | "entry"
@@ -282,6 +286,23 @@ export interface UpdateConfigResult {
   message: string
   /** The torrent client changed: it is picked at startup. */
   restart_required?: boolean
+}
+
+/** One of direct mode's download folders: a name the user picks and an absolute path. */
+export interface DownloadRoot {
+  name: string
+  path: string
+  /** GiB this folder's drive keeps free before the next folder takes over; absent = min_free_disk_gb. */
+  min_free_gb?: number
+}
+
+/** One download folder's drive in GET /status; low = it can't take a new torrent now. */
+export interface StatusDisk {
+  name: string
+  path: string
+  total: number
+  free: number
+  low: boolean
 }
 
 export interface TorrentClientTestResult {
@@ -555,6 +576,17 @@ export interface AnimeListAccount {
 export interface AnimeSettings {
   /** Manual progress — only read for a standalone anime (a list anime's comes from its list). */
   progress?: number
+  /** The download folder this anime's new torrents go to first; absent = the fill order. */
+  root?: string
+}
+
+export async function getAnimeSettings(animeId: number): Promise<AnimeSettings | null> {
+  return apiRequest<AnimeSettings | null>('GET', `/animes/${animeId}/settings`)
+}
+
+/** Sets the download folder an anime's new torrents go to first; "" drops the override. */
+export async function updateAnimeRoot(animeId: number, root: string): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { root })
 }
 
 export async function getAnimeDetail(animeId: number): Promise<AnimeDetailResponse> {

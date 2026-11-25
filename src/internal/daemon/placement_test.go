@@ -145,13 +145,13 @@ func TestRegisterPlacement_OnlyInDirectMode(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	hardlink := files.DefaultConfig()
 	hardlink.CompletedAnimePath = "/lib"
-	if err := registerPlacement(hardlink, backend, directMagnet, torrentTarget{anime: titledAnime(1, "A", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(hardlink, backend, directMagnet, torrentTarget{anime: titledAnime(1, "A", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := backend.Placement(directHash); ok {
 		t.Fatal("hardlink mode must not register placements")
 	}
-	if err := registerPlacement(directConfig("/lib"), backend, directMagnet, torrentTarget{anime: titledAnime(1, "A", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(directConfig("/lib"), backend, directMagnet, torrentTarget{anime: titledAnime(1, "A", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := backend.Placement(directHash); !ok {
@@ -167,7 +167,7 @@ func TestOrganizeTorrent_DirectModeFinalizesAndRecordsThePlacedFiles(t *testing.
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
 	anime := titledAnime(3, "Show Season 2", anilist.MediaFormatTV)
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: anime, episode: 5}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: anime, episode: 5}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"ep05.mkv"})
@@ -213,7 +213,7 @@ func TestRemoveEpisodesAndLinks_DirectModeDeletesThroughTheTorrent(t *testing.T)
 	configs := directConfig(lib)
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"ep01.mkv"})
@@ -251,7 +251,7 @@ func TestRemoveEpisodesAndLinks_DirectModeDeletesThroughTheTorrent(t *testing.T)
 func TestWithoutKeptForever(t *testing.T) {
 	configs := directConfig("/lib")
 	backend := torrents.NewFakeBackend()
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	const legacyHash = "1111111111111111111111111111111111111111"
@@ -289,7 +289,7 @@ func TestKeepForeverLiftsTheEpisodeLimit(t *testing.T) {
 func placedOnDisk(t *testing.T, backend *torrents.FakeBackend, configs *files.Config, hash string, episode int) string {
 	t.Helper()
 	magnet := "magnet:?xt=urn:btih:" + hash
-	if err := registerPlacement(configs, backend, magnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: episode}); err != nil {
+	if err := registerPlacement(configs, backend, magnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: episode}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(hash, []string{fmt.Sprintf("ep%02d.mkv", episode)})
@@ -384,13 +384,13 @@ func TestRegisterPlacement_PinsTheSeriesFolder(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = "/lib"
 	series := &anilist.Series{Key: 1, Chain: []anilist.ChainEntry{{ID: 1, English: "Old Title"}}}
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(1, "Old Title", anilist.MediaFormatTV), series: series, episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(1, "Old Title", anilist.MediaFormatTV), series: series, episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 
 	const s2 = "5000000000000000000000000000000000000005"
 	edited := &anilist.Series{Key: 1, Chain: []anilist.ChainEntry{{ID: 1, English: "New Title"}, {ID: 2, English: "New Title Season 2"}}}
-	if err := registerPlacement(configs, backend, "magnet:?xt=urn:btih:"+s2, torrentTarget{anime: titledAnime(2, "New Title Season 2", anilist.MediaFormatTV), series: edited, episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, "magnet:?xt=urn:btih:"+s2, torrentTarget{anime: titledAnime(2, "New Title Season 2", anilist.MediaFormatTV), series: edited, episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, _ := backend.Placement(s2)
@@ -404,7 +404,7 @@ func TestRegisterPlacement_PinsTheSeriesFolder(t *testing.T) {
 func TestWithoutKeptForever_SurvivesASwitchBackToHardlinkMode(t *testing.T) {
 	configs := directConfig("/lib")
 	backend := torrents.NewFakeBackend()
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	configs.LibraryMode = files.LibraryModeHardlink
@@ -519,7 +519,7 @@ func TestPlacedFilesMissing_CoversEveryFile(t *testing.T) {
 	configs := directConfig(lib)
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
-	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}); err != nil {
+	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := backend.PlaceFiles(directHash, []string{"R/ep01.mkv", "R/ep01.ass"})

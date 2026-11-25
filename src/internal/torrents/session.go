@@ -162,6 +162,20 @@ func (s *Session) MovePlacementStaging(hash, root string) error {
 	return s.readd(t, func() error { return s.placements.setIncompleteRoot(hash, root) })
 }
 
+// MovePlacementRoot re-points a placement at its download root's new path and, while the torrent
+// is in rain, adds it back so it verifies the files where they are now: a folder copied while the
+// torrent was writing is older than rain's saved progress (decisions/140, decisions/154).
+func (s *Session) MovePlacementRoot(hash, root string) error {
+	if s.placements == nil {
+		return fmt.Errorf("torrent %s is not a direct-mode torrent", hash)
+	}
+	t := s.ses.GetTorrent(hash)
+	if t == nil {
+		return s.placements.setRoot(hash, root)
+	}
+	return s.readd(t, func() error { return s.placements.setRoot(hash, root) })
+}
+
 // readd removes t from rain keeping its data, runs between, and adds the same .torrent back. The
 // fresh torrent has no stored bitfield, so it verifies every file it finds (decisions/140).
 func (s *Session) readd(t *torrent.Torrent, between func() error) error {
