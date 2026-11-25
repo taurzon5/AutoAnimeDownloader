@@ -723,7 +723,7 @@
   "config_val_incomplete_min_free_disk": "O espaço livre mínimo da pasta de downloads incompletos deve ser não-negativo",
   "config_label_incomplete_path": "Pasta de downloads incompletos",
   "config_label_download_roots": "Pastas de download",
-  "config_hint_download_roots": "Os torrents novos vão para a primeira pasta da lista com espaço: cada pasta enche até o disco dela ficar com menos que o seu Manter livre, e aí a próxima assume. Suba uma pasta para dar a ela a maior prioridade. Um anime pode escolher a própria pasta na página dele, e uma temporada nova vai para junto das anteriores. Manter livre vazio usa o Espaço livre mínimo em disco. Lista vazia = só a Pasta de animes completos; cada pasta já precisa existir.",
+  "config_hint_download_roots": "Os torrents novos vão para a primeira pasta da lista com espaço: cada pasta enche até o disco dela ficar com menos que o seu Manter livre, e aí a próxima assume. Suba uma pasta para dar a ela a maior prioridade; a ordem só decide para onde vão os torrents novos, e o que já foi baixado fica na pasta onde está. Um anime pode escolher a própria pasta na página dele, e uma temporada nova vai para junto das anteriores. Manter livre vazio usa o Espaço livre mínimo em disco. Lista vazia = só a Pasta de animes completos; cada pasta já precisa existir.",
   "config_label_root_name": "Nome",
   "config_label_root_path": "Pasta",
   "config_label_root_min_free": "Manter livre (GiB)",

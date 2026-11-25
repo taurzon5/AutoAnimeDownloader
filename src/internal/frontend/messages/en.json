@@ -619,7 +619,7 @@
   "config_val_incomplete_min_free_disk": "Min free space for the incomplete folder must be non-negative",
   "config_label_incomplete_path": "Incomplete Downloads Folder",
   "config_label_download_roots": "Download Folders",
-  "config_hint_download_roots": "New torrents go to the first folder in the list with room: each folder fills until its drive would keep less than its Keep Free, then the next one takes over. Move a folder up to make it the highest priority. An anime can pick its own folder on its page, and a new season goes next to the earlier ones. An empty Keep Free uses Min Free Disk Space. Empty list = the Completed Anime Path alone; each folder must already exist.",
+  "config_hint_download_roots": "New torrents go to the first folder in the list with room: each folder fills until its drive would keep less than its Keep Free, then the next one takes over. Move a folder up to make it the highest priority; the order only decides where new torrents go, and what is already downloaded stays in its folder. An anime can pick its own folder on its page, and a new season goes next to the earlier ones. An empty Keep Free uses Min Free Disk Space. Empty list = the Completed Anime Path alone; each folder must already exist.",
   "config_label_root_name": "Name",
   "config_label_root_path": "Folder",
   "config_label_root_min_free": "Keep Free (GiB)",

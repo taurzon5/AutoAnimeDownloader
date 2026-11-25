@@ -20,8 +20,9 @@
 Pinned by:
 - `TestRootOrder`, `TestDiskBudgetFillsRootsInOrder`,
   `TestDiskBudgetRootsOnOneDriveShareTheSpace`, `TestRegisterPlacementRecordsItsRoot`,
-  `TestFollowMovedRoots`, `TestPlacedOrderKeepsTheTorrentsRoot`, `TestRootsFillUpToTheirOwnLimit`
-  and `TestCheckRootBudgetSpace_TwoVolumes`.
+  `TestFollowMovedRoots`, `TestPlacedOrderKeepsTheTorrentsRoot`,
+  `TestReorderingRootsMovesNothing`, `TestRootsFillUpToTheirOwnLimit` and
+  `TestCheckRootBudgetSpace_TwoVolumes`.
 - `TestPlacedStorage_OpenRefusesAMissingDownloadRoot` and
   `TestQBit_TorrentWaitsForItsDownloadRootAndRestarts` (torrents).
 - `TestUpdateConfig_ValidatesDownloadRoots`, `TestUpdateConfig_DownloadRootsUnderThePathMap`,
@@ -87,6 +88,11 @@ Pinned by:
   `stopError`): a torrent there waits, and is started again once the folder is back, as for the
   incomplete folder ([#141](141-staged-downloads-are-copied-into-the-library-while.md)).
   An unmounted drive would otherwise fill the disk its mount point sits on.
+- **Reordering moves nothing.** The list's order is read only where a new torrent is placed
+  (`rootOrder`). Each placement keeps the root it was given, by path, and nothing moves a torrent
+  between roots except a moved root followed by name (above), which needs its old folder gone: a
+  reorder swaps whole entries, so no name points at another path. A series' new episodes keep going
+  next to it even after its root drops down the list.
 - **A torrent added again stays where it is.** `register` keeps a hash's first placement (#136), so
   a retry or a re-add writes to its old root. `placedOrder` makes the budget count it there.
 - **The screen agrees with the gate.** `DiskLow` and each root's `low` in `GET /status` go through
@@ -107,3 +113,5 @@ qBittorrent's connection test checks the library folder, not each root.
 - Creating a download root that doesn't exist, at save or when a torrent opens a file.
 - Re-pointing a root's placements while its old folder is still there.
 - Budgeting a re-added torrent on another root than its placement's.
+- Moving placed torrents when the order changes, to "rebalance": the order is for new torrents,
+  and re-pointing a torrent at another root makes rain download it again there.

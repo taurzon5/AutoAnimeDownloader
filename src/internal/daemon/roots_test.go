@@ -243,6 +243,75 @@ func TestPlacedOrderKeepsTheTorrentsRoot(t *testing.T) {
 	}
 }
 
+// Reordering download_roots only changes where new torrents go (decisions/154): a torrent already
+// placed keeps its root and its files, a retry of it is counted there, and a new episode of a
+// series still goes next to the series, even when that root is no longer first.
+func TestReorderingRootsMovesNothing(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	ssd, hdd := filepath.Join(lib, "ssd"), filepath.Join(lib, "hdd")
+	for _, dir := range []string{ssd, hdd} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "ssd", Path: ssd}, {Name: "hdd", Path: hdd}}
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	show := torrentTarget{anime: titledAnime(1, "Show", anilist.MediaFormatTV), series: &anilist.Series{Key: 9}, episode: 2}
+	other := "1111111111111111111111111111111111111111"
+	placed := map[string]torrents.PlacementRequest{
+		directHash: {SeriesDir: "Show", SeriesID: seriesID(show), Kind: torrents.PlacementEpisode, Season: 1, RootPath: ssd, RootName: "ssd"},
+		other:      {SeriesDir: "Other", Kind: torrents.PlacementPack, RootPath: hdd, RootName: "hdd"},
+	}
+	onDisk := map[string]string{}
+	for hash, req := range placed {
+		req.Hash = hash
+		if err := backend.SetPlacement(req); err != nil {
+			t.Fatal(err)
+		}
+		p, err := backend.PlaceFiles(hash, []string{req.SeriesDir + " - 01.mkv"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := p.Resolve(lib).Files[0].Path
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		onDisk[hash] = path
+	}
+
+	// hdd moved up: the highest priority now.
+	configs.DownloadRoots = []files.DownloadRoot{configs.DownloadRoots[1], configs.DownloadRoots[0]}
+	followMovedRoots(configs, backend)
+
+	for hash, req := range placed {
+		p, _ := backend.Placement(hash)
+		if p.RootPath != req.RootPath || p.RootName != req.RootName {
+			t.Errorf("%s: placement moved to %s (%q), want %s (%q)", req.SeriesDir, p.RootPath, p.RootName, req.RootPath, req.RootName)
+		}
+		if got := p.Resolve(lib).Files[0].Path; got != onDisk[hash] {
+			t.Errorf("%s: file resolves to %s, want %s", req.SeriesDir, got, onDisk[hash])
+		}
+		if _, err := os.Stat(onDisk[hash]); err != nil {
+			t.Errorf("%s: file gone after the reorder: %v", req.SeriesDir, err)
+		}
+	}
+	if got := placedOrder(configs, backend, directMagnet, rootOrder(configs, backend, show, "")); len(got) != 1 || got[0].Path != ssd {
+		t.Errorf("a retry of a placed torrent: %+v, want its own root ssd", got)
+	}
+	if got := rootNames(rootOrder(configs, backend, show, "")); !equalStrings(got, []string{"ssd", "hdd"}) {
+		t.Errorf("a new episode of a series on ssd: %v, want ssd first, next to the series", got)
+	}
+	fresh := torrentTarget{anime: titledAnime(2, "Fresh", anilist.MediaFormatTV), series: &anilist.Series{Key: 20}, episode: 1}
+	if got := rootNames(rootOrder(configs, backend, fresh, "")); !equalStrings(got, []string{"hdd", "ssd"}) {
+		t.Errorf("a new anime: %v, want the new order", got)
+	}
+}
+
 // DiskLow counts what a torrent still writes on its own root: a full root next to one with space
 // is not low (decisions/154, decisions/093).
 func TestDiskLowCountsPerRoot(t *testing.T) {
