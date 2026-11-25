@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/shoko"
 )
@@ -38,6 +39,32 @@ type ShokoStatus struct {
 	Watching   bool       `json:"watching"`
 	LastEvent  *time.Time `json:"last_event,omitempty"`
 	WatchError string     `json:"watch_error,omitempty"`
+	// The library as a Shoko drop folder (shoko_drop_folder, decisions/152): the last request asking
+	// Shoko to import new files and why it failed, and Shoko's import folders as Shoko sees them (read
+	// with the sync), so the user can point the library at the drop source.
+	LastImportRequest  *time.Time          `json:"last_import_request,omitempty"`
+	ImportError        string              `json:"import_error,omitempty"`
+	ImportFolders      []ShokoImportFolder `json:"import_folders,omitempty"`
+	ImportFoldersError string              `json:"import_folders_error,omitempty"`
+}
+
+// ShokoImportFolder is one of Shoko's import folders: DropSource when Shoko imports from it (its
+// drop type "Source" or "Both"), Watched when its folder watcher is on.
+type ShokoImportFolder struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	DropType   string `json:"drop_type"`
+	DropSource bool   `json:"drop_source"`
+	Watched    bool   `json:"watched"`
+}
+
+// setImport fills the drop folder's part of the status (decisions/152).
+func (st *ShokoStatus) setImport(imp daemon.ImportStatus) {
+	st.LastImportRequest, st.ImportError, st.ImportFoldersError = timeOrNil(imp.LastRequest), imp.Error, imp.FoldersError
+	for _, f := range imp.Folders {
+		st.ImportFolders = append(st.ImportFolders, ShokoImportFolder{ID: f.ID, Name: f.Name, Path: f.Path, DropType: f.DropType, DropSource: f.IsDropSource(), Watched: f.Watched})
+	}
 }
 
 // timeOrNil leaves a zero time out of the JSON: omitempty doesn't omit a zero time.Time.
@@ -117,6 +144,7 @@ func handleShokoStatus(server *Server) http.HandlerFunc {
 			}
 			w := svc.WatchState()
 			out.Watching, out.LastEvent, out.WatchError = w.Connected, timeOrNil(w.LastEvent), w.Error
+			out.setImport(svc.ImportState())
 		}
 		JSONSuccess(w, http.StatusOK, out)
 	}

@@ -1,8 +1,9 @@
 # Shoko integration: what you already have counts, and only its upgrades are looked for
 
 **Date:** 2026-11-23
-**Status:** step 1 (read-only matching and the sync) implemented on branch `feat/shoko-sync`
-(decisions 146 and 147); steps 2–3 wait for the release filters. The
+**Status:** step 1 (read-only matching and the sync), Download Full Megapacks (§3) and the
+library as a drop folder (§7) implemented on branch `feat/shoko-sync` (decisions 146 to 149 and
+152); steps 2–3 wait for the release filters. The
 API below was measured against a real Shoko Server v5.3.3 on 2026-11-24 (see "Measured against
 v5.3.3"); the user's decisions are recorded at the end
 **Origin:** "design a spec that takes shoko anime entries and then compares to the series we are
@@ -131,7 +132,14 @@ Shoko**:
 - it is never deleted by the app's own rules: watched pruning, `delete_statuses`, the episode limit
   and the blacklist leave Shoko's files alone. The one delete the app asks Shoko for is a file an
   upgrade replaced (§1, "Delete the replaced Shoko file");
-- the episode table shows it as **In Shoko**, with the file's name.
+- the episode table shows it as **In Shoko**, with the file's name;
+- a pack chosen for the other episodes still brings its file, as a torrent downloads whole. That
+  copy is the app's, not Shoko's: with **Download Full Megapacks** on (on by default, for the whole
+  list), the app records it like the rest of the pack, and its own rules apply to it
+  (decisions/149). Off, or for an anime set to **Remove them** on its page, it is removed: skipped
+  with qBittorrent (priority 0), deleted once downloaded otherwise, and a rain pack then stops
+  seeding (decisions/153). With the library as a Shoko drop folder (§7), Shoko imports what stays,
+  and removing only skips: a file written there is Shoko's.
 
 ### 4. Is it good? — the same filters
 
@@ -184,17 +192,63 @@ a file linked or deleted refreshes that series within seconds. Measured on v5.3.
   followed series again, which sees it; otherwise a Full resync does. The daily refresh stays
   newer-only, as decided.
 
+### 7. The library as a Shoko drop folder
+
+Asked on 2026-11-24: "when downloads are finished, send a scan new files request, if the option
+(to be created) downloading in shoko drop folder is on", and, for a pack, "wait for shoko to add
+it and track on our side too". Then: the drop folder "should act as a strong suggestion rather
+than option", Shoko's folders offered with the user's final say, and seeding not disabled.
+Direct mode only.
+
+- **A suggestion, then a setting.** The Shoko group lists Shoko's import folders as Shoko sees
+  them (`GET /api/v3/ImportFolder`, read with each sync) and, while the library isn't a Shoko
+  folder, suggests a drop source: its path filled in, editable (in Docker the app may see the same
+  folder elsewhere), and **Use This Folder** sets `completed_anime_path` to it in direct mode, with
+  `shoko_drop_folder` on. The user's Save is the final say. The Library group points to it too.
+- **One folder for now.** Direct mode writes to one root. Several download folders are the
+  direct-library-mode spec's PR 2, built on `feat/download-roots` (the user's call). Once the two
+  branches meet, `shoko_drop_folder` becomes a switch **per download folder**, "Shoko imports from
+  here": the user downloads some things outside Shoko (2026-11-24), so a folder without it behaves
+  like any download folder (no import request, no hand-off, the app's own deletion rules), and an
+  anime's own folder can send it outside Shoko. The folders editor offers Shoko's import folders to
+  add, path editable, with the switch on.
+- **Shoko never sees a half-written file.** Shoko imports only its `Import.VideoExtensions` (MKV,
+  MP4…), so a `.part` name is invisible to it. The setting needs `incomplete_files: "part"` or an
+  `incomplete_path` (staged files reach the library only finished); `"in_place"` without one is
+  refused. With qBittorrent, only `"part"`: qBittorrent moves a staged torrent in itself, under
+  the final names.
+- **When a download finishes**, organize records the paths as usual, then:
+  1. **Seeding goes on.** Shoko imports a file where it lies unless its renamer moves it
+     (`Plugins.Renamer.MoveOnImport`, off on a fresh v5.3.3).
+  2. **The records are marked handed to Shoko**, and the app keeps them: the episode counts as
+     downloaded, and the anime page says **Waiting for Shoko** until Shoko has a file for it, then
+     **In Shoko**.
+  3. **The app asks Shoko to import new files** (`GET /api/v3/Action/ImportNewFiles`: 200 with the
+     key, 401 without, measured on v5.3.3), so it doesn't wait for Shoko's folder watcher, which
+     may be off (`WatchForNewFiles`). Completions close together share one request. A failed
+     request is logged, shown in the Shoko group, and sent again with the next pass.
+- **Shoko moved the files** (the user's "stop seeding those"): a handed-off torrent whose files are
+  gone while Shoko has one of its episodes leaves the client, the rest kept, its records released.
+  Without Shoko having any of them, a missing file is the user's deletion, as for any torrent.
+- **A pack** brings every episode in it; what happens to the ones Shoko already had is §3's switch.
+  A second file of an episode is Shoko's to keep or drop
+  (its `Import.AutomaticallyDeleteDuplicatesOnImport`).
+- **Deleting** a handed-off episode in the app removes its record, never its file: the file in
+  the drop folder is Shoko's, and the app never deletes Shoko's files (§3). A torrent still
+  seeding leaves the client with its files kept.
+
 ## What this does not do (for now)
 
-- **Write to Shoko**, beyond signing in and deleting a file an upgrade replaced: no import calls,
-  no rename, no marking as watched. A file put in a drop folder is imported by Shoko on its own.
+- **Write to Shoko**, beyond signing in, asking it to import new files from its drop folder (§7)
+  and deleting a file an upgrade replaced: no rename, no marking as watched.
 - **Use Shoko for metadata.** AniList stays the source of truth; Shoko only says what you already
   have and how good it is.
 
 ## Delivery
 
 1. **Read-only matching** — settings, the client, MAL-ID matching with offsets, "In Shoko" in the
-   episode table, no download for owned episodes, never deleting them.
+   episode table, no download for owned episodes, never deleting them. Then the full megapacks
+   switch (§3) and the library as a drop folder (§7), on the same branch.
 2. **Quality verdict** — Shoko files through the filters, match / upgrade possible, the Shoko group
    on the anime page.
 3. **Upgrades** — owned episodes in the upgrade look-ups, waiting upgrades on the Replaced page, the
@@ -211,6 +265,10 @@ a file linked or deleted refreshes that series within seconds. Measured on v5.3.
 | 4 | The old Shoko file after an upgrade | **Deleted after the waiting period**, through Shoko's API (admin user needed) |
 | 5 | Judging Shoko files and looking for upgrades | **A setting** to turn it on or off (proposed: on, since the request was to look for upgrades) |
 | 6 | Refreshing Shoko's list | **A setting, 1 day by default**; after one full sync, only **newer files and series** are read |
+| 7 | A pack that brings episodes already in Shoko (2026-11-24) | **Download Full Megapacks** for the whole list, on by default, and **per anime**: download them (the app records them) or remove them: **skip if not downloaded, otherwise delete** |
+| 8 | Downloading for Shoko (2026-11-24) | **A strong suggestion**, not a bare switch: the app offers Shoko's drop folders, the user has the final say; when a download finishes, the app asks Shoko to **import new files** |
+| 9 | Seeding once Shoko has the file (2026-11-24) | **Goes on**; a torrent whose files Shoko moved **stops seeding** (it leaves the client, files kept) |
+| 10 | Several download folders, each with its own Shoko switch (2026-11-24) | Reading Shoko's import folders here; **several folders on their own branch** (the direct-library-mode spec's PR 2) |
 
 ## Proposed defaults — say if you disagree
 
@@ -225,3 +283,9 @@ sync").
   library.
 - A **full resync also runs every 30 days** on its own, so files deleted in Shoko stop counting as
   In Shoko without waiting for you to press the button.
+- **Download Full Megapacks starts on**: in direct mode it costs no slot while
+  `auto_delete_downloads` is off (the episode limit is lifted) and adds no file that isn't on disk
+  anyway.
+- **Deleting a handed-off episode** removes only the app's record; the file stays Shoko's (§7).
+- **Removing a pack's episodes in Shoko needs the anime's episode total**: without it no file is
+  mapped to an episode, and nothing is removed (decisions/153).

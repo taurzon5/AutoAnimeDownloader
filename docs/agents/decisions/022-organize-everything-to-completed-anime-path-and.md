@@ -16,3 +16,9 @@ asymmetry still applies — a pack's files go only when the whole torrent goes.
 **Don't "fix" by:** trying to delete individual episode files out of a batch torrent's library folder (raw filenames aren't reliably episode-addressable), or removing a batch torrent while siblings still reference it (breaks the survivors' library links and stops seeding for episodes still wanted).
 
 **Amendment (see #31):** `save_path` no longer exists as a config field; "everything organizes to `completed_anime_path`" now also covers the download/seeding directory itself, which lives at `<completed_anime_path>/.torrents` (`Config.DownloadPath`).
+
+**Amendment (see [#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)):** one exception deletes some files of a pack while the torrent
+stays: an anime set to remove the episodes it already has in Shoko. Those files are addressed by
+`nyaa.FilesInPackWindow` with the record's offset, season and episode total, not by raw names, and
+nothing is deleted without an episode total. qBittorrent keeps seeding the rest; a rain pack is
+released first.

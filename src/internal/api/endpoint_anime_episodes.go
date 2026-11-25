@@ -45,6 +45,9 @@ type AnimeEpisodeInfo struct {
 	// counts as in Shoko, since downloading it again would make a duplicate (the Shoko spec's
 	// proposed default); the page warns instead.
 	ShokoFileUnavailable bool `json:"shoko_file_unavailable,omitempty"`
+	// HandedToShoko: the app downloaded this episode into Shoko's drop folder, for Shoko to import.
+	// Without InShoko the page says "Waiting for Shoko" (decisions/152).
+	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
 }
 
 // AnimeShokoInfo is how the anime lines up with Shoko, from the last pass: "matched" (with the
@@ -56,6 +59,13 @@ type AnimeShokoInfo struct {
 	SeriesName string `json:"series_name,omitempty"`
 	Offset     int    `json:"offset,omitempty"`
 	ByHand     bool   `json:"by_hand,omitempty"`
+	// PackEpisodes is the anime's own pack setting ("download" or "remove"; absent = the global
+	// shoko_full_packs, which KeepPackEpisodesDefault carries), and KeepPackEpisodes what applies:
+	// whether a pack chosen for the missing episodes keeps the episodes in Shoko it brings
+	// (decisions/149) or removes them (decisions/153).
+	PackEpisodes            string `json:"pack_episodes,omitempty"`
+	KeepPackEpisodes        bool   `json:"keep_pack_episodes"`
+	KeepPackEpisodesDefault bool   `json:"keep_pack_episodes_default"`
 }
 
 type AnimeDetailResponse struct {
@@ -169,6 +179,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 			hash            string
 			batchStart      int
 			batchEnd        int
+			handedToShoko   bool
 		}
 		downloadedByEpisode := make(map[int]downloadedInfo)
 		for _, ep := range allEpisodes {
@@ -179,6 +190,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 					hash:            ep.EpisodeHash,
 					batchStart:      ep.BatchStart,
 					batchEnd:        ep.BatchEnd,
+					handedToShoko:   ep.HandedToShoko,
 				}
 			}
 		}
@@ -207,6 +219,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 				info.EpisodeHash = downloaded.hash
 				info.BatchStart = downloaded.batchStart
 				info.BatchEnd = downloaded.batchEnd
+				info.HandedToShoko = downloaded.handedToShoko
 			}
 
 			if f, ok := shokoStatus.Owned[node.Episode]; ok && inShoko {
@@ -240,6 +253,13 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 		if inShoko {
 			m := shokoStatus.Match
 			response.Shoko = &AnimeShokoInfo{Status: string(m.Status), SeriesID: m.SeriesID, SeriesName: m.SeriesName, Offset: m.Offset, ByHand: m.ByHand}
+			var settings files.AnimeSettings
+			if s, err := server.FileManager.LoadAnimeSettings(id); err == nil && s != nil {
+				settings = *s
+			}
+			response.Shoko.PackEpisodes = settings.ShokoPackEpisodes
+			response.Shoko.KeepPackEpisodes = config.KeepsShokoPackEpisodes(settings)
+			response.Shoko.KeepPackEpisodesDefault = config.ShokoFullPacks
 		}
 
 		JSONSuccess(w, http.StatusOK, response)

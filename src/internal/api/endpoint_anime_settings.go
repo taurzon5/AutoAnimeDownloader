@@ -16,7 +16,14 @@ type animeSettingsRequest struct {
 	// {"none": true} for "not in Shoko", or {"auto": true} to go back to the match worked out from
 	// the MAL id. Absent leaves it as it is.
 	Shoko *ShokoMatchRequest `json:"shoko"`
+	// ShokoPackEpisodes overrides shoko_full_packs for this anime: "download" keeps the episodes in
+	// Shoko a pack brings, "remove" removes them (skipped, or deleted once downloaded), "default"
+	// follows the global setting again (decisions/153). Absent leaves it as it is.
+	ShokoPackEpisodes *string `json:"shoko_pack_episodes"`
 }
+
+// ShokoPackDefault is the value of shoko_pack_episodes that clears the anime's own setting.
+const ShokoPackDefault = "default"
 
 // ShokoMatchRequest is the "shoko" part of PUT /animes/{id}/settings: exactly one of a series
 // (with its offset), None or Auto.
@@ -69,6 +76,11 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 				}
 			}
 
+			if p := req.ShokoPackEpisodes; p != nil && *p != files.ShokoPackDownload && *p != files.ShokoPackRemove && *p != ShokoPackDefault {
+				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "shoko_pack_episodes takes one of: download, remove, default")
+				return
+			}
+
 			existing, err := server.FileManager.LoadAnimeSettings(id)
 			if err != nil {
 				logger.Logger.Error().Err(err).Int("anime_id", id).Msg("Failed to load anime settings")
@@ -91,6 +103,12 @@ func handleAnimeSettings(server *Server) http.HandlerFunc {
 				settings.Shoko = &files.ShokoMatch{None: true}
 			default:
 				settings.Shoko = &files.ShokoMatch{SeriesID: s.SeriesID, Offset: s.Offset}
+			}
+			if p := req.ShokoPackEpisodes; p != nil {
+				settings.ShokoPackEpisodes = *p
+				if *p == ShokoPackDefault {
+					settings.ShokoPackEpisodes = ""
+				}
 			}
 
 			if err := server.FileManager.SaveAnimeSettings(id, settings); err != nil {

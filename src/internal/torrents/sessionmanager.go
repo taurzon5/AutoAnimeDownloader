@@ -562,6 +562,12 @@ func (m *SessionManager) SetPlacementKept(hash string, kept bool) error {
 	return m.placements.setKept(hash, kept)
 }
 
+// SkipPlacedFiles only records the mark: rain downloads every file of a torrent (decisions/153).
+func (m *SessionManager) SkipPlacedFiles(hash string, torrentPaths []string) error {
+	_, err := m.placements.setSkipped(hash, torrentPaths)
+	return err
+}
+
 func (m *SessionManager) Announce(hash string) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

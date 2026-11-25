@@ -185,6 +185,12 @@ type TorrentBackend interface {
 	// before the metadata deletes them. A failure must abort the removal. The daemon never clears
 	// it (decisions/137). No placement is not an error.
 	SetPlacementKept(hash string, kept bool) error
+	// SkipPlacedFiles marks those files of a placed torrent (by their path in the torrent) as not
+	// wanted. qBittorrent then never downloads them (priority 0) and keeps seeding the rest, even
+	// once the daemon deletes one already written (measured on 5.x). rain can't skip a file: it
+	// only records the mark, and the daemon releases the torrent once it deleted them
+	// (decisions/153).
+	SkipPlacedFiles(hash string, torrentPaths []string) error
 	// Announce forces a re-announce to all trackers and DHT. It does not override the
 	// trackers' minimum interval, so calling it in a loop achieves nothing.
 	Announce(hash string) error

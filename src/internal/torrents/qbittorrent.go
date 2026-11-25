@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1443,7 +1444,8 @@ func (b *QBitBackend) FinalizePlacement(hash string) error {
 		}
 		if !qbitWaitFor(b.moveWait, func() bool {
 			for i, pf := range p.Files {
-				if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
+				// A skipped file is never written (priority 0, decisions/153).
+				if !pf.Skipped && !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
 					return false
 				}
 			}
@@ -1474,7 +1476,7 @@ func (b *QBitBackend) finalizeStaged(client *qbitClient, hash string, p Placemen
 	}
 	if !qbitWaitFor(b.moveWait, func() bool {
 		for i, pf := range p.Files {
-			if !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
+			if !pf.Skipped && !hasSize(filepath.Join(root, pf.Path), sizes[i]) {
 				return false
 			}
 		}
@@ -1508,6 +1510,33 @@ func (b *QBitBackend) ForgetPlacement(hash string) error {
 
 func (b *QBitBackend) SetPlacementKept(hash string, kept bool) error {
 	return b.placements.setKept(hash, kept)
+}
+
+// SkipPlacedFiles marks the files and sets them to priority 0: a placed torrent's file i is
+// qBittorrent's file index i (applyPlacement plans them in index order). qBittorrent never writes
+// a priority-0 file, and a deleted one doesn't stop it seeding the rest, even after a recheck
+// (measured on 5.x, decisions/153).
+func (b *QBitBackend) SkipPlacedFiles(hash string, torrentPaths []string) error {
+	p, err := b.placements.setSkipped(hash, torrentPaths)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for i, f := range p.Files {
+		if f.Skipped {
+			ids = append(ids, strconv.Itoa(i))
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	client, _, _, _, err := b.connection()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := qbitContext()
+	defer cancel()
+	return client.filePrio(ctx, hash, ids, 0)
 }
 
 func (b *QBitBackend) Announce(hash string) error {

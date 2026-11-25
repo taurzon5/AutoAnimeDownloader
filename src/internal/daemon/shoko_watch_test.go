@@ -320,6 +320,55 @@ func TestRunAnimeDebugLeavesOutTheEpisodesInShoko(t *testing.T) {
 	}
 }
 
+// The debug run mirrors the pass's pack step too (decisions/058, /149): with tracking on, the
+// episodes in Shoko a chosen pack covers get the pack as their pick, and stay not searched.
+func TestRunAnimeDebugMirrorsTheTrackedPackEpisodes(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(req.Body)
+		answer := debugAnilistJSON("FINISHED", 12, 1, 12)
+		if strings.Contains(string(body), "ShokoMALFacts") {
+			answer = `{"data":{"Page":{"media":[{"id":21,"idMal":52991,"episodes":12}]}}}`
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(answer)), Header: make(http.Header)}, nil
+	}))
+	const packName = "[Sub] My Anime 01-12 [1080p]"
+	t.Cleanup(nyaa.MockNyaaHttpGet(func(url string) (*http.Response, error) {
+		page := `<!doctype html><html><body><table class="torrent-list"><tbody><tr>
+		  <td></td>
+		  <td><a title="` + packName + `">` + packName + `</a></td>
+		  <td><a></a><a href="magnet:?xt=urn:btih:pack">magnet</a></td>
+		  <td>8.2 GiB</td>
+		  <td>2020-01-01 10:00</td>
+		  <td>100</td>
+		</tr></tbody></table></body></html>`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(page)), Header: make(http.Header)}, nil
+	}))
+	l := newLiveShoko(t) // episodes 1 and 2 in Shoko
+	svc := NewShokoService(t.TempDir())
+	for _, track := range []bool{true, false} {
+		cfg := &files.Config{MaxEpisodesPerAnime: 12, EpisodeRetryLimit: 3, AnilistUsernames: []string{"user"},
+			ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24, ShokoFullPacks: track}
+		eps := 12
+		svc.ForPass(context.Background(), cfg, []anilist.MediaList{{Media: anilist.Media{Id: 21, Episodes: &eps}}}, nil, time.Now())
+
+		summary, err := RunAnimeDebug(21, cfg, &debugMockFileManager{}, svc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ep := range summary.Episodes {
+			inShoko := ep.Episode <= 2
+			wantPick := packName
+			if inShoko && !track {
+				wantPick = ""
+			}
+			if ep.InShoko != inShoko || ep.WouldSearch == inShoko || ep.Picked != wantPick {
+				t.Errorf("track=%v, episode %d: in_shoko %v, would_search %v, picked %q; want in_shoko %v, searched only when not, picked %q",
+					track, ep.Episode, ep.InShoko, ep.WouldSearch, ep.Picked, inShoko, wantPick)
+			}
+		}
+	}
+}
+
 // An anime followed since the last sync (added to a list, or as a standalone) has its series read
 // on the next pass, without waiting a day for the refresh.
 func TestShokoReadsANewlyFollowedSeriesAtOnce(t *testing.T) {

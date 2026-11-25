@@ -177,6 +177,7 @@ func TestHandleAnimeEpisodes_BatchRange(t *testing.T) {
 		{
 			EpisodeNumber: 1, AnimeID: 21, EpisodeHash: "pack", EpisodeName: "Test Anime 1-11",
 			IsBatch: true, BatchStart: 1, BatchEnd: 11, DownloadDate: time.Now(),
+			TorrentReleased: true, HandedToShoko: true,
 		},
 		{
 			EpisodeNumber: 2, AnimeID: 21, EpisodeHash: "solo", EpisodeName: "Test Anime - Episode 2",
@@ -207,6 +208,13 @@ func TestHandleAnimeEpisodes_BatchRange(t *testing.T) {
 	ep2 := episodes[1].(map[string]interface{})
 	if _, present := ep2["batch_start"]; present {
 		t.Errorf("batch_start must be omitted for a standalone episode, got %v", ep2["batch_start"])
+	}
+	// A record released into Shoko's drop folder says so, for "Waiting for Shoko" (decisions/152).
+	if ep1["handed_to_shoko"] != true || ep1["is_downloaded"] != true {
+		t.Errorf("a handed-off record must stay downloaded and say handed_to_shoko, got %v", ep1)
+	}
+	if _, present := ep2["handed_to_shoko"]; present {
+		t.Errorf("handed_to_shoko must be omitted for a record still seeding, got %v", ep2["handed_to_shoko"])
 	}
 }
 

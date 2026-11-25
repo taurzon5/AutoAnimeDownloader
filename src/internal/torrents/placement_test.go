@@ -545,6 +545,29 @@ func TestPlacedStorage_OpenRefusesToRecreateADeletedFinishedFile(t *testing.T) {
 	}
 }
 
+// A skipped file the daemon deleted (decisions/153) is no user deletion: a re-added finished pack
+// writes it again instead of stopping on it, and the daemon deletes it again.
+func TestPlacedStorage_OpenRecreatesASkippedFile(t *testing.T) {
+	_, ps, lib := newPlaced(t, false, "ep.mkv")
+	file := filepath.Join(lib, "Show", "Season 01", "ep.mkv")
+	p, _ := ps.store.get(testHash)
+	p.Completed = true
+	if err := ps.store.update(p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ps.store.setSkipped(testHash, []string{"ep.mkv"}); err != nil {
+		t.Fatal(err)
+	}
+	f, _, err := ps.Open("ep.mkv", 4)
+	if err != nil {
+		t.Fatalf("a skipped file must be written again, got %v", err)
+	}
+	_ = f.Close()
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("the file must exist again: %v", err)
+	}
+}
+
 // A staging placement writes under <IncompleteRoot>/<hash>/, by the final name, never .part, and
 // never creates the root itself (decisions/141).
 func TestPlacedStorage_StagingWritesInTheIncompleteFolder(t *testing.T) {

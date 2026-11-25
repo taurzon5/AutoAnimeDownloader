@@ -49,6 +49,8 @@ type FakeBackend struct {
 	placements *placementStore
 	// redownloadCalls records every RedownloadPlacement(hash).
 	redownloadCalls []string
+	// SkippedCalls lists the hashes SkipPlacedFiles was called for.
+	SkippedCalls []string
 	// KeepErr, if set, is returned by SetPlacementKept (a failed save of the placements).
 	KeepErr error
 	// LibraryRoot is what placements resolve against. Empty = the parent of the last Ensure path,
@@ -395,6 +397,15 @@ func (f *FakeBackend) MovePlacementStaging(hash, root string) error {
 
 func (f *FakeBackend) ForgetPlacement(hash string) error {
 	return f.placementStore().forget(hash)
+}
+
+// SkipPlacedFiles records the mark, as both real backends do; SkippedCalls lists the hashes.
+func (f *FakeBackend) SkipPlacedFiles(hash string, torrentPaths []string) error {
+	f.mu.Lock()
+	f.SkippedCalls = append(f.SkippedCalls, hash)
+	f.mu.Unlock()
+	_, err := f.placementStore().setSkipped(hash, torrentPaths)
+	return err
 }
 
 func (f *FakeBackend) SetPlacementKept(hash string, kept bool) error {

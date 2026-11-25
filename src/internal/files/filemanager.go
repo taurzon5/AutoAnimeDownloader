@@ -76,6 +76,11 @@ type EpisodeStruct struct {
 	// and downloads the episode again. Stays true if disable_seeding is turned off later — the
 	// file is still in the library.
 	TorrentReleased bool `json:"torrent_released,omitempty"`
+	// HandedToShoko marks a record whose files went to Shoko: the library is a Shoko drop folder
+	// (shoko_drop_folder), so Shoko imports (and may move) them while the torrent keeps seeding; the
+	// app never deletes them. The episode stays downloaded for the app; the anime page says "Waiting
+	// for Shoko" until Shoko has a file for it (decisions/152).
+	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
 	// AnimeSeason is the season number extracted from the AniList titles at download/adopt
 	// time. Organize does not call AniList; a restart pack uses the Sxx markers on the
 	// files themselves, and this field is the matching entry identity.
@@ -256,6 +261,16 @@ type Config struct {
 	// due: the newer-only refresh never sees a file deleted or unlinked in Shoko, and the live
 	// events miss an unlink (decisions/148). 0 = never on its own (the Full resync button stays).
 	ShokoFullResyncDays int `json:"shoko_full_resync_days"`
+	// ShokoFullPacks ("Download Full Megapacks"): a pack chosen for the missing episodes downloads
+	// whole, so it also brings the episodes the user has in Shoko. On (the default), the app records
+	// every episode of the pack as its own (decisions/149); off, it removes those unneeded episodes:
+	// skipped with qBittorrent, deleted once downloaded otherwise (decisions/153). An anime
+	// overrides it (AnimeSettings.ShokoPackEpisodes, Config.KeepsShokoPackEpisodes).
+	ShokoFullPacks bool `json:"shoko_full_packs"`
+	// ShokoDropFolder: the library (completed_anime_path) is a folder Shoko imports from. Direct mode
+	// only. Organize marks each torrent's records handed to Shoko, the torrent keeps seeding, and the
+	// app asks Shoko to import new files (decisions/152).
+	ShokoDropFolder bool `json:"shoko_drop_folder"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -362,6 +377,26 @@ func (c *Config) LiftsEpisodeLimit() bool {
 	return c.IsDirectMode() && !c.AutoDeleteDownloads
 }
 
+// KeepsShokoPackEpisodes reports whether a pack chosen for this anime keeps the episodes the user
+// has in Shoko (records them, decisions/149) rather than removing them (decisions/153): the
+// anime's own setting, else shoko_full_packs.
+func (c *Config) KeepsShokoPackEpisodes(s AnimeSettings) bool {
+	switch s.ShokoPackEpisodes {
+	case ShokoPackDownload:
+		return true
+	case ShokoPackRemove:
+		return false
+	}
+	return c.ShokoFullPacks
+}
+
+// HandsOffToShoko reports whether finished downloads go to Shoko: Shoko on, the library a Shoko
+// drop folder, direct mode. Organize then marks the records handed to Shoko, the torrent keeps
+// seeding, and the job queue asks Shoko to import new files (decisions/152).
+func (c *Config) HandsOffToShoko() bool {
+	return c.ShokoEnabled && c.ShokoDropFolder && c.IsDirectMode()
+}
+
 // StagingPath is where new torrents download before moving into the library: IncompletePath in
 // direct mode, "" otherwise (hardlink mode never stages, decisions/141).
 func (c *Config) StagingPath() string {
@@ -405,7 +440,17 @@ type AnimeSettings struct {
 	// Shoko is a Shoko match set by hand on the anime page, in place of the one worked out from the
 	// MAL id (decisions/146); nil = automatic.
 	Shoko *ShokoMatch `json:"shoko,omitempty"`
+	// ShokoPackEpisodes overrides shoko_full_packs for this anime: ShokoPackDownload keeps the
+	// episodes in Shoko a pack brings, ShokoPackRemove removes them; empty = the global setting
+	// (decisions/153).
+	ShokoPackEpisodes string `json:"shoko_pack_episodes,omitempty"`
 }
+
+// The values of AnimeSettings.ShokoPackEpisodes.
+const (
+	ShokoPackDownload = "download"
+	ShokoPackRemove   = "remove"
+)
 
 // ShokoMatch is a Shoko match set by hand: the series and the offset (the anime's episode N is the
 // series' episode N+Offset), or None for "this anime is not in Shoko".
@@ -491,6 +536,7 @@ func DefaultConfig() *Config {
 		ShokoRefreshHours:                  24,
 		ShokoWatch:                         true,
 		ShokoFullResyncDays:                30,
+		ShokoFullPacks:                     true,
 	}
 }
 

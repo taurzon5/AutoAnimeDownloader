@@ -21,7 +21,7 @@ func twoPacksWEBThenBD() []nyaa.TorrentResult {
 func TestProcessAnimeEpisodes_FinishedPrefersBDPack(t *testing.T) {
 	anime := animeWithEpisodes(12, anilist.MediaStatusFinished, true, "")
 	searcher := searcherFor(twoPacksWEBThenBD(), nil, nil, nil)
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 	if len(result.newEpisodes) == 0 {
 		t.Fatal("expected a pack download")
 	}
@@ -33,7 +33,7 @@ func TestProcessAnimeEpisodes_FinishedPrefersBDPack(t *testing.T) {
 func TestProcessAnimeEpisodes_ReleasingKeepsScrapeOrder(t *testing.T) {
 	anime := animeWithEpisodes(12, anilist.MediaStatusReleasing, true, "")
 	searcher := searcherFor(twoPacksWEBThenBD(), nil, nil, nil)
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 	if len(result.newEpisodes) == 0 {
 		t.Fatal("expected a pack download")
 	}
@@ -51,7 +51,7 @@ func TestRankSeriesResults_SingleEpisodeFallback(t *testing.T) {
 	}
 	anime := animeWithEpisodes(1, anilist.MediaStatusFinished, true, "")
 	searcher := searcherFor(nil, nil, singles, nil)
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 	if len(result.newEpisodes) != 1 {
 		t.Fatalf("want 1 episode, got %d", len(result.newEpisodes))
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/api"
+	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/torrents"
 
 	"github.com/urfave/cli/v2"
@@ -80,11 +81,14 @@ func animesCommand() *cli.Command {
 			{
 				Name:      "settings",
 				Usage:     "Show or update anime settings",
-				ArgsUsage: "<id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto]",
+				ArgsUsage: "<id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default]",
 				Description: "With one argument, shows the anime's settings. progress sets a standalone anime's\n" +
 					"progress. shoko sets its Shoko match by hand: a Shoko series id (and the offset, its\n" +
 					"episode N being the series' N+offset), none for \"not in Shoko\", or auto to go back to\n" +
-					"the match worked out from the MAL id.",
+					"the match worked out from the MAL id. shoko-packs sets what a pack chosen for the missing\n" +
+					"episodes does with the episodes it brings that are already in Shoko: download keeps them,\n" +
+					"remove skips them (qBittorrent) or deletes them once downloaded, default follows the\n" +
+					"config's shoko_full_packs.",
 				Action: handleAnimesSettings,
 			},
 			{
@@ -372,8 +376,21 @@ func handleAnimesSettings(c *cli.Context) error {
 			return err
 		}
 		return printMessage("Shoko match updated; the next check pass applies it", "Shoko match updated")
+	case c.NArg() == 3 && c.Args().Get(1) == "shoko-packs":
+		id, err := parsePositiveInt(c.Args().Get(0), "id")
+		if err != nil {
+			return err
+		}
+		value := c.Args().Get(2)
+		if value != files.ShokoPackDownload && value != files.ShokoPackRemove && value != api.ShokoPackDefault {
+			return fmt.Errorf("shoko-packs takes download, remove or default, not %q", value)
+		}
+		if err := mapClientError(getClient().UpdateAnimeShokoPacks(id, value)); err != nil {
+			return err
+		}
+		return printMessage("Pack setting updated; the next check applies it", "Pack setting updated")
 	default:
-		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto]")
+		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default]")
 	}
 }
 

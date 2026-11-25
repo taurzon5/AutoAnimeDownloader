@@ -297,3 +297,35 @@ func TestStoreFullDue(t *testing.T) {
 		}
 	}
 }
+
+// ImportNewFiles is a GET with an empty answer (measured on v5.3.3), and a refusal is an error the
+// Shoko group can show; ImportFolders reads the drop type (decisions/152).
+func TestImportNewFilesAndImportFolders(t *testing.T) {
+	f := newFakeShoko(t)
+	c, _ := NewClient(f.server.URL, "key-1")
+	ctx := context.Background()
+	if err := c.ImportNewFiles(ctx); err != nil || f.imports != 1 {
+		t.Fatalf("ImportNewFiles = %v, %d requests; want nil and 1", err, f.imports)
+	}
+	f.denyImport = true
+	if err := c.ImportNewFiles(ctx); err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("a refused import = %v, want an error naming HTTP 403", err)
+	}
+	stale, _ := NewClient(f.server.URL, "stale")
+	if err := stale.ImportNewFiles(ctx); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("a wrong key = %v, want ErrUnauthorized", err)
+	}
+	folders, err := c.ImportFolders(ctx)
+	if err != nil || len(folders) != 2 {
+		t.Fatalf("ImportFolders = %+v, %v", folders, err)
+	}
+	if !folders[0].IsDropSource() || folders[0].Path != "/import/" || folders[0].Watched {
+		t.Errorf("folder 1 = %+v, want an unwatched drop source at /import/", folders[0])
+	}
+	if folders[1].IsDropSource() || !folders[1].Watched {
+		t.Errorf("folder 2 = %+v, want a watched destination", folders[1])
+	}
+	if !(ImportFolder{DropType: "Both"}).IsDropSource() || (ImportFolder{DropType: "None"}).IsDropSource() {
+		t.Error("Both is a drop source, None is not")
+	}
+}

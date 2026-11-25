@@ -30,6 +30,10 @@ type fakeShoko struct {
 	requests []string
 	// ignoreType answers credits whatever the type filter, as a server that drops it would.
 	ignoreType bool
+	// imports counts the "import new files" requests; denyImport answers them 403, as Shoko does
+	// for a key without the rights.
+	imports    int
+	denyImport bool
 }
 
 type fakeSeries struct {
@@ -178,6 +182,19 @@ func (f *fakeShoko) handle(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v3/")
 	parts := strings.Split(path, "/")
 	switch {
+	case path == "Action/ImportNewFiles" && r.Method == http.MethodGet:
+		if f.denyImport {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		f.imports++
+		w.Header().Set("Content-Length", "0")
+		w.WriteHeader(http.StatusOK)
+	case path == "ImportFolder" && r.Method == http.MethodGet:
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{"ID": 1, "Name": "drop", "Path": "/import/", "DropFolderType": "Source", "WatchForNewFiles": false},
+			{"ID": 2, "Name": "library", "Path": "/anime/", "DropFolderType": "Destination", "WatchForNewFiles": true},
+		})
 	case path == "Series":
 		var list []map[string]any
 		for _, s := range f.series {

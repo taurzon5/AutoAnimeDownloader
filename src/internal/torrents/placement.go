@@ -101,6 +101,11 @@ type PlacedFile struct {
 	// Path is the final path, relative to the library root ("Frieren/Season 01/ep05.mkv") as
 	// stored, absolute once the placement went through Resolve.
 	Path string `json:"path"`
+	// Skipped marks a file the daemon doesn't want: an episode of a pack the user already has in
+	// Shoko, for an anime set to remove them (SkipPlacedFiles). qBittorrent never downloads it
+	// (priority 0); one already written is deleted by the daemon. A skipped file missing from disk
+	// is no loss, and it is no library path (decisions/153).
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // Placement is a PlacementRequest plus the frozen file map.
@@ -138,7 +143,8 @@ func (p Placement) Resolve(root string) Placement {
 	out.SeriesDir = filepath.Join(root, p.SeriesDir)
 	out.Files = make([]PlacedFile, len(p.Files))
 	for i, f := range p.Files {
-		out.Files[i] = PlacedFile{Torrent: f.Torrent, Path: filepath.Join(root, f.Path)}
+		f.Path = filepath.Join(root, f.Path)
+		out.Files[i] = f
 	}
 	return out
 }
@@ -184,7 +190,7 @@ func (p Placement) StagingPath(f PlacedFile) string {
 func (p Placement) VideoPaths() []string {
 	var out []string
 	for _, f := range p.Files {
-		if nyaa.IsVideoFile(f.Path) {
+		if !f.Skipped && nyaa.IsVideoFile(f.Path) {
 			out = append(out, f.Path)
 		}
 	}
@@ -326,6 +332,41 @@ func (s *placementStore) setKept(hash string, kept bool) error {
 		return err
 	}
 	return nil
+}
+
+// setSkipped marks the files whose torrent paths are given Skipped (see PlacedFile.Skipped) and
+// returns the placement as saved. A hash with no placement, or one whose files aren't planned yet
+// (no metadata), is an error: there is nothing to mark.
+func (s *placementStore) setSkipped(hash string, torrentPaths []string) (Placement, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok || len(p.Files) == 0 {
+		return Placement{}, fmt.Errorf("torrent %s has no planned files to skip", hash)
+	}
+	want := make(map[string]bool, len(torrentPaths))
+	for _, t := range torrentPaths {
+		want[t] = true
+	}
+	files := append([]PlacedFile(nil), p.Files...)
+	changed := false
+	for i := range files {
+		if want[files[i].Torrent] && !files[i].Skipped {
+			files[i].Skipped = true
+			changed = true
+		}
+	}
+	if !changed {
+		return p, nil
+	}
+	old := p
+	p.Files = files
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		s.byID[hash] = old
+		return Placement{}, err
+	}
+	return p, nil
 }
 
 // reopen clears Completed: the placement's missing files may be written again (the bulk
@@ -588,7 +629,11 @@ func (ps *placedStorage) Open(name string, size int64) (storage.File, bool, erro
 			continue
 		}
 		if p.Completed {
-			if !pathExists(f.Path) {
+			// A skipped file is one the daemon deleted itself (decisions/153), not one the user
+			// deleted (decisions/139): a re-added torrent writes it again, and the daemon deletes it
+			// again once the torrent finished. Refusing it would stop the torrent on a file
+			// PlacedFilesMissing doesn't count, and the failure handler would drop it.
+			if !pathExists(f.Path) && !f.Skipped {
 				return nil, false, fmt.Errorf("%w: %s", ErrPlacedFileMissing, f.Path)
 			}
 			return openFile(f.Path, size, ps.perm)
@@ -775,7 +820,8 @@ func finalizeFiles(p Placement) error {
 	for _, f := range p.Files {
 		part := f.Path + partSuffix
 		if !pathExists(part) {
-			if pathExists(f.Path) {
+			// A skipped file may never have been written, or already be deleted (decisions/153).
+			if f.Skipped || pathExists(f.Path) {
 				continue
 			}
 			return fmt.Errorf("neither %s nor its .part file exists", f.Path)

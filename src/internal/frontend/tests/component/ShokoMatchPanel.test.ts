@@ -4,7 +4,7 @@ import { tick } from 'svelte'
 import ShokoMatchPanel from '../../src/components/ShokoMatchPanel.svelte'
 import * as client from '../../src/lib/api/client.js'
 
-vi.mock('../../src/lib/api/client.js', () => ({ updateAnimeShoko: vi.fn() }))
+vi.mock('../../src/lib/api/client.js', () => ({ updateAnimeShoko: vi.fn(), updateAnimeShokoPacks: vi.fn() }))
 
 const flush = async () => {
   for (let i = 0; i < 4; i++) {
@@ -14,7 +14,10 @@ const flush = async () => {
 }
 
 describe('ShokoMatchPanel', () => {
-  beforeEach(() => vi.mocked(client.updateAnimeShoko).mockReset().mockResolvedValue(undefined))
+  beforeEach(() => {
+    vi.mocked(client.updateAnimeShoko).mockReset().mockResolvedValue(undefined)
+    vi.mocked(client.updateAnimeShokoPacks).mockReset().mockResolvedValue(undefined)
+  })
 
   it('asks to confirm a partial match and saves the series and offset', async () => {
     render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'partial', series_id: 3, series_name: 'Two cours' } } })
@@ -54,5 +57,26 @@ describe('ShokoMatchPanel', () => {
   it('shows nothing without Shoko', () => {
     render(ShokoMatchPanel, { props: { animeId: 42, shoko: undefined } })
     expect(screen.queryByTestId('shoko-panel')).toBeNull()
+  })
+
+  it("chooses per anime what a pack does with the episodes already in Shoko", async () => {
+    render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'matched', series_id: 1, keep_pack_episodes: true, keep_pack_episodes_default: true } } })
+    const group = screen.getByTestId('shoko-packs')
+    const def = screen.getByRole('radio', { name: 'Default (Download them)' })
+    expect(def.getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Remove them' }))
+    await flush()
+    expect(client.updateAnimeShokoPacks).toHaveBeenCalledWith(42, 'remove')
+    expect(screen.getByRole('radio', { name: 'Remove them' }).getAttribute('aria-checked')).toBe('true')
+    expect(group.textContent).toContain('Download them')
+  })
+
+  it('shows the global default as Remove when the switch is off, and the anime\'s own choice', async () => {
+    render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'matched', series_id: 1, pack_episodes: 'download', keep_pack_episodes: true, keep_pack_episodes_default: false } } })
+    expect(screen.getByRole('radio', { name: 'Default (Remove them)' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('radio', { name: 'Download them' }).getAttribute('aria-checked')).toBe('true')
+    await fireEvent.click(screen.getByRole('radio', { name: 'Default (Remove them)' }))
+    await flush()
+    expect(client.updateAnimeShokoPacks).toHaveBeenCalledWith(42, 'default')
   })
 })

@@ -279,6 +279,10 @@ export interface Config {
   shoko_watch?: boolean
   /** Read all of Shoko again every N days; 0 = never on its own. */
   shoko_full_resync_days?: number
+  /** Download Full Megapacks: a pack chosen for the missing episodes keeps every episode it brings, the ones in Shoko too; off, those are removed. Each anime can override it. */
+  shoko_full_packs?: boolean
+  /** The library is a Shoko drop folder: Shoko is asked to import each finished download, which keeps seeding. */
+  shoko_drop_folder?: boolean
 }
 
 export interface PathMapping {
@@ -533,6 +537,8 @@ export interface AnimeEpisodeInfo {
   shoko_file?: string
   /** Shoko can't reach that file right now (an unplugged drive); it still counts as in Shoko. */
   shoko_file_unavailable?: boolean
+  /** Downloaded into Shoko's drop folder, for Shoko to import; without in_shoko, "Waiting for Shoko". */
+  handed_to_shoko?: boolean
 }
 
 export interface AnimeDetailResponse {
@@ -560,6 +566,12 @@ export interface AnimeShokoInfo {
   series_name?: string
   offset?: number
   by_hand?: boolean
+  /** The anime's own pack choice; absent = the global shoko_full_packs. */
+  pack_episodes?: ShokoPackEpisodes
+  /** What applies: true keeps the episodes in Shoko a pack brings, false removes them. */
+  keep_pack_episodes?: boolean
+  /** The global shoko_full_packs, what "default" follows. */
+  keep_pack_episodes_default?: boolean
 }
 
 /** The Shoko match set by hand: exactly one of a series (with an offset), none, or auto. */
@@ -583,6 +595,30 @@ export interface ShokoStatus {
   watching?: boolean
   last_event?: string
   watch_error?: string
+  /** The drop folder: the last request asking Shoko to import new files, and why it failed. */
+  last_import_request?: string
+  import_error?: string
+  /** Shoko's import folders as Shoko sees them (inside its container, in Docker). */
+  import_folders?: ShokoImportFolder[]
+  import_folders_error?: string
+}
+
+/** One of Shoko's import folders; drop_source when Shoko imports from it ("Source" or "Both"). */
+export interface ShokoImportFolder {
+  id: number
+  name: string
+  path: string
+  drop_type: string
+  drop_source: boolean
+  watched: boolean
+}
+
+/** An anime's pack choice: keep ("download") or remove the episodes in Shoko a pack brings. */
+export type ShokoPackEpisodes = 'download' | 'remove'
+
+/** Sets what a pack chosen for the anime does with the episodes in Shoko it brings; "default" follows the global setting. */
+export async function updateAnimeShokoPacks(animeId: number, value: ShokoPackEpisodes | 'default'): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { shoko_pack_episodes: value })
 }
 
 /** Signs the daemon in to Shoko; only the API key Shoko returns is saved, never the password. */

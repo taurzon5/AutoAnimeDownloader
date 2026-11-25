@@ -166,7 +166,7 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	if all, err := fm.LoadAllAnimeSettings(); err == nil {
 		animeSettings = all[mediaID]
 	}
-	owned := inShoko.OwnedFor(configs, *anime, animeSettings)
+	owned := shokoOwned{episodes: inShoko.OwnedFor(configs, *anime, animeSettings), trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings)}
 	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes), owned)
 
 	saveEpisodesToFile(fm, result.newEpisodes)

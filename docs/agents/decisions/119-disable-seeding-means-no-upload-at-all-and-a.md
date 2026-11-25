@@ -60,3 +60,8 @@ as above (`releaseTorrent` keeps its files in direct mode). Nothing smaller work
 carries the download's own requests, and 1 B/s stalled a download before it had its file list.
 qBittorrent also saves 0 upload slots as unlimited. The no-unchoke, no-allowed-fast rule above
 stays rain's.
+
+**Amendment (see [#152](152-a-library-that-is-a-shoko-drop-folder-releases.md) and [#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)):** `releaseTorrent` has two more callers, neither
+tied to `disable_seeding` nor to `reconcileLibrary`: `releaseMovedByShoko`, for a torrent handed
+to Shoko whose files Shoko moved (`toShoko` keeps the records marked `HandedToShoko`), and
+`dropPackFiles`, for a rain pack whose episodes already in Shoko are deleted.

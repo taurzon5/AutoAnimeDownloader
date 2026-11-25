@@ -98,7 +98,7 @@ func TestWillBatch_FinishedWithinCeilingIgnoresPerAnimeLimit(t *testing.T) {
 	anime := animeWithEpisodes(26, anilist.MediaStatusFinished, true, "")
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "batch", MagnetLink: fakeMagnet(9001)}}, nil, nil, nil)
 
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 26 {
 		t.Errorf("want 26 episodes recorded by the batch, got %d", len(result.newEpisodes))
@@ -116,7 +116,7 @@ func TestEligibility_ReleasingLongSeriesUsesPartialPack(t *testing.T) {
 	anime := animeWithEpisodes(1100, anilist.MediaStatusReleasing, false, "")
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "[X] Anime 001-100 [1080p]", MagnetLink: fakeMagnet(1)}}, nil, nil, nil)
 
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 100 {
 		t.Fatalf("want the pack's 100 episodes recorded, got %d", len(result.newEpisodes))
@@ -134,7 +134,7 @@ func TestEligibility_UnknownTotalIsEligible(t *testing.T) {
 	anime := animeWithEpisodes(26, anilist.MediaStatusFinished, false, "")
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "[X] Anime 01-26 [1080p]", MagnetLink: fakeMagnet(1)}}, nil, nil, nil)
 
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 26 {
 		t.Errorf("an unknown count must be able to use a pack, got %d", len(result.newEpisodes))
@@ -146,7 +146,7 @@ func TestEligibility_SinglePendingEpisodeDoesNotUsePack(t *testing.T) {
 	anime := animeWithEpisodes(1, anilist.MediaStatusFinished, true, "")
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "[X] Anime 01-26 [1080p]", MagnetLink: fakeMagnet(1)}}, multipleFor(1, 0), nil, nil)
 
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 1 || result.newEpisodes[0].IsBatch {
 		t.Errorf("want 1 loose episode, got %+v", result.newEpisodes)
@@ -166,7 +166,7 @@ func TestEligibility_SizeCeilingEmptiesPacksAndLimitApplies(t *testing.T) {
 		nil, nil,
 	)
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 12 {
 		t.Errorf("want 12 individual episodes, got %d", len(result.newEpisodes))
@@ -190,7 +190,7 @@ func TestSingleEpisodeSearch_ReceivesSeriesLength(t *testing.T) {
 		return nil
 	}
 
-	processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if got != 1100 {
 		t.Errorf("want 1100 as the series length in the episode search, got %d", got)
@@ -202,7 +202,7 @@ func TestWillBatch_MovieUnaffected(t *testing.T) {
 	anime := animeWithEpisodes(1, anilist.MediaStatusFinished, true, anilist.MediaFormatMovie)
 	searcher := searcherFor(nil, nil, nil, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(9004)}})
 
-	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 1 || !result.newEpisodes[0].IsBatch {
 		t.Errorf("a movie must download as a single torrent, got %+v", result.newEpisodes)
@@ -218,7 +218,7 @@ func TestEpisodeSizeCeiling_DoesNotAffectBatchChoice(t *testing.T) {
 	const gib = int64(1024 * 1024 * 1024)
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "pack", MagnetLink: fakeMagnet(9003), Size: 40 * gib}}, nil, nil, nil)
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 26 {
 		t.Errorf("the episode ceiling must not filter the batch, got %d episodes", len(result.newEpisodes))
@@ -473,7 +473,7 @@ func TestProcessAnimeEpisodes_DiskFullDoesNotNotifyDownloadFailed(t *testing.T) 
 	anime := animeWithEpisodes(1, anilist.MediaStatusReleasing, false, "")
 	searcher := searcherFor(nil, nil, []nyaa.TorrentResult{{MagnetLink: fakeMagnet(1)}}, nil)
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 	if len(result.newEpisodes) != 0 {
 		t.Errorf("nothing must be recorded with a full disk, got %d", len(result.newEpisodes))
 	}
@@ -574,7 +574,7 @@ func TestProcessAnimeEpisodes_Issues(t *testing.T) {
 		}
 		searcher := searcherFor(nil, nil, big, nil)
 
-		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, nil)
+		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, shokoOwned{})
 
 		if len(result.issues) != 1 {
 			t.Fatalf("want 1 issue, got %d (%+v)", len(result.issues), result.issues)
@@ -601,7 +601,7 @@ func TestProcessAnimeEpisodes_Issues(t *testing.T) {
 		}
 		searcher := searcherFor(nil, nil, nil, nil)
 
-		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, nil)
+		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, shokoOwned{})
 
 		if len(result.issues) != 1 || result.issues[0].Code != IssueNoTorrentFound {
 			t.Fatalf("want a no_torrent_found, got %+v", result.issues)
@@ -623,7 +623,7 @@ func TestProcessAnimeEpisodes_Issues(t *testing.T) {
 		}
 		searcher := searcherFor(nil, singles, nil, nil)
 
-		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, nil)
+		result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, nil, searcher, nil, shokoOwned{})
 
 		var limit *Issue
 		for i := range result.issues {
@@ -656,7 +656,7 @@ func TestPackThatDoesNotFitFallsBackToLooseEpisodes(t *testing.T) {
 	configs := limitsConfig()
 	configs.CompletedAnimePath = t.TempDir()
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	if len(result.newEpisodes) != 12 {
 		t.Fatalf("want the 12 loose episodes, got %d", len(result.newEpisodes))
@@ -688,7 +688,7 @@ func TestPackThatLosesReserveFallsBackToSingles(t *testing.T) {
 	}
 	defer func() { afterPacksThatFit = nil }()
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, disk, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, disk, shokoOwned{})
 
 	if len(result.newEpisodes) != 12 {
 		t.Fatalf("want the 12 singles after the pack lost the budget, got %d (issues=%+v)", len(result.newEpisodes), result.issues)
@@ -718,7 +718,7 @@ func TestPackThatLosesReserveFallsBackToNextPack(t *testing.T) {
 	}
 	defer func() { afterPacksThatFit = nil }()
 
-	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, disk, nil)
+	result := processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, disk, shokoOwned{})
 
 	if len(result.newEpisodes) != 12 {
 		t.Fatalf("want the 12 episodes of the smaller pack, got %d (issues=%+v)", len(result.newEpisodes), result.issues)
@@ -756,7 +756,7 @@ func TestEmptyEpisodeSearchWaitsAndStopsTheLaterOnes(t *testing.T) {
 	}
 	pass := func() animeProcessResult {
 		searched = nil
-		return processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+		return processAnimeEpisodes(limitsConfig(), torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 	}
 
 	result := pass()
@@ -796,7 +796,7 @@ func TestWillBatch_NotifiesNewEpisodeOncePerPack(t *testing.T) {
 	anime := animeWithEpisodes(26, anilist.MediaStatusFinished, true, "")
 	searcher := searcherFor([]nyaa.TorrentResult{{Name: "batch", MagnetLink: fakeMagnet(9001)}}, nil, nil, nil)
 
-	processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+	processAnimeEpisodes(configs, torrents.NewFakeBackend(), anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 	body := spy.waitForCall(t)
 	time.Sleep(100 * time.Millisecond)
@@ -847,7 +847,7 @@ func TestWillBatch_PackFailureWaitsForTheLoop(t *testing.T) {
 			searcher := searcherFor([]nyaa.TorrentResult{{Name: "batch", MagnetLink: fakeMagnet(9002)}}, nil, nil, nil)
 			backend := &flakyBackend{FakeBackend: torrents.NewFakeBackend(), fails: tt.fails}
 
-			processAnimeEpisodes(configs, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, nil)
+			processAnimeEpisodes(configs, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, searcher, nil, shokoOwned{})
 
 			if tt.want == 1 {
 				body := spy.waitForCall(t)

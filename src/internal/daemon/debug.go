@@ -118,7 +118,8 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 	season, part := ExtractAnimeSeasonPart(anime.Media.Title, synonyms)
 
 	// Same flow as production, without the second selection: debug has no saved records to account for
-	// (it already states it treats every episode as not downloaded).
+	// (it already states it treats every episode as not downloaded). The one re-selection is the
+	// Shoko episodes a chosen pack brings, when the anime keeps them (decisions/149).
 	var magnetsForEpisodes map[int]resolvedMagnets
 	if isAnimeMovie(anime) {
 		episodesToDownload, magnetsForEpisodes = resolveMovie(configs, anime, animeTitle, episodesToDownload, searcher)
@@ -131,6 +132,13 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 			// entry whose pack is numbered by season or by series (packAxis).
 			axis := newPackAxis(anime, part, resolveSeriesIndex([]int{animeId}, nil), mediaTotalEpisodes(anime))
 			if batches := chooseCoveringPacks(configs, nil, windowPacks, packDetail(searcher, mediaTotalEpisodes(anime)), axis, firstPending, windowEnd(configs, firstPending)); batches.len() > 0 {
+				// The episodes in Shoko the pack brings join it when the anime keeps them, through
+				// the same checks as the pass's second selection (decisions/149); their row keeps
+				// would_search false.
+				if configs.KeepsShokoPackEpisodes(animeSettings) {
+					walk := withShokoEpisodesInPacks(episodesToDownload, episodes, owned, axis, batches)
+					episodesToDownload = selectEpisodes(configs, len(episodes)+1, anime, walk, nil, nil, nil, nil, nil).toDownload
+				}
 				episodesToDownload, magnetsForEpisodes = assignBatches(animeTitle, axis, episodesToDownload, batches)
 			}
 		}

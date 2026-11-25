@@ -66,3 +66,9 @@ row.
 the re-download); dropping or re-adding the stopped torrent in `HandleTorrentFailure`; raising the
 warning anywhere louder (a report problem, a banner, `download_failed`, `episode_stuck`); deleting
 the episode's records automatically; running "Redownload missing files" on its own.
+
+**Amendment (see [#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)):** a file marked `Skipped` (an episode of a pack removed because the
+user has it in Shoko) is deleted by the daemon, not the user. `PlacedFilesMissing` doesn't count it,
+and `Open` writes it again when a finished pack is added again, instead of stopping on it: the
+daemon deletes it again once the torrent finished. Otherwise the failure handler, which reads
+`PlacedFilesMissing`, would drop and re-add the torrent.

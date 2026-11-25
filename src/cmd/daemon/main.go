@@ -314,6 +314,10 @@ func main() {
 		},
 	)
 	jobQueue.SetOrchestration(torrentManager, librarian)
+	// Created before the queue starts: a download handed to Shoko's drop folder asks Shoko to
+	// import it (decisions/152), from the first organize on.
+	shokoService := daemon.NewShokoService(dataDir)
+	jobQueue.SetShoko(shokoService)
 	jobQueue.Start()
 	// Converts the saved AnimeIDs from entry id to media id (decisions/043). Runs at boot, not
 	// only in the verification pass, because the API starts serving /animes before the first tick —
@@ -354,7 +358,6 @@ func main() {
 	ensureStartupSession(torrentManager, fileManager)
 
 	state := daemon.NewState()
-	shokoService := daemon.NewShokoService(dataDir)
 	state.SetShoko(shokoService)
 	// Shoko's changes as they happen, while Shoko and shoko_watch are on (decisions/148).
 	go shokoService.Watch(context.Background(), fileManager.LoadConfigs)

@@ -274,6 +274,13 @@ func (c *Client) UpdateAnimeShoko(id int, match ShokoMatchRequest) error {
 	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)
 }
 
+// UpdateAnimeShokoPacks sets whether a pack chosen for the anime keeps the episodes in Shoko it
+// brings: files.ShokoPackDownload, files.ShokoPackRemove, or ShokoPackDefault for the global setting.
+func (c *Client) UpdateAnimeShokoPacks(id int, value string) error {
+	body := map[string]string{"shoko_pack_episodes": value}
+	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)
+}
+
 // ShokoLogin signs the daemon in to Shoko; only the API key Shoko returns is saved.
 func (c *Client) ShokoLogin(url, username, password string) error {
 	return c.sendSlow(http.MethodPost, "/api/v1/shoko/login", shokoLoginRequest{URL: url, Username: username, Password: password}, nil)

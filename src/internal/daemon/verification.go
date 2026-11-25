@@ -257,6 +257,12 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	// What the user already has in Shoko, by anime: never searched nor downloaded (the Shoko spec).
 	animeSettings, _ := fileManager.LoadAllAnimeSettings()
 	inShoko := state.Shoko().ForPass(ctx, configs, animes, animeSettings, time.Now())
+	// A torrent handed to Shoko whose files Shoko moved can't seed them: it leaves the client, and
+	// its records stay (decisions/152).
+	releaseMovedByShoko(backend, fileManager, savedEpisodes, inShoko)
+	// The anime set to remove the episodes in Shoko a pack brings: their files are skipped, or
+	// deleted once downloaded (decisions/153).
+	dropShokoPackFiles(configs, backend, fileManager, savedEpisodes, inShoko, animeSettings)
 
 	// Absolute series axis of every anime in the pass AND of every anime_id with an episode on disk:
 	// it's what lets the pass recognize that a pack downloaded under another cour already covers the
@@ -314,7 +320,7 @@ outer:
 			default:
 			}
 
-			resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, defaultNyaaSearcher(), disk, inShoko[a.Media.Id])
+			resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, defaultNyaaSearcher(), disk, shokoOwned{episodes: inShoko[a.Media.Id], trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings[a.Media.Id])})
 		}(anime)
 	}
 
@@ -432,6 +438,7 @@ func clearLibraryPathsAfterRootSwap(fileManager FileManagerInterface, completedP
 		// A released episode lived only in the library that is gone; without clearing the flag the
 		// pass would keep treating it as present and never fetch it again.
 		ep.TorrentReleased = false
+		ep.HandedToShoko = false
 		stale = append(stale, ep)
 	}
 	if len(stale) == 0 {

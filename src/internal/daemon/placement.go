@@ -411,6 +411,10 @@ func PlacedFilesMissing(p torrents.Placement) bool {
 		return false
 	}
 	for _, f := range p.Files {
+		// A skipped file is one the daemon doesn't want: gone is no loss (decisions/153).
+		if f.Skipped {
+			continue
+		}
 		if _, err := statFile(p.DiskPath(f)); err != nil {
 			return true
 		}
@@ -480,6 +484,9 @@ func missingBytes(backend torrents.TorrentBackend, p torrents.Placement) int64 {
 	}
 	var total int64
 	for _, f := range p.Files {
+		if f.Skipped {
+			continue
+		}
 		if _, err := statFile(f.Path); err != nil {
 			total += sizes[f.Torrent]
 		}

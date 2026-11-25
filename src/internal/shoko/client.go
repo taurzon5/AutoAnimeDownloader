@@ -116,10 +116,54 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, out any
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("shoko %s answered HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(data)))
 	}
+	if out == nil {
+		// An action: Shoko answers 200 with an empty body (ImportNewFiles, measured on v5.3.3).
+		return nil
+	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("unreadable shoko %s answer: %w", path, err)
 	}
 	return nil
+}
+
+// ImportFolder is one of Shoko's import folders as Shoko sees it: in Docker, Path is inside
+// Shoko's container. A drop source ("Source" or "Both") is a folder Shoko imports from and may move
+// files out of; Watched is Shoko's folder watcher (WatchForNewFiles).
+type ImportFolder struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	DropType string `json:"drop_type"`
+	Watched  bool   `json:"watched"`
+}
+
+// IsDropSource reports whether Shoko imports from this folder as a drop source.
+func (f ImportFolder) IsDropSource() bool { return f.DropType == "Source" || f.DropType == "Both" }
+
+// ImportFolders lists Shoko's import folders (GET /api/v3/ImportFolder).
+func (c *Client) ImportFolders(ctx context.Context) ([]ImportFolder, error) {
+	var raw []struct {
+		ID               int    `json:"ID"`
+		Name             string `json:"Name"`
+		Path             string `json:"Path"`
+		DropFolderType   string `json:"DropFolderType"`
+		WatchForNewFiles bool   `json:"WatchForNewFiles"`
+	}
+	if err := c.get(ctx, "ImportFolder", nil, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]ImportFolder, 0, len(raw))
+	for _, f := range raw {
+		out = append(out, ImportFolder{ID: f.ID, Name: f.Name, Path: f.Path, DropType: f.DropFolderType, Watched: f.WatchForNewFiles})
+	}
+	return out, nil
+}
+
+// ImportNewFiles asks Shoko to import the new files in its import folders now, instead of waiting
+// for its folder watcher, which may be off (GET /api/v3/Action/ImportNewFiles: 200 and an empty
+// body with a key, 401 without, measured on v5.3.3). Shoko queues the work and answers at once.
+func (c *Client) ImportNewFiles(ctx context.Context) error {
+	return c.get(ctx, "Action/ImportNewFiles", nil, nil)
 }
 
 // Series is a Shoko series (one AniDB anime) as the app keeps it.

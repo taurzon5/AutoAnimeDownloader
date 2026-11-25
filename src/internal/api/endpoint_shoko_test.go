@@ -14,6 +14,7 @@ import (
 	"AutoAnimeDownloader/src/internal/anilist"
 	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/files"
+	"AutoAnimeDownloader/src/internal/shoko"
 )
 
 func shokoAuthServer(t *testing.T) *httptest.Server {
@@ -162,6 +163,18 @@ func TestUpdateConfig_ValidatesShoko(t *testing.T) {
 		"on without a sign-in":  func(c *files.Config) { c.ShokoEnabled, c.ShokoAPIKey = true, "" },
 		"on without an address": func(c *files.Config) { c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "", "k" },
 		"negative full resync":  func(c *files.Config) { c.ShokoFullResyncDays = -1 },
+		"drop folder in hardlink mode": func(c *files.Config) {
+			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
+		},
+		"drop folder writing in place": func(c *files.Config) {
+			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
+			c.LibraryMode, c.IncompleteFiles = files.LibraryModeDirect, files.IncompleteFilesInPlace
+		},
+		"drop folder staged by qBittorrent": func(c *files.Config) {
+			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
+			c.LibraryMode, c.IncompletePath = files.LibraryModeDirect, t.TempDir()
+			c.TorrentClient, c.QBittorrentURL = files.TorrentClientQBittorrent, "http://qbit:8080"
+		},
 	} {
 		c := files.DefaultConfig()
 		c.CompletedAnimePath = t.TempDir()
@@ -177,6 +190,21 @@ func TestUpdateConfig_ValidatesShoko(t *testing.T) {
 	server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
 		t.Fatalf("a signed-in Shoko = %d %s", w.Code, w.Body.String())
+	}
+	// The drop folder in direct mode: with .part names, or writing in place into a staging folder,
+	// Shoko never sees a half-written file (decisions/152).
+	c.ShokoDropFolder, c.LibraryMode = true, files.LibraryModeDirect
+	if w := putConfig(t, server, c); w.Code != http.StatusOK {
+		t.Fatalf("a drop folder with .part names = %d %s", w.Code, w.Body.String())
+	}
+	c.IncompleteFiles, c.IncompletePath = files.IncompleteFilesInPlace, t.TempDir()
+	if w := putConfig(t, server, c); w.Code != http.StatusOK {
+		t.Fatalf("a drop folder staging elsewhere = %d %s", w.Code, w.Body.String())
+	}
+	// Shoko off: the drop folder isn't read, so it doesn't stop a save.
+	c.ShokoEnabled, c.LibraryMode = false, files.LibraryModeHardlink
+	if w := putConfig(t, server, c); w.Code != http.StatusOK {
+		t.Fatalf("the drop folder with Shoko off = %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -213,5 +241,54 @@ func TestWithShokoOwnedCountsShokoEpisodesAsThere(t *testing.T) {
 	}
 	if got := withShokoOwned(downloaded, nil, 154587); len(got) != 1 {
 		t.Fatalf("without Shoko: %v", got)
+	}
+}
+
+// The status lists Shoko's import folders, a drop source marked, and the last import request.
+func TestShokoStatusCarriesTheDropFolder(t *testing.T) {
+	var st ShokoStatus
+	st.setImport(daemon.ImportStatus{})
+	if body, _ := json.Marshal(st); strings.Contains(string(body), "import") {
+		t.Fatalf("nothing asked and nothing read must leave the import fields out: %s", body)
+	}
+	at := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
+	st.setImport(daemon.ImportStatus{LastRequest: at, Error: "refused", Folders: []shoko.ImportFolder{
+		{ID: 1, Name: "drop", Path: "/import/", DropType: "Both"},
+		{ID: 2, Name: "library", Path: "/anime/", DropType: "Destination", Watched: true},
+	}})
+	if st.LastImportRequest == nil || !st.LastImportRequest.Equal(at) || st.ImportError != "refused" || len(st.ImportFolders) != 2 {
+		t.Fatalf("status = %+v", st)
+	}
+	if !st.ImportFolders[0].DropSource || st.ImportFolders[1].DropSource || !st.ImportFolders[1].Watched {
+		t.Errorf("folders = %+v, want the first a drop source and the second a watched destination", st.ImportFolders)
+	}
+}
+
+// An anime keeps or removes the episodes in Shoko a pack brings, or follows shoko_full_packs again
+// with "default"; anything else is a 400 (decisions/153).
+func TestAnimeSettingsShokoPackEpisodes(t *testing.T) {
+	mock := &mockFileManager{configs: files.DefaultConfig()}
+	server := &Server{State: daemon.NewState(), FileManager: mock}
+	put := func(body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/animes/7/settings", strings.NewReader(body))
+		req.SetPathValue("id", "7")
+		handleAnimeSettings(server)(w, req)
+		return w
+	}
+	if w := put(`{"shoko_pack_episodes":"remove"}`); w.Code != http.StatusOK || mock.animeSettings[7].ShokoPackEpisodes != files.ShokoPackRemove {
+		t.Fatalf("remove = %d %+v", w.Code, mock.animeSettings[7])
+	}
+	if w := put(`{"progress":2}`); w.Code != http.StatusOK || mock.animeSettings[7].ShokoPackEpisodes != files.ShokoPackRemove {
+		t.Fatal("a PUT without shoko_pack_episodes dropped it")
+	}
+	if w := put(`{"shoko_pack_episodes":"download"}`); w.Code != http.StatusOK || mock.animeSettings[7].ShokoPackEpisodes != files.ShokoPackDownload {
+		t.Fatalf("download = %+v", mock.animeSettings[7])
+	}
+	if w := put(`{"shoko_pack_episodes":"default"}`); w.Code != http.StatusOK || mock.animeSettings[7].ShokoPackEpisodes != "" {
+		t.Fatalf("default = %+v", mock.animeSettings[7])
+	}
+	if w := put(`{"shoko_pack_episodes":"track"}`); w.Code != http.StatusBadRequest {
+		t.Errorf("an unknown value = %d, want 400", w.Code)
 	}
 }

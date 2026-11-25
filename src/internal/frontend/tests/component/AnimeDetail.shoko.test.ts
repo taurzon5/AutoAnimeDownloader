@@ -66,4 +66,26 @@ describe('AnimeDetail — Shoko', () => {
     // Shoko can't reach episode 2's file: still in Shoko, with a warning.
     expect(screen.getAllByText(/Shoko can't reach its file right now/).length).toBeGreaterThan(0)
   })
+
+  it("says Waiting for Shoko for a download handed to Shoko's drop folder, until Shoko has it", async () => {
+    const detail: AnimeDetailResponse = {
+      anime_id: 42, total_episodes: 2, progress: 0, status: 'CURRENT',
+      shoko: { status: 'matched', series_id: 1, series_name: 'Sousou no Frieren' },
+      episodes: [
+        { episode_number: 1, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: true, download_date: '2026-11-24T12:00:00Z', episode_hash: 'h1', handed_to_shoko: true },
+        { episode_number: 2, airing_at: 0, time_until_airing: 0, is_aired: true, is_watched: false, is_downloaded: true, download_date: '2026-11-24T12:00:00Z', episode_hash: 'h2', handed_to_shoko: true, in_shoko: true, shoko_file: 'Frieren/02.mkv' },
+      ],
+    }
+    vi.mocked(client.getAnimeDetail).mockResolvedValue(detail)
+    vi.mocked(client.getAnimes).mockResolvedValue([animeInfo({})])
+    vi.mocked(client.getTorrents).mockResolvedValue([])
+    vi.mocked(client.getLastCheck).mockResolvedValue({ finished_at: '2026-11-24T12:00:00Z', pass_error: '', limits: [], problems: [] })
+
+    render(AnimeDetail, { props: { params: { id: '42' } } })
+    for (let i = 0; i < 4; i++) await tick()
+
+    expect(screen.getAllByText('Waiting for Shoko').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('In Shoko').length).toBeGreaterThan(0)
+    expect(screen.queryAllByText('Downloaded').length).toBe(0)
+  })
 })

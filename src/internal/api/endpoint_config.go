@@ -227,10 +227,12 @@ func clientOf(c *files.Config) string {
 	return files.TorrentClientBuiltin
 }
 
-// validateTorrentClient checks torrent_client and the qBittorrent settings. "" when valid.
 // validateShoko, while Shoko is on: signed in (the sign-in sets shoko_url and shoko_api_key; POST
 // /shoko/login) and a refresh of at least an hour. Off, nothing is checked, as for the other
-// features' fields.
+// features' fields. The drop folder needs direct mode, and Shoko must never see a half-written
+// file: Shoko imports only video extensions, so ".part" names, or rain's staging folder, which
+// copies under a temporary name. qBittorrent moves a staged torrent in under its final names, a
+// file partly there while it copies (decisions/145), so it gets ".part" names only (decisions/152).
 func validateShoko(c *files.Config) string {
 	if c.ShokoFullResyncDays < 0 {
 		return "Shoko's full resync must be 0 (never) or more days"
@@ -244,9 +246,21 @@ func validateShoko(c *files.Config) string {
 	if c.ShokoRefreshHours < 1 {
 		return "Shoko's refresh must be at least 1 hour"
 	}
+	if c.ShokoDropFolder {
+		if !c.IsDirectMode() {
+			return "Downloading into Shoko's drop folder needs direct library mode"
+		}
+		if c.UsesQBittorrent() && strings.TrimSpace(c.IncompletePath) != "" {
+			return "With qBittorrent, downloading into Shoko's drop folder can't use an incomplete download folder: qBittorrent moves the files in under their final names, so Shoko could see a half-copied file"
+		}
+		if c.IncompleteFiles == files.IncompleteFilesInPlace && strings.TrimSpace(c.IncompletePath) == "" {
+			return `Downloading into Shoko's drop folder needs incomplete files "part" or an incomplete download folder, so Shoko never sees a half-written file`
+		}
+	}
 	return ""
 }
 
+// validateTorrentClient checks torrent_client and the qBittorrent settings. "" when valid.
 func validateTorrentClient(c *files.Config) string {
 	switch c.TorrentClient {
 	case "", files.TorrentClientBuiltin, files.TorrentClientQBittorrent:

@@ -88,6 +88,28 @@ func handleShokoStatus(c *cli.Context) error {
 	case st.WatchError != "":
 		fmt.Printf("Not following Shoko's changes (retrying): %s\n", st.WatchError)
 	}
+	// The drop folder (decisions/152): Shoko's import folders, as Shoko sees them, and the last
+	// request asking it to import new files.
+	for _, f := range st.ImportFolders {
+		kind := "import folder"
+		if f.DropSource {
+			kind = "drop source"
+		}
+		watched := ""
+		if f.Watched {
+			watched = ", watched"
+		}
+		fmt.Printf("Shoko %s %d %q: %s (%s%s)\n", kind, f.ID, f.Name, f.Path, f.DropType, watched)
+	}
+	if st.ImportFoldersError != "" {
+		fmt.Printf("Could not read Shoko's import folders: %s\n", st.ImportFoldersError)
+	}
+	if st.LastImportRequest != nil {
+		fmt.Printf("Last asked Shoko to import new files %s\n", st.LastImportRequest.Local().Format(time.DateTime))
+	}
+	if st.ImportError != "" {
+		fmt.Printf("Asking Shoko to import failed (the next pass asks again): %s\n", st.ImportError)
+	}
 	return nil
 }
 

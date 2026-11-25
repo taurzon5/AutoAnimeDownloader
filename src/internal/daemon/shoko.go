@@ -37,6 +37,18 @@ type ShokoService struct {
 	// config, while connected and while waiting to.
 	settle      time.Duration
 	configCheck time.Duration
+	// The drop folder hand-off (shoko_import.go, decisions/152): a request is wanted, one is on its
+	// way, whether the last one failed (the next pass sends it again), its time and error.
+	// importSettle is how long a request waits for more finished downloads to share it.
+	importWanted  bool
+	importRunning bool
+	importRetry   bool
+	lastImport    time.Time
+	importError   string
+	importSettle  time.Duration
+	// folders is Shoko's import folders as last read, for the Shoko group.
+	folders      []shoko.ImportFolder
+	foldersError string
 }
 
 // WatchStatus is the event watcher's state, for GET /shoko/status.
@@ -55,7 +67,7 @@ type ShokoAnimeStatus struct {
 
 // NewShokoService keeps its store (shoko.json) in dataDir.
 func NewShokoService(dataDir string) *ShokoService {
-	return &ShokoService{store: shoko.NewStore(dataDir), settle: 10 * time.Second, configCheck: 30 * time.Second}
+	return &ShokoService{store: shoko.NewStore(dataDir), settle: 10 * time.Second, configCheck: 30 * time.Second, importSettle: 5 * time.Second}
 }
 
 // WatchState is the event watcher's state.
@@ -387,7 +399,8 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 		hours = 24 // a config.json from before the field, or one written by hand
 	}
 	every := time.Duration(hours) * time.Hour
-	if full || s.store.Due(cfg.ShokoURL, every, now) {
+	synced := full || s.store.Due(cfg.ShokoURL, every, now)
+	if synced {
 		client, err := shoko.NewClient(cfg.ShokoURL, cfg.ShokoAPIKey)
 		if err == nil {
 			err = s.store.Sync(ctx, client, cfg.ShokoURL, tracked, bySeries, full, now)
@@ -401,6 +414,11 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 			logger.Logger.Info().Bool("full", full).Int("count", len(s.store.SeriesList())).Msg("Synced with Shoko")
 		}
 	}
+	// The drop folder: Shoko's import folders for the Shoko group, read with the sync whether or not
+	// the setting is on yet (the group lists them when it is turned on), and a failed import request
+	// sent again (decisions/152).
+	s.readFolders(ctx, cfg, synced)
+	s.retryImport(cfg)
 
 	out := map[int]map[int]shoko.File{}
 	matches := s.matchAll(animes, facts, tracked, settings, anilist.PriorityCritical)

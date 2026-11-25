@@ -25,3 +25,14 @@ func TestConfigDownloadPath(t *testing.T) {
 		}
 	})
 }
+
+// Download Full Megapacks starts on, and the drop folder off (decisions/149, decisions/152).
+func TestShokoPackAndDropFolderDefaults(t *testing.T) {
+	c := DefaultConfig()
+	if !c.ShokoFullPacks {
+		t.Error("shoko_full_packs should default to on")
+	}
+	if c.ShokoDropFolder {
+		t.Error("shoko_drop_folder should default to off")
+	}
+}

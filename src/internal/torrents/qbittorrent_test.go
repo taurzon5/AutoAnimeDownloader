@@ -1144,3 +1144,45 @@ func TestQBit_StagedTorrentWaitsForItsFolderAndRestarts(t *testing.T) {
 		t.Fatalf("calls once the folder is back = %v, want %v (C, paused by the user, stays stopped)", got, want)
 	}
 }
+
+// Skipping a placed torrent's files sets them to priority 0 by index (file i of the placement is
+// qBittorrent's index i); the mark is kept, Resolve carries it, and a skipped file is no library
+// path. A torrent with no planned files has nothing to skip (decisions/153).
+func TestQBit_SkipPlacedFilesSetsPriorityZero(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	if err := b.SetPlacement(PlacementRequest{Hash: qbHashA, SeriesDir: "Show", Kind: PlacementPack}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.SkipPlacedFiles(qbHashA, []string{"Pack/Show - 01.mkv"}); err == nil {
+		t.Fatal("a placement with no planned files must refuse to skip")
+	}
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	q.fake.deliverMetadata(qbHashA,
+		qbitFile{Index: 0, Name: "Pack/Show - 01.mkv", Size: 10},
+		qbitFile{Index: 1, Name: "Pack/Show - 02.mkv", Size: 10},
+		qbitFile{Index: 2, Name: "Pack/Show - 03.mkv", Size: 10})
+	b.poll()
+	p, _ := b.Placement(qbHashA)
+	if err := b.SkipPlacedFiles(qbHashA, []string{p.Files[0].Torrent, p.Files[1].Torrent}); err != nil {
+		t.Fatal(err)
+	}
+	var prio []string
+	for _, c := range q.fake.callLog() {
+		if strings.HasPrefix(c, "filePrio") {
+			prio = append(prio, c)
+		}
+	}
+	if want := []string{"filePrio " + qbHashA + " ids=0|1 priority=0"}; !reflect.DeepEqual(prio, want) {
+		t.Fatalf("filePrio calls = %v, want %v", prio, want)
+	}
+	p, _ = b.Placement(qbHashA)
+	if !p.Files[0].Skipped || !p.Files[1].Skipped || p.Files[2].Skipped {
+		t.Fatalf("resolved files = %+v, want 01 and 02 skipped", p.Files)
+	}
+	if v := p.VideoPaths(); len(v) != 1 || v[0] != p.Files[2].Path {
+		t.Fatalf("VideoPaths = %v, want only 03", v)
+	}
+}

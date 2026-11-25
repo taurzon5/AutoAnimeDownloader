@@ -1,8 +1,10 @@
 # 147. Episodes already in Shoko leave the list both selections walk, unless the app has its own record of them, and their MAL ids come from a query of their own
 
 **Location:**
-- `internal/daemon/episodes.go`: `withoutOwnedElsewhere`, and the `ownedInShoko` parameter of
-  `processAnimeEpisodes`, applied before both `selectEpisodes` calls.
+- `internal/daemon/episodes.go`: `withoutOwnedElsewhere`, and `inShoko.episodes` (the `shokoOwned`
+  parameter of `processAnimeEpisodes`), applied before both `selectEpisodes` calls. With tracking
+  on, the second call gets back those a chosen pack covers
+  ([#149](149-a-pack-chosen-for-the-missing-episodes-records-the.md)).
 - `internal/daemon/shoko.go`: `ShokoService.ForPass`, called once per pass in `AnimeVerification`.
 - `internal/anilist/shoko_facts.go`: `MALFactsOf` and `EpisodesOfMALIDs`.
 - `internal/daemon/standalone.go`: `DownloadStandaloneAnime` takes the service and matches the one
@@ -37,7 +39,10 @@ Pinned by:
   (or alongside) has a record and files of its own. Dropping it from the list would take it out
   of watched pruning and the limit's deletions, and its files would stay forever. Shoko's files are
   never the app's to delete: the app never has a record of them, so no rule of the app can touch
-  them (the Shoko spec §3).
+  them (the Shoko spec §3). **Amendment (see #152):** with the library as a Shoko drop folder, the
+  app keeps records of files it handed to Shoko, which are Shoko's from then on. There the rule is
+  held by `HandedToShoko`: no delete of such a record touches its files
+  ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)).
 - **The pass's queries stay as they are.** The search golden set replays recorded AniList answers
   keyed by the request body (`daemon/golden_test.go`). Adding `idMal` to the pass's list query, or
   to `GetMediaByID`, would turn every recorded case into "not in the recording" and require
@@ -48,11 +53,16 @@ Pinned by:
 - **What it doesn't do yet:**
   - A pack chosen to cover the pending window is one torrent. A 01–24 pack chosen for 7–18 still
     brings the files of 1–6, with no record of them, so in direct mode they land in the library
-    beside Shoko's copies.
+    beside Shoko's copies. **Amendment (see #149):** with `shoko_full_packs` on, the default,
+    those the pack covers get records like the rest of the pack
+    ([#149](149-a-pack-chosen-for-the-missing-episodes-records-the.md)). Off (or an anime set to
+    remove them), they are removed: skipped with qBittorrent, deleted once downloaded otherwise
+    ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)).
   - An owned episode inside the window still takes a slot of the window, as the window is
     `windowEnd(firstPending)`.
-  - Both wait for per-file selection, which comes with qBittorrent's file priorities (the megapack
-    spec).
+  - Both waited for per-file selection. **Amendment (see #153):** qBittorrent's file priorities
+    now skip the files of episodes in Shoko for an anime that removes them ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)); the
+    window and the pack choice are unchanged.
   - The debug pass ignored Shoko at first. It now mirrors the pass from the last sync on disk, and
     marks the episodes `in_shoko` ([#58](058-runanimedebug-mirrors-processanimeepisodes.md)).
   - Manual downloads don't look at Shoko either: the user picked the torrent.
