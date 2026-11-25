@@ -37,6 +37,35 @@ type AnimeEpisodeInfo struct {
 	// even the AniList total is known —, and then the min/max is the best guess again.
 	BatchStart int `json:"batch_start,omitempty"`
 	BatchEnd   int `json:"batch_end,omitempty"`
+	// InShoko: the user already has this episode in Shoko, so the app never searches for it or
+	// downloads it; ShokoFile is that file's path in its Shoko import folder (the Shoko spec §3).
+	InShoko   bool   `json:"in_shoko,omitempty"`
+	ShokoFile string `json:"shoko_file,omitempty"`
+	// ShokoFileUnavailable: Shoko can't reach that file right now (an unplugged drive). It still
+	// counts as in Shoko, since downloading it again would make a duplicate (the Shoko spec's
+	// proposed default); the page warns instead.
+	ShokoFileUnavailable bool `json:"shoko_file_unavailable,omitempty"`
+	// HandedToShoko: the app downloaded this episode into one of Shoko's import folders, for Shoko to import.
+	// Without InShoko the page says "Waiting for Shoko" (decisions/152).
+	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
+}
+
+// AnimeShokoInfo is how the anime lines up with Shoko, from the last pass: "matched" (with the
+// series and offset), "partial" (a series shares its MAL id but the episodes don't line up: confirm
+// it by hand), or "none". ByHand: set on the anime page.
+type AnimeShokoInfo struct {
+	Status     string `json:"status"`
+	SeriesID   int    `json:"series_id,omitempty"`
+	SeriesName string `json:"series_name,omitempty"`
+	Offset     int    `json:"offset,omitempty"`
+	ByHand     bool   `json:"by_hand,omitempty"`
+	// PackEpisodes is the anime's own pack setting ("download" or "remove"; absent = the global
+	// shoko_full_packs, which KeepPackEpisodesDefault carries), and KeepPackEpisodes what applies:
+	// whether a pack chosen for the missing episodes keeps the episodes in Shoko it brings
+	// (decisions/149) or removes them (decisions/153).
+	PackEpisodes            string `json:"pack_episodes,omitempty"`
+	KeepPackEpisodes        bool   `json:"keep_pack_episodes"`
+	KeepPackEpisodesDefault bool   `json:"keep_pack_episodes_default"`
 }
 
 type AnimeDetailResponse struct {
@@ -52,6 +81,8 @@ type AnimeDetailResponse struct {
 	// only the download ones), each with its own entry — the "who has it" panel. Empty for a
 	// standalone no account tracks.
 	Accounts []AnimeListAccount `json:"accounts,omitempty"`
+	// Shoko is absent when Shoko is off or the last pass didn't see the anime.
+	Shoko *AnimeShokoInfo `json:"shoko,omitempty"`
 }
 
 // AnimeListAccount is one account's own list entry for the anime.
@@ -148,6 +179,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 			hash            string
 			batchStart      int
 			batchEnd        int
+			handedToShoko   bool
 		}
 		downloadedByEpisode := make(map[int]downloadedInfo)
 		for _, ep := range allEpisodes {
@@ -158,6 +190,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 					hash:            ep.EpisodeHash,
 					batchStart:      ep.BatchStart,
 					batchEnd:        ep.BatchEnd,
+					handedToShoko:   ep.HandedToShoko,
 				}
 			}
 		}
@@ -167,6 +200,7 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 		// anime), otherwise the user has nowhere to click to download them by hand.
 		allNodes := anilist.EpisodeList(*mediaList, 1)
 		episodes := make([]AnimeEpisodeInfo, 0, len(allNodes))
+		shokoStatus, inShoko := server.State.Shoko().AnimeStatus(id)
 
 		for _, node := range allNodes {
 			info := AnimeEpisodeInfo{
@@ -185,6 +219,13 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 				info.EpisodeHash = downloaded.hash
 				info.BatchStart = downloaded.batchStart
 				info.BatchEnd = downloaded.batchEnd
+				info.HandedToShoko = downloaded.handedToShoko
+			}
+
+			if f, ok := shokoStatus.Owned[node.Episode]; ok && inShoko {
+				info.InShoko = true
+				info.ShokoFile = f.Path
+				info.ShokoFileUnavailable = !f.Accessible
 			}
 
 			episodes = append(episodes, info)
@@ -208,6 +249,17 @@ func handleAnimeEpisodes(server *Server) http.HandlerFunc {
 			CoverImage:    coverImage,
 			Episodes:      episodes,
 			Accounts:      listAccounts(mediaList.Accounts),
+		}
+		if inShoko {
+			m := shokoStatus.Match
+			response.Shoko = &AnimeShokoInfo{Status: string(m.Status), SeriesID: m.SeriesID, SeriesName: m.SeriesName, Offset: m.Offset, ByHand: m.ByHand}
+			var settings files.AnimeSettings
+			if s, err := server.FileManager.LoadAnimeSettings(id); err == nil && s != nil {
+				settings = *s
+			}
+			response.Shoko.PackEpisodes = settings.ShokoPackEpisodes
+			response.Shoko.KeepPackEpisodes = config.KeepsShokoPackEpisodes(settings)
+			response.Shoko.KeepPackEpisodesDefault = config.ShokoFullPacks
 		}
 
 		JSONSuccess(w, http.StatusOK, response)

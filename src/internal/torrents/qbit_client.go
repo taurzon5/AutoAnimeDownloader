@@ -412,6 +412,12 @@ func (c *qbitClient) topPrio(ctx context.Context, hashes ...string) error {
 	return err
 }
 
+// filePrio sets the priority of a torrent's files by index (0 = do not download).
+func (c *qbitClient) filePrio(ctx context.Context, hash string, ids []string, priority int) error {
+	_, err := c.call(ctx, http.MethodPost, "torrents/filePrio", url.Values{"hash": {hash}, "id": {strings.Join(ids, "|")}, "priority": {strconv.Itoa(priority)}})
+	return err
+}
+
 func (c *qbitClient) reannounce(ctx context.Context, hashes ...string) error {
 	return c.hashesCall(ctx, "torrents/reannounce", hashes, nil)
 }

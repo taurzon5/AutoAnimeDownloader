@@ -36,6 +36,8 @@
   import TorrentDeleteDialog from "../components/TorrentDeleteDialog.svelte";
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
+  import ShokoMatchPanel from "../components/ShokoMatchPanel.svelte";
+  import AnimeRootPicker from "../components/AnimeRootPicker.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -225,7 +227,15 @@
     }
     if (ep.is_blocked) return { variant: "danger" as const, label: m.detail_chip_blocked() };
     if (ep.is_manually_managed) return { variant: "neutral" as const, label: m.detail_chip_manual() };
+    // Downloaded into one of Shoko's import folders: waiting until Shoko has a file for it (decisions/152).
+    if (ep.is_downloaded && ep.handed_to_shoko) {
+      return ep.in_shoko
+        ? { variant: "ok" as const, label: m.detail_chip_in_shoko() }
+        : { variant: "accent" as const, label: m.detail_chip_waiting_for_shoko() };
+    }
     if (ep.is_downloaded) return { variant: "ok" as const, label: m.detail_badge_downloaded() };
+    // Already in the user's Shoko library: the app never searches for it (the Shoko spec §3).
+    if (ep.in_shoko) return { variant: "ok" as const, label: m.detail_chip_in_shoko() };
     if (ep.is_aired) return { variant: "warn" as const, label: m.detail_chip_aired() };
     return { variant: "neutral" as const, label: m.detail_badge_upcoming() };
   }
@@ -250,6 +260,7 @@
     if (ep.is_watched) notes.push(m.detail_badge_watched());
     if (ep.is_manually_managed) notes.push(m.detail_flag_no_delete_short());
     if (ep.is_blocked) notes.push(m.detail_flag_no_download_short());
+    if (ep.in_shoko && ep.shoko_file_unavailable) notes.push(m.detail_shoko_unavailable());
     // The report mark goes on the same line as the other notes: it's a short phrase, not a
     // live state — deriveAnimeChip stays out of this on purpose.
     if (issue) notes.push(m.detail_lastcheck_episode_note());
@@ -262,6 +273,7 @@
       return `${formatPercent(torrent.progress, fmtLocale)} · ↓ ${formatSpeed(torrent.download_speed, fmtLocale)} · ${formatEta(torrent.eta_seconds, fmtLocale)}`;
     }
     if (ep.is_downloaded) return formatDate(ep.download_date);
+    if (ep.in_shoko && ep.shoko_file) return ep.shoko_file;
     if (!ep.is_aired) return formatTimeUntilAiring(ep.time_until_airing, ep.is_aired);
     return "—";
   }
@@ -950,6 +962,9 @@
     statusLabel={listStatusLabel}
     totalEpisodes={anime?.total_episodes ?? 0}
   />
+
+  <ShokoMatchPanel animeId={animeId} shoko={detail?.shoko} />
+  <AnimeRootPicker {animeId} />
 
   {#if loading}
     <Loading message={m.detail_loading()} />

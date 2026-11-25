@@ -82,6 +82,18 @@ drop resumes into them, and a manual keep-data delete marks the placement Kept. 
 guards a third path: the incomplete-folder sweep (`pruneStagingLeftovers`) never removes a Kept
 placement's staged files; deleting them is the user's call.
 
+**Amendment (see [#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)):** deleting the records of a torrent handed to Shoko never deletes its
+files, which are Shoko's. A torrent still seeding leaves as a keep-data delete does: Kept, then
+removed with `keepData`. A released one (Shoko moved its files, `releaseMovedByShoko`, or
+`disable_seeding` released it) has its placement forgotten instead of marked Kept: the files are
+Shoko's, and a Kept, completed placement would resume a later re-add of the hash into files Shoko
+may have moved away ([#139](139-a-direct-mode-file-deleted-outside-the-app-is.md)). A re-add gets a
+fresh placement, beside a file still there (`[hash8]`).
+
+**Amendment (see [#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)):** a placed file can be marked `Skipped` (an episode of a pack
+already in Shoko, removed). A skipped file missing from disk is no loss: `PlacedFilesMissing` and
+the redownload's `missingBytes` leave it out.
+
 **Don't "fix" by:** calling `RemoveFromLibrary` for a placed record "for symmetry"; marking a
 placement `Kept` after the removal, or forgetting it instead of marking it (one failed save and
 the sweep deletes what the user kept; a forgotten placement re-downloads as a `[hash8]` copy);

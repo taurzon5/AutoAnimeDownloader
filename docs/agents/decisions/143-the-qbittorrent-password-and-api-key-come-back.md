@@ -32,3 +32,10 @@ notification. A bug report redacts all of them anyway.
 **Don't "fix" by:** reusing the saved secret for a changed address "so the user doesn't have to retype it"; returning the real password from `GET /config` "because the UI needs it"; saving
 the placeholder literally; masking in the frontend only; dropping `KeepSecrets` from the connection
 test (testing unsaved settings would then always fail with the saved password).
+
+**Amendment (see [#147](147-episodes-already-in-shoko-leave-the-list-both.md)):** the same rule covers a third secret, `shoko_api_key`, the key
+Shoko returns at sign-in. `MaskSecrets` masks it, and `KeepSecrets` keeps it only for the same
+`shoko_url`; another address gets `ErrShokoNeedsSignIn`, since the password isn't kept and can't
+be retyped, so the user signs in again. An emptied `shoko_url` is the one exception: it signs out,
+and the saved key is cleared with it, with no error (no secret leaves the app that way). Bug reports redact it (`diagnostics/bundle.go`). Pinned by
+`TestShokoKeyIsMaskedAndKeptOnlyForTheSameAddress` and `TestBuildRedactsTheQBittorrentCredentials`.

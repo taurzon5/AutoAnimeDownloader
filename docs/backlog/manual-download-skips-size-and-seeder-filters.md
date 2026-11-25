@@ -17,7 +17,7 @@ the manual path too, so it reaches more releases that the limits would have cut.
 ## What to check
 
 - Whether a manual download should honor the limits at all. A user who clicks "download" on one
-  episode may want it even above the ceiling, and the disk guard (`checkDiskSpace`) already runs.
+  episode may want it even above the ceiling, and the disk guard (`checkRootBudgetSpace`) already runs.
   Grep `docs/agents/decisions/` for `filterSearchResults` and `min_seeders` before deciding.
 - If it should: wrap the call in `filterSearchResults(…, configs.MaxEpisodeTorrentSizeGB,
   configs.MinSeeders)` and return an error that names the filter when every result was dropped, so

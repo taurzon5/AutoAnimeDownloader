@@ -203,7 +203,7 @@ func TestDownloadStandaloneAnime_DoesNotDeleteTheRestOfTheLibrary(t *testing.T) 
 	}}
 	backend := torrents.NewFakeBackend()
 
-	if _, err := DownloadStandaloneAnime(fm, backend, configs, 500); err != nil {
+	if _, err := DownloadStandaloneAnime(fm, backend, configs, 500, nil); err != nil {
 		t.Fatalf("DownloadStandaloneAnime: %v", err)
 	}
 
@@ -251,7 +251,7 @@ func TestDownloadStandaloneAnime_UnknownMedia(t *testing.T) {
 	defer mockAniListRouter(t, `{"data": {"Page": {"mediaList": []}}}`, `{"data": {"Media": null}}`)()
 
 	fm := &mockFileManagerForEpisodes{}
-	if _, err := DownloadStandaloneAnime(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 999999); err == nil {
+	if _, err := DownloadStandaloneAnime(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 999999, nil); err == nil {
 		t.Fatal("want an error for an unknown media id")
 	}
 }

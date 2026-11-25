@@ -1035,7 +1035,17 @@
         <div class="grid grid-cols-2 gap-3.5">
           <section class="rounded-card border border-default bg-card p-4.5">
             <p class="font-mono text-mono-label uppercase text-subtle">{T && T.cardDisk}</p>
-            {#if status.disk_total > 0}
+            {#if (status.disks?.length ?? 0) > 1}
+              <!-- One line per download folder (decisions/154). -->
+              <ul class="mt-1.5 space-y-1" data-testid="status-disks">
+                {#each status.disks ?? [] as disk (disk.path)}
+                  <li class="text-caption">
+                    <span class="font-semibold {disk.low ? 'text-danger' : 'text-heading'}">{disk.name}</span>
+                    <span class="text-subtle">{$locale && m.status_disk_root_free({ free: formatBytes(disk.free, fmtLocale), total: formatBytes(disk.total, fmtLocale) })}</span>
+                  </li>
+                {/each}
+              </ul>
+            {:else if status.disk_total > 0}
               <p class="mt-1.5 font-mono text-card-number {diskSpaceLow ? 'text-danger' : 'text-heading'}">
                 {formatBytes(status.disk_free, fmtLocale)}
               </p>

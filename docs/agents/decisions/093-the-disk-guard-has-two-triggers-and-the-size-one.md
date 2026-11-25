@@ -1,13 +1,13 @@
 # 93. The disk guard has two triggers, and the size one still applies with `min_free_disk_gb = 0`
 
-**Location:** `daemon/helpers.go` (`checkDiskSpace`, `checkBudgetSpace`, `checkVolumeSpace`,
+**Location:** `daemon/helpers.go` (`checkRootBudgetSpace`, `checkVolumeSpace`,
 `DiskLow`), reached through the budget (`diskBudget.check`/`reserve`) in `daemon/episodes.go`
 (`attemptDownloadWithRetries`, once before the loop and once per candidate) and in
 `daemon/placement.go` (`RedownloadMissingFiles`, `budget.check`/`budget.add`, once per torrent),
-and directly (`checkBudgetSpace` with nothing reserved) in `daemon/manual_download.go`
+and directly (`checkRootBudgetSpace` with nothing reserved) in `daemon/manual_download.go`
 (`addAndPrioritize`). `GET /status` `disk_low` is `DiskLow`.
 
-`checkDiskSpace` receives `torrentSizeBytes` and refuses for two different reasons:
+`checkRootBudgetSpace` receives `torrentSizeBytes` and refuses for two different reasons:
 
 1. **the torrent does not fit** in `free - reserved` — runs whenever the size is known, including with
    `min_free_disk_gb = 0`;
@@ -48,6 +48,10 @@ in the list may fit where the first did not — skipping one does not end the at
 size-less check **before** the loop still exists, and it is something else: a disk already full
 today means no candidate will do, and trying N times would only fill the log.
 
-**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** with `incomplete_path` on another filesystem, `checkBudgetSpace` checks
+**Amendment (see [#141](141-staged-downloads-are-copied-into-the-library-while.md)):** with `incomplete_path` on another filesystem, `checkRootBudgetSpace` checks
 both volumes, the staging one against its own floor, `incomplete_min_free_disk_gb`. `DiskLow`
 covers both.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** `DiskLow` now takes the backend and spreads reservations over the download roots (`withRoots`): it is low when no root takes a torrent of size 0, as the add-gate counts. `RootDisks` gives each root's own flag for `GET /status`.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** the floor is per download root: a root's own `min_free_gb`, else `min_free_disk_gb` (`Config.RootMinFreeGB`), in `checkRootBudgetSpace`, which replaced `checkDiskSpace` and `checkBudgetSpace`. A manual add reserves through a nil budget (`addAndPrioritize`), and `RedownloadMissingFiles` checks and counts each torrent's own root (`checkOn`, `addOn`).

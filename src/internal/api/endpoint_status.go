@@ -23,6 +23,10 @@ type StatusResponse struct {
 	// session still has to write, against min_free_disk_gb. Computed on the server on purpose: a
 	// threshold duplicated in the frontend would end up disagreeing with what the daemon is doing.
 	DiskLow bool `json:"disk_low" example:"false"`
+	// Disks is one entry per download root (decisions/154): its name, path and volume. Low marks a
+	// root that can't take a new torrent now. With one root it is the library, the same volume as
+	// disk_total/disk_free.
+	Disks []StatusDisk `json:"disks,omitempty"`
 	// IncompleteDiskTotal and IncompleteDiskFree describe the incomplete_path volume, only when
 	// that folder is set and on another filesystem than the library (decisions/141). disk_low covers
 	// both volumes.
@@ -42,6 +46,15 @@ type StatusResponse struct {
 	LatestVersionURL string `json:"latest_version_url" example:"https://github.com/icarosuper/AutoAnimeDownloader/releases/tag/v2.11.0"`
 }
 
+// StatusDisk is one download root's volume in GET /status.
+type StatusDisk struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	Total uint64 `json:"total"`
+	Free  uint64 `json:"free"`
+	Low   bool   `json:"low"`
+}
+
 // handleStatus returns the current status of the daemon, including last check time, error state,
 // and disk space for the filesystem of completed_anime_path (the library)
 func handleStatus(server *Server) http.HandlerFunc {
@@ -55,6 +68,7 @@ func handleStatus(server *Server) http.HandlerFunc {
 
 		var diskTotal, diskFree, incompleteTotal, incompleteFree uint64
 		diskLow := false
+		var disks []StatusDisk
 		// The library volume holds the download directory by construction (Config.DownloadPath); the
 		// incomplete folder, when set on another drive, is reported on its own (decisions/141).
 		if cfg, err := server.FileManager.LoadConfigs(); err == nil && cfg.CompletedAnimePath != "" {
@@ -67,7 +81,10 @@ func handleStatus(server *Server) http.HandlerFunc {
 			if eps, err := server.FileManager.LoadSavedEpisodes(); err == nil {
 				saved = eps
 			}
-			diskLow = daemon.DiskLow(cfg, session, saved)
+			diskLow = daemon.DiskLow(cfg, server.Torrents, session, saved)
+			for _, d := range daemon.RootDisks(cfg, server.Torrents, session, saved) {
+				disks = append(disks, StatusDisk{Name: d.Name, Path: d.Path, Total: d.Total, Free: d.Free, Low: d.Low})
+			}
 			if staging := cfg.StagingPath(); staging != "" && !files.SameFilesystem(staging, cfg.CompletedAnimePath) {
 				incompleteTotal, incompleteFree, _ = files.DiskSpace(staging)
 			}
@@ -81,6 +98,7 @@ func handleStatus(server *Server) http.HandlerFunc {
 			DiskTotal: diskTotal,
 			DiskFree:  diskFree,
 			DiskLow:   diskLow,
+			Disks:     disks,
 			Anilist:   anilist.CurrentHealth(),
 
 			IncompleteDiskTotal: incompleteTotal,

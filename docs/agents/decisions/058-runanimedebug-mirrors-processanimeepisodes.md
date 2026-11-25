@@ -2,7 +2,7 @@
 
 **Location:** `daemon/debug.go` — `RunAnimeDebug`; mirrors `daemon/episodes.go` — `processAnimeEpisodes`.
 
-**What it looks like:** debug of an anime does not iterate `anime.Media.AiringSchedule.Nodes`; it builds the list with `anilist.EpisodeList(anime, firstEpisodeToConsider(anime, nil))`, runs the same per-anime search + `partitionSearchResults`/`pickBatches` to decide whether a pack covers the window (and, if so, re-runs `selectEpisodes` with the ceiling lifted), and falls into `searchSingleEpisode` when no pending episode received a pack/movie magnet — three duplicated stretches of the production loop. `willBatchAnime`/`resolveSearchStrategy` left: pack eligibility is the filtered search result, not AniList metadata ([#59](059-batch-eligibility-stopped-being-metadata-and.md)).
+**What it looks like:** debug of an anime does not iterate `anime.Media.AiringSchedule.Nodes`; it builds the list with `anilist.EpisodeList(anime, firstEpisodeToConsider(anime, nil))`, runs the same per-anime search + `partitionSearchResults`/`pickBatches` to decide whether a pack covers the window (and, if so, assigns the packs; unlike the pass it has no second selection over saved records, since it has none to account for, except the one the amendment below adds for the Shoko episodes a chosen pack brings), and falls into `searchSingleEpisode` when no pending episode received a pack/movie magnet — three duplicated stretches of the production loop. `willBatchAnime`/`resolveSearchStrategy` left: pack eligibility is the filtered search result, not AniList metadata ([#59](059-batch-eligibility-stopped-being-metadata-and.md)).
 
 **Why it's right:**
 
@@ -20,3 +20,13 @@
 - Going back to iterating `AiringSchedule.Nodes` "because it's simpler" — the simplicity produces a diagnosis of a pipeline the daemon does not run.
 - Stopping at pack resolution "because that's the step that decides the strategy" — it is only half the search; the other half is the per-episode fallback.
 - Truncating `summary.Episodes` to those with `would_search: true` — the report's "nothing searched" count depends on seeing both sides.
+
+**Amendment (see [#147](147-episodes-already-in-shoko-leave-the-list-both.md)):** the debug pass drops the episodes already in Shoko, as the
+pass does (`withoutOwnedElsewhere`), from the last Shoko sync on disk: a dry run doesn't sync.
+They show as `in_shoko` in the summary. Tests and the golden set pass no Shoko service, so their
+pipeline is unchanged. Pinned by `TestRunAnimeDebugLeavesOutTheEpisodesInShoko`.
+
+**Amendment (see [#149](149-a-pack-chosen-for-the-missing-episodes-records-the.md)):** with
+Download Full Megapacks on (`shoko_full_packs`), debug runs `withShokoEpisodesInPacks` and
+`selectEpisodes` over its first selection once a pack is chosen, so those episodes get the pack as
+`picked` and keep `would_search: false`. Pinned by `TestRunAnimeDebugMirrorsTheTrackedPackEpisodes`.

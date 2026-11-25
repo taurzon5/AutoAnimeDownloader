@@ -107,6 +107,7 @@ func newApp() *cli.App {
 			reportCommand(),
 			animesCommand(),
 			torrentsCommand(),
+			shokoCommand(),
 			notificationsCommand(),
 		},
 		// Tests (and main) inspect the returned error; the default handler would os.Exit.

@@ -65,13 +65,24 @@ const movingSuffix = ".aad-moving"
 // with this error, and the download queue starts it again on its next pass.
 var ErrIncompleteFolderUnavailable = errors.New("the incomplete downloads folder is unavailable")
 
+// ErrDownloadRootUnavailable is what Open returns when a placement's download root (not the
+// library) is gone, an unmounted drive: the root is never created, or the torrent would fill the
+// disk its mount point sits on. The torrent waits for it, as for the incomplete folder
+// (decisions/154).
+var ErrDownloadRootUnavailable = errors.New("the download folder is unavailable")
+
 // PlacementRequest is what the daemon decides about a torrent before adding it.
 type PlacementRequest struct {
 	// Hash is the torrent's info hash (rain's torrent id).
 	Hash string `json:"hash"`
-	// SeriesDir is the <Series> folder every file of the torrent goes under, relative to the
-	// library root ("Frieren"). Placement.Resolve makes it absolute.
+	// SeriesDir is the <Series> folder every file of the torrent goes under, relative to its root
+	// ("Frieren"). Placement.Resolve makes it absolute.
 	SeriesDir string `json:"series_dir"`
+	// RootPath is the absolute download root the torrent lives in, as the app sees it, and RootName
+	// its name (decisions/154). Empty = the library root a backend resolves against, which is what
+	// every placement from before several roots means.
+	RootPath string `json:"root_path,omitempty"`
+	RootName string `json:"root_name,omitempty"`
 	// SeriesName and SeriesID are the series folder's title and AniList id (the PREQUEL chain's
 	// root), kept for its tvshow.nfo: organize never calls AniList (decisions/068).
 	SeriesName string `json:"series_name,omitempty"`
@@ -101,6 +112,11 @@ type PlacedFile struct {
 	// Path is the final path, relative to the library root ("Frieren/Season 01/ep05.mkv") as
 	// stored, absolute once the placement went through Resolve.
 	Path string `json:"path"`
+	// Skipped marks a file the daemon doesn't want: an episode of a pack the user already has in
+	// Shoko, for an anime set to remove them (SkipPlacedFiles). qBittorrent never downloads it
+	// (priority 0); one already written is deleted by the daemon. A skipped file missing from disk
+	// is no loss, and it is no library path (decisions/153).
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // Placement is a PlacementRequest plus the frozen file map.
@@ -130,6 +146,10 @@ type Placement struct {
 // that touches the disk works on a resolved placement; the store keeps the relative one. An empty
 // root leaves the paths relative.
 func (p Placement) Resolve(root string) Placement {
+	// A placement in another download root resolves against it, whatever the caller's library is.
+	if p.RootPath != "" {
+		root = p.RootPath
+	}
 	if root == "" {
 		return p
 	}
@@ -138,7 +158,8 @@ func (p Placement) Resolve(root string) Placement {
 	out.SeriesDir = filepath.Join(root, p.SeriesDir)
 	out.Files = make([]PlacedFile, len(p.Files))
 	for i, f := range p.Files {
-		out.Files[i] = PlacedFile{Torrent: f.Torrent, Path: filepath.Join(root, f.Path)}
+		f.Path = filepath.Join(root, f.Path)
+		out.Files[i] = f
 	}
 	return out
 }
@@ -184,7 +205,7 @@ func (p Placement) StagingPath(f PlacedFile) string {
 func (p Placement) VideoPaths() []string {
 	var out []string
 	for _, f := range p.Files {
-		if nyaa.IsVideoFile(f.Path) {
+		if !f.Skipped && nyaa.IsVideoFile(f.Path) {
 			out = append(out, f.Path)
 		}
 	}
@@ -328,6 +349,41 @@ func (s *placementStore) setKept(hash string, kept bool) error {
 	return nil
 }
 
+// setSkipped marks the files whose torrent paths are given Skipped (see PlacedFile.Skipped) and
+// returns the placement as saved. A hash with no placement, or one whose files aren't planned yet
+// (no metadata), is an error: there is nothing to mark.
+func (s *placementStore) setSkipped(hash string, torrentPaths []string) (Placement, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok || len(p.Files) == 0 {
+		return Placement{}, fmt.Errorf("torrent %s has no planned files to skip", hash)
+	}
+	want := make(map[string]bool, len(torrentPaths))
+	for _, t := range torrentPaths {
+		want[t] = true
+	}
+	files := append([]PlacedFile(nil), p.Files...)
+	changed := false
+	for i := range files {
+		if want[files[i].Torrent] && !files[i].Skipped {
+			files[i].Skipped = true
+			changed = true
+		}
+	}
+	if !changed {
+		return p, nil
+	}
+	old := p
+	p.Files = files
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		s.byID[hash] = old
+		return Placement{}, err
+	}
+	return p, nil
+}
+
 // reopen clears Completed: the placement's missing files may be written again (the bulk
 // "redownload missing files"). It also takes incompleteRoot, the incomplete folder configured now:
 // a redownload is a new download, and the files that are gone stage like any other
@@ -374,11 +430,57 @@ func (s *placementStore) setIncompleteRoot(hash, root string) error {
 	return nil
 }
 
-// ownerOf returns the hash of the placement that claims path (final or .part name), or "".
-func (s *placementStore) ownerOf(path string) string {
+// setRoot re-points a placement at its download root's new path ("" = the library): the user
+// moved that folder and edited download_roots (decisions/154).
+func (s *placementStore) setRoot(hash, root string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.byID[hash]
+	if !ok {
+		return fmt.Errorf("torrent %s has no placement", hash)
+	}
+	prev := p
+	p.RootPath = root
+	s.byID[hash] = p
+	if err := s.saveLocked(); err != nil {
+		s.byID[hash] = prev
+		return err
+	}
+	return nil
+}
+
+// missingFolder is the folder this placement writes into that isn't there, "" when none: its
+// download root (decisions/154), or, while it stages, its incomplete folder (decisions/141). A
+// backend never starts a torrent into one, as it would be created on the disk under its mount point.
+func (p Placement) missingFolder() string {
+	if p.RootPath != "" && !isDir(p.RootPath) {
+		return p.RootPath
+	}
+	if p.IncompleteRoot != "" && !p.Completed && !isDir(p.IncompleteRoot) {
+		return p.IncompleteRoot
+	}
+	return ""
+}
+
+// RootOr is the download root the placement lives in: its own, else library, the root every
+// placement from before several roots lives in (decisions/154).
+func (p Placement) RootOr(library string) string {
+	if p.RootPath != "" {
+		return p.RootPath
+	}
+	return library
+}
+
+// ownerOf returns the hash of the placement in root that claims path (final or .part name,
+// relative to that root), or "". library is what a placement without its own root lives in: the
+// same relative path in two roots is two different files.
+func (s *placementStore) ownerOf(root, library, path string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for hash, p := range s.byID {
+		if p.RootOr(library) != root {
+			continue
+		}
 		for _, f := range p.Files {
 			if f.Path == path || f.Path+partSuffix == path {
 				return hash
@@ -560,9 +662,10 @@ func (ps *placedStorage) Prepare(_ context.Context, m storage.Manifest) error {
 		}
 		return nil
 	}
-	exists := func(rel string) bool { return pathExists(filepath.Join(ps.root, rel)) }
+	root := p.RootOr(ps.root)
+	exists := func(rel string) bool { return pathExists(filepath.Join(root, rel)) }
 	files, err := planFiles(p.PlacementRequest, paths, exists, func(rel string) bool {
-		owner := ps.store.ownerOf(rel)
+		owner := ps.store.ownerOf(root, ps.root, rel)
 		return owner != "" && owner != ps.hash
 	})
 	if err != nil {
@@ -583,12 +686,19 @@ func (ps *placedStorage) Open(name string, size int64) (storage.File, bool, erro
 		return nil, false, fmt.Errorf("placement for %s disappeared", ps.hash)
 	}
 	p := stored.Resolve(ps.root)
+	if stored.RootPath != "" && !isDir(stored.RootPath) {
+		return nil, false, fmt.Errorf("%w: %s", ErrDownloadRootUnavailable, stored.RootPath)
+	}
 	for _, f := range p.Files {
 		if f.Torrent != name {
 			continue
 		}
 		if p.Completed {
-			if !pathExists(f.Path) {
+			// A skipped file is one the daemon deleted itself (decisions/153), not one the user
+			// deleted (decisions/139): a re-added torrent writes it again, and the daemon deletes it
+			// again once the torrent finished. Refusing it would stop the torrent on a file
+			// PlacedFilesMissing doesn't count, and the failure handler would drop it.
+			if !pathExists(f.Path) && !f.Skipped {
 				return nil, false, fmt.Errorf("%w: %s", ErrPlacedFileMissing, f.Path)
 			}
 			return openFile(f.Path, size, ps.perm)
@@ -613,7 +723,7 @@ func (ps *placedStorage) Open(name string, size int64) (storage.File, bool, erro
 // RootDir is the series folder: TorrentInfo.DataDir means "where this torrent's files are".
 func (ps *placedStorage) RootDir() string {
 	p, _ := ps.store.get(ps.hash)
-	return filepath.Join(ps.root, p.SeriesDir)
+	return filepath.Join(p.RootOr(ps.root), p.SeriesDir)
 }
 
 // Remove deletes the placed files and the folders that became empty, up to the series folder's
@@ -775,7 +885,8 @@ func finalizeFiles(p Placement) error {
 	for _, f := range p.Files {
 		part := f.Path + partSuffix
 		if !pathExists(part) {
-			if pathExists(f.Path) {
+			// A skipped file may never have been written, or already be deleted (decisions/153).
+			if f.Skipped || pathExists(f.Path) {
 				continue
 			}
 			return fmt.Errorf("neither %s nor its .part file exists", f.Path)

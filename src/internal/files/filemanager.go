@@ -76,6 +76,11 @@ type EpisodeStruct struct {
 	// and downloads the episode again. Stays true if disable_seeding is turned off later — the
 	// file is still in the library.
 	TorrentReleased bool `json:"torrent_released,omitempty"`
+	// HandedToShoko marks a record whose files went to Shoko: its download root is one of Shoko's
+	// import folders (ShokoPathMap), so Shoko imports (and may move) them while the torrent keeps
+	// seeding; the app never deletes them. The episode stays downloaded for the app; the anime page says "Waiting
+	// for Shoko" until Shoko has a file for it (decisions/152).
+	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
 	// AnimeSeason is the season number extracted from the AniList titles at download/adopt
 	// time. Organize does not call AniList; a restart pack uses the Sxx markers on the
 	// files themselves, and this field is the matching entry identity.
@@ -203,6 +208,10 @@ type Config struct {
 	// one sequential write per file (decisions/141). Empty = off: torrents write straight to the
 	// library. The app never creates this folder (ProbeIncompleteFolder).
 	IncompletePath string `json:"incomplete_path"`
+	// DownloadRoots are the folders direct mode downloads into, in fill order (the direct-library
+	// -mode spec, PR 2). Empty = one root, completed_anime_path, named "library". Hardlink mode
+	// ignores them. See Config.Roots and decisions/154.
+	DownloadRoots []DownloadRoot `json:"download_roots"`
 	// IncompleteMinFreeDiskGB is MinFreeDiskGB for the IncompletePath volume, in GiB. Only checked
 	// when that folder is on another filesystem than the library.
 	IncompleteMinFreeDiskGB int `json:"incomplete_min_free_disk_gb"`
@@ -235,6 +244,44 @@ type Config struct {
 	// also carries the download's own requests, so a download runs at most a few hundred times it.
 	// At least 1 (decisions/144).
 	QBittorrentDisableSeedingUploadKiB int `json:"qbittorrent_disable_seeding_upload_kib"`
+	// ShokoEnabled turns on the Shoko integration (the Shoko spec): episodes already in the user's
+	// Shoko library are never searched or downloaded, and the anime page shows them as In Shoko.
+	ShokoEnabled bool `json:"shoko_enabled"`
+	// ShokoURL is the Shoko Server's address, e.g. http://127.0.0.1:8111.
+	ShokoURL string `json:"shoko_url"`
+	// ShokoAPIKey is the key Shoko gave the app at sign-in (POST /shoko/login); the password is
+	// never saved. A secret, like the qBittorrent password: masked by GET /config, kept by a PUT
+	// that sends the placeholder only for the same address (decisions/143).
+	ShokoAPIKey string `json:"shoko_api_key"`
+	// ShokoRefreshHours is how often the app reads what is new in Shoko. The first sync reads
+	// everything, later ones only the files imported since.
+	ShokoRefreshHours int `json:"shoko_refresh_hours"`
+	// ShokoWatch follows Shoko's changes as they happen (its SignalR events): a file linked to an
+	// episode or deleted refreshes that series within seconds, instead of at the next refresh.
+	// ShokoRefreshHours stays, newer-only; a reconnection catches up on deletions and unlinks
+	// (decisions/148).
+	ShokoWatch bool `json:"shoko_watch"`
+	// ShokoFullResyncDays reads all of Shoko again every that many days, on the pass that finds it
+	// due: the newer-only refresh never sees a file deleted or unlinked in Shoko, and the live
+	// events miss an unlink (decisions/148). 0 = never on its own (the Full resync button stays).
+	ShokoFullResyncDays int `json:"shoko_full_resync_days"`
+	// ShokoFullPacks ("Download Full Megapacks"): a pack chosen for the missing episodes downloads
+	// whole, so it also brings the episodes the user has in Shoko. On (the default), the app records
+	// every episode of the pack as its own (decisions/149); off, it removes those unneeded episodes:
+	// skipped with qBittorrent, deleted once downloaded otherwise (decisions/153). An anime
+	// overrides it (AnimeSettings.ShokoPackEpisodes, Config.KeepsShokoPackEpisodes).
+	ShokoFullPacks bool `json:"shoko_full_packs"`
+	// ShokoPathMap is each folder as the app and Shoko see it, when one of them runs in Docker or on
+	// another machine. A download folder is one of Shoko's import folders when its path, translated
+	// through the longest matching prefix, is one or lies inside one; the app reads those folders
+	// from Shoko and never manages them (decisions/152). Empty = identical paths.
+	ShokoPathMap []ShokoPathMapping `json:"shoko_path_map"`
+}
+
+// ShokoPathMapping is one folder as each side sees it: the app at App, Shoko at Shoko.
+type ShokoPathMapping struct {
+	App   string `json:"app"`
+	Shoko string `json:"shoko"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -265,6 +312,50 @@ func (c *Config) IsDirectMode() bool {
 	return c.LibraryMode == LibraryModeDirect
 }
 
+// DownloadRoot is one folder direct mode downloads into: a name the user picks (what an anime's
+// override and the status page show), an absolute path, and how far its drive fills.
+type DownloadRoot struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+	// MinFreeGB is how many GiB this folder's drive keeps free: it takes new torrents until a
+	// torrent would leave less, then the next folder in the list does. nil = min_free_disk_gb
+	// (decisions/154).
+	MinFreeGB *int `json:"min_free_gb,omitempty"`
+}
+
+// LibraryRootName is the name of the one root a config without download_roots has.
+const LibraryRootName = "library"
+
+// Roots returns the folders new torrents can go to, in fill order: download_roots in direct mode,
+// else the library (completed_anime_path) alone, named LibraryRootName (decisions/154).
+func (c *Config) Roots() []DownloadRoot {
+	if c.IsDirectMode() && len(c.DownloadRoots) > 0 {
+		return c.DownloadRoots
+	}
+	return []DownloadRoot{{Name: LibraryRootName, Path: c.CompletedAnimePath}}
+}
+
+// RootMinFreeGB is how many GiB the root at path keeps free: its own min_free_gb, else
+// min_free_disk_gb (the library's, and any path that is no root).
+func (c *Config) RootMinFreeGB(path string) int {
+	for _, r := range c.Roots() {
+		if r.Path == path && r.MinFreeGB != nil {
+			return *r.MinFreeGB
+		}
+	}
+	return c.MinFreeDiskGB
+}
+
+// RootNamed is the root called name, if there is one.
+func (c *Config) RootNamed(name string) (DownloadRoot, bool) {
+	for _, r := range c.Roots() {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return DownloadRoot{}, false
+}
+
 // UsesQBittorrent reports whether the external qBittorrent client is selected.
 func (c *Config) UsesQBittorrent() bool {
 	return c.TorrentClient == TorrentClientQBittorrent
@@ -279,8 +370,14 @@ func (c *Config) MaskSecrets() *Config {
 	if out.QBittorrentAPIKey != "" {
 		out.QBittorrentAPIKey = SecretPlaceholder
 	}
+	if out.ShokoAPIKey != "" {
+		out.ShokoAPIKey = SecretPlaceholder
+	}
 	return &out
 }
+
+// ErrShokoNeedsSignIn is KeepSecrets refusing to reuse the saved Shoko key for another address.
+var ErrShokoNeedsSignIn = errors.New("the Shoko address changed: sign in to Shoko again")
 
 // ErrSecretNeedsRetyping is KeepSecrets refusing to reuse a saved secret for another address.
 var ErrSecretNeedsRetyping = errors.New("the qBittorrent address changed: type the password (and the API key) again")
@@ -306,9 +403,21 @@ func (c *Config) KeepSecrets(saved *Config) error {
 		}
 		*pair.field = *pair.saved
 	}
+	if c.ShokoAPIKey == SecretPlaceholder && strings.TrimSpace(c.ShokoURL) == "" {
+		// The address cleared: that is signing out of Shoko, so the key goes too.
+		c.ShokoAPIKey = ""
+	}
+	if c.ShokoAPIKey == SecretPlaceholder {
+		if !sameQBittorrentURL(c.ShokoURL, saved.ShokoURL) && saved.ShokoAPIKey != "" {
+			return ErrShokoNeedsSignIn
+		}
+		c.ShokoAPIKey = saved.ShokoAPIKey
+	}
 	return nil
 }
 
+// sameQBittorrentURL compares two server addresses (qBittorrent or Shoko) loosely: case, spaces and a
+// trailing slash aside.
 func sameQBittorrentURL(a, b string) bool {
 	norm := func(u string) string { return strings.ToLower(strings.TrimRight(strings.TrimSpace(u), "/")) }
 	return norm(a) == norm(b)
@@ -321,6 +430,62 @@ func sameQBittorrentURL(a, b string) bool {
 // (decisions/137).
 func (c *Config) LiftsEpisodeLimit() bool {
 	return c.IsDirectMode() && !c.AutoDeleteDownloads
+}
+
+// KeepsShokoPackEpisodes reports whether a pack chosen for this anime keeps the episodes the user
+// has in Shoko (records them, decisions/149) rather than removing them (decisions/153): the
+// anime's own setting, else shoko_full_packs.
+func (c *Config) KeepsShokoPackEpisodes(s AnimeSettings) bool {
+	switch s.ShokoPackEpisodes {
+	case ShokoPackDownload:
+		return true
+	case ShokoPackRemove:
+		return false
+	}
+	return c.ShokoFullPacks
+}
+
+// ShokoPath is appPath as Shoko sees it, through the longest matching prefix of shoko_path_map.
+// No match, or no map, leaves it as it is.
+func (c *Config) ShokoPath(appPath string) string {
+	return mapShokoPath(appPath, c.ShokoPathMap, true)
+}
+
+// AppPathFromShoko is a path Shoko reports, as the app sees it: the map the other way.
+func (c *Config) AppPathFromShoko(shokoPath string) string {
+	return mapShokoPath(shokoPath, c.ShokoPathMap, false)
+}
+
+func mapShokoPath(path string, maps []ShokoPathMapping, toShoko bool) string {
+	best, bestLen := -1, -1
+	for i, m := range maps {
+		from := m.App
+		if !toShoko {
+			from = m.Shoko
+		}
+		from = strings.TrimRight(from, `/\`)
+		if from != "" && UnderFolder(path, from) && len(from) > bestLen {
+			best, bestLen = i, len(from)
+		}
+	}
+	if best < 0 {
+		return path
+	}
+	from, to := maps[best].App, maps[best].Shoko
+	if !toShoko {
+		from, to = to, from
+	}
+	return strings.TrimRight(to, `/\`) + strings.TrimRight(path, `/\`)[len(strings.TrimRight(from, `/\`)):]
+}
+
+// UnderFolder reports whether path is folder or lies inside it. Either separator counts (Shoko may
+// run on Windows), and a trailing one is ignored: Shoko reports "/import/".
+func UnderFolder(path, folder string) bool {
+	path, folder = strings.TrimRight(path, `/\`), strings.TrimRight(folder, `/\`)
+	if path == "" || folder == "" {
+		return false
+	}
+	return path == folder || strings.HasPrefix(path, folder+"/") || strings.HasPrefix(path, folder+`\`)
 }
 
 // StagingPath is where new torrents download before moving into the library: IncompletePath in
@@ -363,6 +528,30 @@ type AnimeSettings struct {
 	// the rotation of successive packs has nothing to move it. Absent reads as 0, which is the earlier
 	// behavior. A list anime never uses this field: there its list (AniList or MyAnimeList) rules.
 	Progress int `json:"progress,omitempty"`
+	// Shoko is a Shoko match set by hand on the anime page, in place of the one worked out from the
+	// MAL id (decisions/146); nil = automatic.
+	Shoko *ShokoMatch `json:"shoko,omitempty"`
+	// ShokoPackEpisodes overrides shoko_full_packs for this anime: ShokoPackDownload keeps the
+	// episodes in Shoko a pack brings, ShokoPackRemove removes them; empty = the global setting
+	// (decisions/153).
+	ShokoPackEpisodes string `json:"shoko_pack_episodes,omitempty"`
+	// Root is the name of the download root this anime's new torrents go to, ahead of the fill
+	// order (decisions/154); nil = no override. A root with no space falls through to the others.
+	Root *string `json:"root,omitempty"`
+}
+
+// The values of AnimeSettings.ShokoPackEpisodes.
+const (
+	ShokoPackDownload = "download"
+	ShokoPackRemove   = "remove"
+)
+
+// ShokoMatch is a Shoko match set by hand: the series and the offset (the anime's episode N is the
+// series' episode N+Offset), or None for "this anime is not in Shoko".
+type ShokoMatch struct {
+	SeriesID int  `json:"series_id,omitempty"`
+	Offset   int  `json:"offset,omitempty"`
+	None     bool `json:"none,omitempty"`
 }
 
 type FileManager struct {
@@ -431,13 +620,19 @@ func DefaultConfig() *Config {
 		Notifications:                      NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
 		Priorities:                         nyaa.DefaultPriorities(),
 		LibraryMode:                        LibraryModeHardlink,
+		DownloadRoots:                      []DownloadRoot{},
 		IncompleteFiles:                    IncompleteFilesPart,
 		IncompleteMinFreeDiskGB:            10,
 		EpisodeNumbering:                   EpisodeNumberingSeason,
 		TorrentClient:                      TorrentClientBuiltin,
 		QBittorrentCategory:                "autoanimedownloader",
 		QBittorrentPathMap:                 []PathMapping{},
+		ShokoPathMap:                       []ShokoPathMapping{},
 		QBittorrentDisableSeedingUploadKiB: 16,
+		ShokoRefreshHours:                  24,
+		ShokoWatch:                         true,
+		ShokoFullResyncDays:                30,
+		ShokoFullPacks:                     true,
 	}
 }
 

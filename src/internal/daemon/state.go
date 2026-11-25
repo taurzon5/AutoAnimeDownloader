@@ -20,6 +20,9 @@ type StateNotifier interface {
 type State struct {
 	mu sync.RWMutex
 
+	// shoko is the Shoko integration (SetShoko); nil when the daemon runs without it, as in tests.
+	shoko *ShokoService
+
 	status Status
 
 	lastCheck      time.Time
@@ -146,4 +149,21 @@ func (s *State) GetLastCheckReport() CheckReport {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastCheckReport
+}
+
+// SetShoko gives the state its Shoko integration; main.go calls it once, before the loop starts.
+func (s *State) SetShoko(shoko *ShokoService) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.shoko = shoko
+}
+
+// Shoko returns the Shoko integration, nil without one (or without a state, as in some API tests).
+func (s *State) Shoko() *ShokoService {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.shoko
 }

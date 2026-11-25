@@ -162,7 +162,13 @@ func runDebugAnime(animeId int) {
 		logger.Logger.Fatal().Err(err).Msg("Failed to load configs")
 	}
 
-	summary, err := daemon.RunAnimeDebug(animeId, configs, fileManager)
+	// The last Shoko sync on disk, read-only (OwnedFromLastSync: no request to Shoko, no write, as this
+	// process may run beside the daemon): the dry run marks what is in Shoko as the pass would.
+	var inShoko *daemon.ShokoService
+	if dir, err := datadir.Path(); err == nil {
+		inShoko = daemon.NewShokoService(dir)
+	}
+	summary, err := daemon.RunAnimeDebug(animeId, configs, fileManager, inShoko)
 	if err != nil {
 		logger.Logger.Error().Err(err).Msg("Debug run failed")
 		os.Exit(1)
@@ -308,6 +314,10 @@ func main() {
 		},
 	)
 	jobQueue.SetOrchestration(torrentManager, librarian)
+	// Created before the queue starts: a download that finishes in one of Shoko's import folders
+	// asks Shoko to import it (decisions/152), from the first organize on.
+	shokoService := daemon.NewShokoService(dataDir)
+	jobQueue.SetShoko(shokoService)
 	jobQueue.Start()
 	// Converts the saved AnimeIDs from entry id to media id (decisions/043). Runs at boot, not
 	// only in the verification pass, because the API starts serving /animes before the first tick —
@@ -348,6 +358,9 @@ func main() {
 	ensureStartupSession(torrentManager, fileManager)
 
 	state := daemon.NewState()
+	state.SetShoko(shokoService)
+	// Shoko's changes as they happen, while Shoko and shoko_watch are on (decisions/148).
+	go shokoService.Watch(context.Background(), fileManager.LoadConfigs)
 
 	// GitHub's latest release, once a day, unless check_for_updates is off (asked before every
 	// check, so turning it off needs no restart). A "dev" build never asks.

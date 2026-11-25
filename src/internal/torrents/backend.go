@@ -172,6 +172,10 @@ type TorrentBackend interface {
 	// MovePlacementStaging re-points an unfinished staging torrent at root, the incomplete folder
 	// it was moved to (decisions/141). The torrent finds its files there on its next start.
 	MovePlacementStaging(hash, root string) error
+	// MovePlacementRoot re-points a placement at its download root's new path ("" = the library),
+	// after the user moved that folder (decisions/154). rain opens the files there from then on;
+	// qBittorrent keeps its own save path, which the user changes there.
+	MovePlacementRoot(hash, root string) error
 	// FinalizePlacement gives a completed placed torrent's files their final library paths and
 	// marks the placement completed: it renames .part files, or moves the files of a staging
 	// torrent from the incomplete folder into the library (decisions/141), or only sets the mark.
@@ -185,6 +189,12 @@ type TorrentBackend interface {
 	// before the metadata deletes them. A failure must abort the removal. The daemon never clears
 	// it (decisions/137). No placement is not an error.
 	SetPlacementKept(hash string, kept bool) error
+	// SkipPlacedFiles marks those files of a placed torrent (by their path in the torrent) as not
+	// wanted. qBittorrent then never downloads them (priority 0) and keeps seeding the rest, even
+	// once the daemon deletes one already written (measured on 5.x). rain can't skip a file: it
+	// only records the mark, and the daemon releases the torrent once it deleted them
+	// (decisions/153).
+	SkipPlacedFiles(hash string, torrentPaths []string) error
 	// Announce forces a re-announce to all trackers and DHT. It does not override the
 	// trackers' minimum interval, so calling it in a loop achieves nothing.
 	Announce(hash string) error

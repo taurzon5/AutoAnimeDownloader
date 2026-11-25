@@ -124,6 +124,10 @@ var importRules = []importRule{
 		forbidden: []string{"internal/files"},
 		why:       "torrents does not know files.Config: the daemon applies config-driven guards before Add (decisions/048)",
 	},
+	{
+		pkg: "internal/shoko",
+		why: "the Shoko client is a leaf: the daemon matches anime and applies the config (architecture.md, src/internal/shoko/)",
+	},
 }
 
 // inPackage reports whether pkg is root or nested under it: a rule on internal/nyaa also binds a

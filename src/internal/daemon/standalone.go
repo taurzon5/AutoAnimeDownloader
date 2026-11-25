@@ -121,7 +121,7 @@ func withStandaloneProgress(fm FileManagerInterface, ml *anilist.MediaList) *ani
 //
 // It doesn't call deleteEpisodesByStatus or DeleteEmptyFolders either — adding an anime is no
 // occasion to delete anything.
-func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int) (int, error) {
+func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int, inShoko *ShokoService) (int, error) {
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return 0, err
 	}
@@ -161,7 +161,13 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
 	torrentsNow := backend.List()
-	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, newDiskBudget(torrentsNow, savedEpisodes))
+	// What Shoko already has stays out, as in the pass (decisions/147); the download roots and this
+	// anime's root override, as in the pass (decisions/154).
+	all, _ := fm.LoadAllAnimeSettings()
+	animeSettings := all[mediaID]
+	owned := shokoOwned{episodes: inShoko.OwnedFor(configs, *anime, animeSettings), trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings)}
+	disk := newDiskBudget(torrentsNow, savedEpisodes).withRoots(configs, backend, all)
+	result := processAnimeEpisodes(configs, backend, *anime, torrentsNow, savedEpisodes, seriesIndex, blockedMap, searcher, disk, owned)
 
 	saveEpisodesToFile(fm, result.newEpisodes)
 
@@ -180,6 +186,7 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 	if err != nil {
 		return 0, err
 	}
+	target.root = animeRoot(fm, mediaID)
 	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs, target)
 	if err != nil || hash == "" {
 		return 0, fmt.Errorf("failed to add torrent to embedded client: %w", err)

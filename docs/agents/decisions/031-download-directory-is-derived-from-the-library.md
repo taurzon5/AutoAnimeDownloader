@@ -31,3 +31,5 @@ and hardlinks survive), the root marker (`torrents.RootMarkerName`) travels with
 without that the next `Ensure` sees a folder swap and zeros `LibraryPaths` (see #34) — and the
 operation was idempotent with a retry every pass. Anyone reintroducing the migration needs all
 three, not just the rename.
+
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** in direct mode with `download_roots`, the seeding copy lives in the root the torrent went to, not necessarily under `completed_anime_path`; a placement outside the library stores that root (`RootPath`).

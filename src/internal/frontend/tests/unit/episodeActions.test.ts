@@ -57,6 +57,18 @@ describe('episodeActions', () => {
     expect(result.menu.map((a) => a.id)).toEqual(['replace'])
   })
 
+  // Already in Shoko -> no principal, Download only in the menu (the Shoko spec §3)
+  it('an episode already in Shoko offers Download only from the menu', () => {
+    const result = episodeActions(makeEpisode({ is_aired: true, in_shoko: true }), undefined)
+    expect(result.principal).toBeUndefined()
+    expect(result.menu.map((a) => a.id)).toEqual(['download'])
+  })
+
+  it('an episode in Shoko that the app downloaded too keeps the downloaded actions', () => {
+    const result = episodeActions(makeEpisode({ is_aired: true, is_downloaded: true, in_shoko: true }), undefined)
+    expect(result.principal?.id).toBe('redownload')
+  })
+
   // Row 3: "Downloaded" -> principal: Redownload (ghost, destructive), menu: replace + delete(destructive)
   it('a downloaded episode has redownload as the principal action (ghost, destructive) and replace/delete in the menu', () => {
     const ep = makeEpisode({ is_aired: true, is_downloaded: true })

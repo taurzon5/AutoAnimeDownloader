@@ -34,6 +34,8 @@ type EpisodeDebugResult struct {
 	WouldSearch  bool   `json:"would_search"`
 	MagnetsFound int    `json:"magnets_found"`
 	Picked       string `json:"picked,omitempty"`
+	// InShoko: the user already has it in Shoko, so the pass would not search for it (decisions/147).
+	InShoko bool `json:"in_shoko,omitempty"`
 }
 
 // RunAnimeDebug reproduces the real search/match pipeline for a single anime
@@ -45,7 +47,7 @@ type EpisodeDebugResult struct {
 // ponytail: episodes are always treated as not-yet-downloaded (no
 // episodes.json / torrent-client check). Add it if this tool starts producing
 // false positives in practice.
-func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerInterface) (*DebugSummary, error) {
+func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerInterface, inShoko *ShokoService) (*DebugSummary, error) {
 	logger.Logger.Warn().Msg("Debug mode: episodes are always treated as not-yet-downloaded. Results may differ from a real run for that reason.")
 
 	details, err := resolveAnimeDetails(fileManager, animeId, configs)
@@ -74,16 +76,27 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 	// The SAME function as production: debug reported the wrong pipeline back when this part was a
 	// copy kept in sync by hand. savedEpisodes/torrents/keepSet/blocked are empty because debug
 	// already states it treats every episode as not downloaded.
-	sel := selectEpisodes(configs, maxEpisodes, anime, episodes, nil, nil, nil, nil, nil)
+	// The episodes in Shoko leave the list as in the pass (decisions/147), read from the last sync:
+	// a dry run doesn't sync.
+	var animeSettings files.AnimeSettings
+	if all, err := fileManager.LoadAllAnimeSettings(); err == nil {
+		animeSettings = all[animeId]
+	}
+	owned := inShoko.OwnedFromLastSync(configs, anime, animeSettings)
+	pending := withoutOwnedElsewhere(episodes, owned, anime.Media.Id, nil)
+	maxEpisodes = effectiveMax(configs, pending)
+	sel := selectEpisodes(configs, maxEpisodes, anime, pending, nil, nil, nil, nil, nil)
 
 	wouldSearch := make(map[int]bool, len(sel.toDownload))
 	for _, ep := range sel.toDownload {
 		wouldSearch[ep.Episode] = true
 	}
 	for _, ep := range episodes {
+		_, inShokoEp := owned[ep.Episode]
 		summary.Episodes = append(summary.Episodes, EpisodeDebugResult{
 			Episode:     ep.Episode,
 			WouldSearch: wouldSearch[ep.Episode],
+			InShoko:     inShokoEp,
 		})
 	}
 	episodesToDownload := sel.toDownload
@@ -105,7 +118,8 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 	season, part := ExtractAnimeSeasonPart(anime.Media.Title, synonyms)
 
 	// Same flow as production, without the second selection: debug has no saved records to account for
-	// (it already states it treats every episode as not downloaded).
+	// (it already states it treats every episode as not downloaded). The one re-selection is the
+	// Shoko episodes a chosen pack brings, when the anime keeps them (decisions/149).
 	var magnetsForEpisodes map[int]resolvedMagnets
 	if isAnimeMovie(anime) {
 		episodesToDownload, magnetsForEpisodes = resolveMovie(configs, anime, animeTitle, episodesToDownload, searcher)
@@ -117,7 +131,14 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 			// Same numbering axis as production: without it debug would report "no pack covers" for every
 			// entry whose pack is numbered by season or by series (packAxis).
 			axis := newPackAxis(anime, part, resolveSeriesIndex([]int{animeId}, nil), mediaTotalEpisodes(anime))
-			if batches := chooseCoveringPacks(configs, nil, windowPacks, packDetail(searcher, mediaTotalEpisodes(anime)), axis, firstPending, windowEnd(configs, firstPending)); batches.len() > 0 {
+			if batches := chooseCoveringPacks(configs, nil, nil, windowPacks, packDetail(searcher, mediaTotalEpisodes(anime)), axis, firstPending, windowEnd(configs, firstPending)); batches.len() > 0 {
+				// The episodes in Shoko the pack brings join it when the anime keeps them, through
+				// the same checks as the pass's second selection (decisions/149); their row keeps
+				// would_search false.
+				if configs.KeepsShokoPackEpisodes(animeSettings) {
+					walk := withShokoEpisodesInPacks(episodesToDownload, episodes, owned, axis, batches)
+					episodesToDownload = selectEpisodes(configs, len(episodes)+1, anime, walk, nil, nil, nil, nil, nil).toDownload
+				}
 				episodesToDownload, magnetsForEpisodes = assignBatches(animeTitle, axis, episodesToDownload, batches)
 			}
 		}

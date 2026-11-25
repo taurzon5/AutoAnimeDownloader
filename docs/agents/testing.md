@@ -92,6 +92,31 @@ bash scripts/qbittorrent-live.sh down    # removes the containers, the network a
 Run it when you touch `qbit_client.go` or `qbittorrent.go`, and after a qBittorrent release that
 bumps the Web API version. The test itself takes a few seconds.
 
+## Shoko Live Test
+
+`shoko/shoko_test.go` drives the Shoko client against `fakeShoko`, which answers the way Shoko
+v5.3.3 was measured to, surprises included (an episode has no number without
+`includeDataFrom=AniDB`, `type=Normal` is ignored, an unknown `sortOrder` is ignored). `TestShokoLive`
+checks the same against a real Shoko:
+
+```bash
+bash scripts/shoko-live.sh up      # writes runtime/shoko-test/env.sh
+source runtime/shoko-test/env.sh && go test ./src/internal/shoko/ -run TestShokoLive -v
+bash scripts/shoko-live.sh down    # removes the container, keeps its data
+```
+
+- **What `up` sets up, the first time:** the `shokoanime/server:v5.3.3` image, a default user with
+  a generated password (`runtime/shoko-test/pass`), and one series fetched from AniDB through Shoko
+  (Frieren, AniDB 17617). Then two dummy files, linked by hand to its episodes 1 and 2: without an
+  AniDB account nothing is identified on its own. The API answers on 127.0.0.1:18111 only.
+- **Keep the data:** `down` keeps `runtime/shoko-test`, and a later `up` reuses it. The first `up`
+  asks AniDB for the series once, and AniDB bans a client that asks for the same anime again and
+  again. `wipe` removes everything; run it rarely.
+- **What it covers:** the sign-in, Frieren's MAL ids (52991 and its shorts' 56885), the owned
+  episodes, the newest-first file order and `NewestImport`, a full and an incremental sync, and the
+  match: Frieren at offset 0, the shorts partial. `TestShokoLiveWatch` connects to the event hub,
+  unlinks and relinks one test file, and checks the `FileMatched` it gets names Frieren.
+
 ## Test Structure
 
 - `src/tests/unit/` — unit tests (`package unit`)

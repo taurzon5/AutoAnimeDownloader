@@ -93,6 +93,7 @@ func TestCoverageOwnership_SeasonPackCoversNextCour(t *testing.T) {
 			cour2ID: {Key: cour1ID, Offset: 11},
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if searched {
@@ -165,6 +166,7 @@ func TestCoverageOwnership_UncoveredEpisodesStillSearch(t *testing.T) {
 			cour2ID: {Key: cour1ID, Offset: 11},
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if !searched {
@@ -195,6 +197,7 @@ func TestCoverageOwnership_OtherSeriesIsNotOwnership(t *testing.T) {
 			cour2ID: {Key: 16498, Offset: 11}, // another series, same offset
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if !searched {
@@ -217,6 +220,7 @@ func TestCoverageOwnership_PackNotInSessionIsNotOwnership(t *testing.T) {
 			cour2ID: {Key: cour1ID, Offset: 11},
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if !searched {
@@ -244,6 +248,7 @@ func TestCoverageOwnership_UnknownRangeIsNotOwnership(t *testing.T) {
 			cour2ID: {Key: cour1ID, Offset: 11},
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if !searched {
@@ -299,6 +304,7 @@ func TestCoverageOwnership_KaguyaRestartPackCoversS2(t *testing.T) {
 			kaguyaS2ID: {Key: kaguyaS1ID, Offset: 12},
 		},
 		map[files.EpisodeKey]bool{}, countingSearcher(&searched), nil,
+		shokoOwned{},
 	)
 
 	if searched {

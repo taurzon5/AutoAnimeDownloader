@@ -6,6 +6,7 @@ import (
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/notifications"
 	"AutoAnimeDownloader/src/internal/nyaa"
+	"AutoAnimeDownloader/src/internal/shoko"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"errors"
 	"fmt"
@@ -97,12 +98,63 @@ func effectiveMax(configs *files.Config, episodes []anilist.AiringNode) int {
 
 // windowEnd is the last episode the packs must cover in this cycle: the other side of
 // max_episodes_per_anime. With the ceiling off the window is open, which is expensive on purpose
-// (the brakes become max_batch_torrent_size_gb, per torrent, and checkDiskSpace).
+// (the brakes become max_batch_torrent_size_gb, per torrent, and checkRootBudgetSpace).
 func windowEnd(configs *files.Config, firstPending int) int {
 	if configs.MaxEpisodesPerAnime <= 0 || configs.LiftsEpisodeLimit() {
 		return math.MaxInt
 	}
 	return firstPending + configs.MaxEpisodesPerAnime - 1
+}
+
+// withoutOwnedElsewhere drops from the episode list those the user already has in Shoko, unless the
+// app has its own record of them.
+func withoutOwnedElsewhere(episodes []anilist.AiringNode, owned map[int]shoko.File, animeID int, saved map[files.EpisodeKey]bool) []anilist.AiringNode {
+	if len(owned) == 0 {
+		return episodes
+	}
+	out := make([]anilist.AiringNode, 0, len(episodes))
+	for _, ep := range episodes {
+		if _, inShoko := owned[ep.Episode]; inShoko && !saved[files.EpisodeKey{AnimeID: animeID, Episode: ep.Episode}] {
+			continue
+		}
+		out = append(out, ep)
+	}
+	return out
+}
+
+// shokoOwned is what the user has in Shoko for one anime, for the pass: the episodes
+// (decisions/147), and whether a pack chosen for the others records those it brings
+// (Config.ShokoFullPacks, decisions/149).
+type shokoOwned struct {
+	episodes     map[int]shoko.File
+	trackInPacks bool
+}
+
+// withShokoEpisodesInPacks puts back, in list order, the episodes in Shoko that a chosen pack
+// covers, so the second selection records them with the rest of the pack (decisions/149). A pack
+// of unknown range adds none: nothing says it holds them, and a record of an episode the torrent
+// lacks would be a missing file forever.
+func withShokoEpisodesInPacks(pending, episodes []anilist.AiringNode, owned map[int]shoko.File, axis packAxis, batches *packSet) []anilist.AiringNode {
+	if len(owned) == 0 {
+		return pending
+	}
+	inPending := make(map[int]bool, len(pending))
+	for _, ep := range pending {
+		inPending[ep.Episode] = true
+	}
+	out := make([]anilist.AiringNode, 0, len(episodes))
+	for _, ep := range episodes {
+		if !inPending[ep.Episode] {
+			if _, inShoko := owned[ep.Episode]; !inShoko {
+				continue
+			}
+			if batch, info := batches.covering(axis, ep.Episode); batch == nil || info.EndEpisode == 0 {
+				continue
+			}
+		}
+		out = append(out, ep)
+	}
+	return out
 }
 
 func processAnimeEpisodes(
@@ -115,6 +167,7 @@ func processAnimeEpisodes(
 	blockedMap map[files.EpisodeKey]bool,
 	searcher nyaaSearcher,
 	disk *diskBudget,
+	inShoko shokoOwned,
 ) animeProcessResult {
 	var result animeProcessResult
 	animeTitle := getAnimeTitleSafe(anime)
@@ -139,7 +192,12 @@ func processAnimeEpisodes(
 	// The first selection is the one that counts when there's no pack, and it's the one that produces
 	// the limit deletions: with the limit lifted by guess, handleAlreadySavedEpisode never fired and
 	// keysToDelete came back empty for everyone.
-	sel := selectEpisodes(configs, effectiveMax(configs, episodes), anime, episodes, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
+	// Episodes the user already has in Shoko are neither searched nor downloaded, and take no slot of
+	// max_episodes_per_anime: they leave the list both selections walk. One the app downloaded itself
+	// stays, so its own lifecycle (pruning, deletion) goes on (the Shoko spec §3, decisions/147).
+	// With tracking on, the second selection gets back those a chosen pack covers (decisions/149).
+	pending := withoutOwnedElsewhere(episodes, inShoko.episodes, anime.Media.Id, savedEpisodesMap)
+	sel := selectEpisodes(configs, effectiveMax(configs, pending), anime, pending, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
 
 	// Ownership by coverage, BEFORE any search: what an already downloaded pack covers on the series'
 	// absolute axis doesn't go back to Nyaa (see coverage.go).
@@ -166,7 +224,13 @@ func processAnimeEpisodes(
 		if windowPacks, ok := packsForWindow(packs, totalEpisodes, sel.toDownload); !isAnimeMovie(anime) && ok {
 			firstPending := sel.toDownload[0].Episode
 			axis := newPackAxis(anime, animePart, seriesIndex, totalEpisodes)
-			batches := chooseCoveringPacks(configs, disk, windowPacks, packDetail(searcher, totalEpisodes), axis, firstPending, windowEnd(configs, firstPending))
+			packTarget := torrentTarget{anime: anime, batch: true}
+			if series, ok := seriesIndex[anime.Media.Id]; ok {
+				packTarget.series = &series
+			}
+			order := rootOrder(configs, backend, packTarget, disk.override(anime.Media.Id))
+			orderFor := func(magnet string) []files.DownloadRoot { return placedOrder(configs, backend, magnet, order) }
+			batches := chooseCoveringPacks(configs, disk, orderFor, windowPacks, packDetail(searcher, totalEpisodes), axis, firstPending, windowEnd(configs, firstPending))
 			switch {
 			case batches.len() > 0:
 				logger.Logger.Info().
@@ -177,7 +241,12 @@ func processAnimeEpisodes(
 
 				// Second selection, with the limit lifted: the episodes.json records must cover the WHOLE pack,
 				// otherwise the count lies and pruning would delete what the pack just brought.
-				sel = selectEpisodes(configs, len(episodes)+1, anime, episodes, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
+				// The episodes in Shoko the pack brings join it when the anime tracks them (decisions/149).
+				walk := pending
+				if inShoko.trackInPacks {
+					walk = withShokoEpisodesInPacks(pending, episodes, inShoko.episodes, axis, batches)
+				}
+				sel = selectEpisodes(configs, len(episodes)+1, anime, walk, savedEpisodesMap, savedEpisodesFullMap, torrentsHashSet, keepSet, blockedMap)
 				sel.toDownload = dropAdopted(sel.toDownload, adopted)
 				sel.toDownload, magnetsForEpisodes = assignBatches(animeTitle, axis, sel.toDownload, batches)
 			case packStats.Input == 0:
@@ -388,7 +457,7 @@ func processAnimeEpisodes(
 
 type resolvedMagnets struct {
 	// candidates carries the whole TorrentResult, not just the magnet, because Size is what the disk
-	// guard needs at Add time (checkDiskSpace).
+	// guard needs at Add time (checkRootBudgetSpace).
 	candidates    []nyaa.TorrentResult
 	skipSubfolder bool
 	overrideName  string
@@ -594,7 +663,7 @@ var afterPacksThatFit func()
 // reserve. packsThatFit is a snapshot; a parallel anime can spend the last bytes before this
 // one Adds, and without the retry the pack that no longer fits would keep the window
 // (decisions/097 via the #101 race).
-func chooseCoveringPacks(configs *files.Config, disk *diskBudget, packs []nyaa.TorrentResult, detail func(nyaa.TorrentResult) (nyaa.BatchInfo, bool), axis packAxis, firstPending, windowEnd int) *packSet {
+func chooseCoveringPacks(configs *files.Config, disk *diskBudget, orderFor func(magnet string) []files.DownloadRoot, packs []nyaa.TorrentResult, detail func(nyaa.TorrentResult) (nyaa.BatchInfo, bool), axis packAxis, firstPending, windowEnd int) *packSet {
 	remaining := append([]nyaa.TorrentResult(nil), packs...)
 	for {
 		fit := packsThatFit(configs, disk, remaining)
@@ -614,7 +683,11 @@ func chooseCoveringPacks(configs *files.Config, disk *diskBudget, packs []nyaa.T
 				continue
 			}
 			seen[key] = true
-			undo, err := disk.reserve(configs, item.torrent)
+			var order []files.DownloadRoot
+			if orderFor != nil {
+				order = orderFor(item.torrent.MagnetLink)
+			}
+			_, undo, err := disk.reserve(configs, item.torrent, order)
 			if err != nil {
 				logger.Logger.Info().Err(err).Str("torrent", item.torrent.Name).Msg("Skipping pack: it does not fit on disk")
 				for _, u := range undos {
@@ -1061,13 +1134,17 @@ func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentB
 
 		// Per candidate, because each has a size: the next one in the list may fit where the first
 		// didn't.
-		undo, err := disk.reserve(configs, candidates[i])
+		override := target.root
+		if override == "" {
+			override = disk.override(target.anime.Media.Id)
+		}
+		root, undo, err := disk.reserve(configs, candidates[i], placedOrder(configs, backend, candidates[i].MagnetLink, rootOrder(configs, backend, target, override)))
 		if err != nil {
 			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping candidate: it does not fit on disk")
 			continue
 		}
 
-		if err := registerPlacement(configs, backend, candidates[i].MagnetLink, target); err != nil {
+		if err := registerPlacement(configs, backend, candidates[i].MagnetLink, target, root); err != nil {
 			undo()
 			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping candidate: it could not be placed in the library")
 			continue
@@ -1317,6 +1394,25 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 				// episode's raw-named file safely). Freed only when the whole torrent goes.
 				continue
 			}
+			// Handed to Shoko: the files are Shoko's now, moved or imported where they lie
+			// (MoveOnImport is off on a fresh Shoko), so no record of the torrent deletes any of them.
+			// A torrent still seeding leaves below with its files kept (Kept placement). A released
+			// one (Shoko moved its files, or disable_seeding released it) has its placement forgotten
+			// once, with the whole torrent, or the orphan sweep would delete what is left; Kept, a
+			// re-add would resume into files Shoko may have moved. Checked before the placement lookup: once it
+			// is forgotten, a pack's next record would fall through to the library removal below
+			// (decisions/152).
+			if ep.HandedToShoko {
+				if ep.TorrentReleased && removingTorrent && ep.EpisodeHash != "" && !releasedPlaced[ep.EpisodeHash] {
+					releasedPlaced[ep.EpisodeHash] = true
+					if _, placed := backend.Placement(ep.EpisodeHash); placed {
+						if err := backend.ForgetPlacement(ep.EpisodeHash); err != nil {
+							logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to forget a torrent handed to Shoko")
+						}
+					}
+				}
+				continue
+			}
 			// A direct-mode record's library paths are the torrent's own files. While the torrent is
 			// in the session, removing it below deletes them through the placement storage; deleting
 			// them here first would only race it. A released one (disable_seeding) left the session
@@ -1361,15 +1457,17 @@ func removeEpisodesAndLinks(fm FileManagerInterface, backend torrents.TorrentBac
 			removedHashes[ep.EpisodeHash] = true
 			// With keepData a direct-mode torrent's files become the user's: its placement is
 			// marked Kept BEFORE the removal, so the orphan sweep can never delete them. When the
-			// mark fails, the torrent and its records stay, untouched (decisions/137).
-			if keepData {
+			// mark fails, the torrent and its records stay, untouched (decisions/137). A torrent
+			// handed to Shoko always keeps its files: they are Shoko's (decisions/152).
+			keep := keepData || ep.HandedToShoko
+			if keep {
 				if err := backend.SetPlacementKept(ep.EpisodeHash, true); err != nil {
 					logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to keep the torrent's files; leaving the torrent and its episodes in place")
 					notKept[ep.EpisodeHash] = true
 					continue
 				}
 			}
-			if err := backend.Remove(ep.EpisodeHash, keepData); err != nil {
+			if err := backend.Remove(ep.EpisodeHash, keep); err != nil {
 				logger.Logger.Warn().Err(err).Str("hash", ep.EpisodeHash).Msg("Failed to remove torrent")
 			} else {
 				logger.Logger.Info().Str("hash", ep.EpisodeHash).Msg("Removed torrent (seeding copy)")

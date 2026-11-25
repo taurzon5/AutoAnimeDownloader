@@ -93,7 +93,7 @@ Key endpoints:
 
 | Method | Endpoint | Handler func | File |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/status` | `handleStatus` | `endpoint_status.go` — the `disk_low` threshold lives **only** on the server. It is the add-gate for a torrent of size 0: `free - reserved` against `min_free_disk_gb` (`daemon.DiskLow`), so the Status banner cannot disagree with what the daemon will refuse ([decisions/093](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)). The AniList state is written by **any** call (a pass or a frontend poll), because they all go through `sendAnilistRequest` — decisions/065 and decisions/066. `anilist.cache_saved_at` is filled in on **read**, not when the state is written: it's not a fact about AniList, it's what the banner uses to say how old the cache on screen is. `pending_crash_at` (mtime of `crash-pending.log`, `null` when there is none) is what makes the web UI offer the report screen after a crash. `latest_version`/`latest_version_url` come from `updates.Latest()` (memory, no request on read) and drive the update badge next to the version in `NavRail`/`MoreMenu` (`UpdateBadge.svelte`), read once when the shell mounts. `incomplete_disk_total`/`incomplete_disk_free` describe the `incomplete_path` drive, only when it is set and not the library's filesystem; `disk_low` covers both drives ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) |
+| `GET` | `/api/v1/status` | `handleStatus` | `endpoint_status.go` — the `disk_low` threshold lives **only** on the server. It is the add-gate for a torrent of size 0: `free - reserved` against each download root's `min_free_gb` (else `min_free_disk_gb`), low when no root takes it (`daemon.DiskLow`), so the Status banner cannot disagree with what the daemon will refuse ([decisions/093](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)). The AniList state is written by **any** call (a pass or a frontend poll), because they all go through `sendAnilistRequest` — decisions/065 and decisions/066. `anilist.cache_saved_at` is filled in on **read**, not when the state is written: it's not a fact about AniList, it's what the banner uses to say how old the cache on screen is. `pending_crash_at` (mtime of `crash-pending.log`, `null` when there is none) is what makes the web UI offer the report screen after a crash. `latest_version`/`latest_version_url` come from `updates.Latest()` (memory, no request on read) and drive the update badge next to the version in `NavRail`/`MoreMenu` (`UpdateBadge.svelte`), read once when the shell mounts. `incomplete_disk_total`/`incomplete_disk_free` describe the `incomplete_path` drive, only when it is set and not the library's filesystem; `disk_low` covers both drives ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)) ; `disks` lists every download folder's drive (`daemon.RootDisks`, decisions/154) |
 | `GET` | `/api/v1/last-check` | `handleLastCheck` | `endpoint_last_check.go` — memory only. `problems` (should have downloaded and did not) and `limits` (the config doing what it was configured to do). When `pass_error` is set both lists come empty, because `SetLastCheckError` clears the report (decisions/082). A manual download stays out: that path returns the error on its own HTTP response |
 | `GET/PUT` | `/api/v1/config` | `handleConfig` | `endpoint_config.go` — `GET` answers the qBittorrent password and API key as `"__saved__"`, and a `PUT` carrying it keeps the saved value ([decisions/143](decisions/143-the-qbittorrent-password-and-api-key-come-back.md)). The `PUT` answers `restart_required: true` when `torrent_client` changed: the client is picked at startup |
 | `GET` | `/api/v1/config/priorities/defaults` | `handlePriorityDefaults` | `endpoint_priorities.go` |
@@ -101,9 +101,9 @@ Key endpoints:
 | `GET` | `/api/v1/anilist/search?q=&include_unreleased=` | `handleAniListSearch` | `endpoint_anilist_search.go` — a term shorter than 3 chars returns an empty list, **not** 400. `block_reason` per result (`""` = addable) |
 | `POST` | `/api/v1/standalone-animes` | `handleStandaloneAnimeAdd` | `endpoint_standalone_animes.go` — body `{"media_id":21,"magnet":"…"}` with `magnet` optional; optional `name`/`nyaa_id`/`size_bytes` for coverage and the disk guard (no `name` → the magnet's `dn`; a one-episode entry with no readable range still records episode 1, [decisions/123](decisions/123-a-one-episode-entry-covers-episode-1-even-when-the.md)). No magnet: auto-pick. Magnet: 409s first, then `DownloadStandaloneAnimeWithMagnet` adds the torrent then writes the id (not the handler); records only covered aired episodes. 400 `INVALID_MAGNET` if the value lacks the `magnet:` prefix. Answers `{"added": N}`; 409 `LIBRARY_NOT_CONFIGURED` / `ALREADY_STANDALONE` / `ALREADY_TRACKED` / `ALREADY_DOWNLOADED` |
 | `DELETE` | `/api/v1/standalone-animes/{id}?delete_episodes=<bool>` | `handleStandaloneAnimeRemove` | `endpoint_standalone_animes.go` — without `delete_episodes` the episodes stay and are marked `ManuallyManaged`. Either way the anime's `blocked_episodes` entries are cleared (`clearAnimeBlocks`) — not in `RemoveStandaloneAnime`, which the pass also calls when the anime enters a list and the blocks must stay |
-| `GET/PUT` | `/api/v1/animes/{id}/settings` | `handleAnimeSettings` | `endpoint_anime_settings.go` |
+| `GET/PUT` | `/api/v1/animes/{id}/settings` | `handleAnimeSettings` | `endpoint_anime_settings.go` — partial PUT: `progress`, `shoko` (a Shoko match by hand: `series_id`+`offset`, `none`, or `auto` to clear), `shoko_pack_episodes` (`download`, `remove`, or `default` to clear), and `root` (a download folder's name, `""` to drop it, [decisions/154](decisions/154-several-download-roots-each-placement-records-its.md)). CLI: `animes settings` |
 | `POST` | `/api/v1/animes/{id}/debug` | `handleAnimeDebug` | `endpoint_anime_debug.go` — the `--debug-anime` pass run by the live daemon; trace goes to the daemon log, summary in the response. Minutes long: `Client.RunAnimeDebug` uses its own timeout, not the client's 30s |
-| `GET` | `/api/v1/animes/{id}/episodes` | `handleAnimeEpisodes` | `endpoint_anime_episodes.go` — `accounts` is every configured account that has the anime, in **any** list status, each with its own status/progress/score (the "On lists" panel). The top-level `status` is one arbitrary account's: read `accounts` instead. `score` is 0–10 whatever the account's own format; `score_raw` + `score_format` are the same score in the account's own format (MAL: always `POINT_10`), absent when the format is unknown (old cache snapshots), and the screen then falls back to `score`. Only `getMediaListEntry` asks for them (`score(format: POINT_10_DECIMAL)`, `rawScore: score`, `user { avatar mediaListOptions { scoreFormat } }`); every other query leaves them empty |
+| `GET` | `/api/v1/animes/{id}/episodes` | `handleAnimeEpisodes` | `endpoint_anime_episodes.go` — `in_shoko`/`shoko_file` per episode and a `shoko` block (status, series, offset, by hand), both from the last pass's `ShokoService.AnimeStatus`, `handed_to_shoko` from the record (downloaded into Shoko's drop folder, "Waiting for Shoko" until `in_shoko`, [decisions/152](decisions/152-a-library-that-is-a-shoko-drop-folder-releases.md)), and in the `shoko` block the pack choice (`pack_episodes`, `keep_pack_episodes`, `keep_pack_episodes_default`, [decisions/153](decisions/153-a-packs-episodes-already-in-shoko-are-removed-for.md)); `accounts` is every configured account that has the anime, in **any** list status, each with its own status/progress/score (the "On lists" panel). The top-level `status` is one arbitrary account's: read `accounts` instead. `score` is 0–10 whatever the account's own format; `score_raw` + `score_format` are the same score in the account's own format (MAL: always `POINT_10`), absent when the format is unknown (old cache snapshots), and the screen then falls back to `score`. Only `getMediaListEntry` asks for them (`score(format: POINT_10_DECIMAL)`, `rawScore: score`, `user { avatar mediaListOptions { scoreFormat } }`); every other query leaves them empty |
 | `GET` | `/api/v1/animes/{id}/torrent-candidates?q=` | `handleTorrentCandidates` | `endpoint_torrent_candidates.go` — ranked whole-title list, cap 8. Empty `items` is 200 (`[]`, not null). `{id}` need not be tracked. `q` skips title variants and season/part. Does not fetch `/view/<id>`. `media` is the AniList identity already fetched for the search (title, `cover_image` medium, format, episodes). 502 `NYAA_UNAVAILABLE`. 404 `ANIME_NOT_FOUND` |
 | `GET` | `/api/v1/animes/{id}/torrent-candidates/{nyaaId}` | `handleTorrentCandidateDetail` | sanitised Nyaa page + file list. `{nyaaId}` digits only. `{id}` unused for the fetch (still validated). `files` is `[]` not null. 404 `TORRENT_NOT_FOUND` |
 | `POST` | `/api/v1/animes/{id}/episodes/{episodeNumber}/download` | `handleDownloadEpisode` | `endpoint_episode_actions.go` |
@@ -124,6 +124,9 @@ Key endpoints:
 | `POST` | `/api/v1/notifications/webhooks/{name}/test` | `handleNotificationWebhookTest` | `endpoint_notifications.go` |
 | `GET` | `/api/v1/torrents` | `handleTorrents` | `endpoint_torrents.go` — `status: "moving"` with `move_progress` (0–1) while a finished torrent is copied from the incomplete folder into the library; `SessionManager` overlays it like the queue's `"queued"` ([decisions/141](decisions/141-staged-downloads-are-copied-into-the-library-while.md)). With qBittorrent it is qBittorrent's own `moving` state (`qbitStatusSlug`), and `withMoveProgress` measures the bytes already at the final paths ([decisions/145](decisions/145-with-qbittorrent-a-staged-torrent-downloads-into.md)) |
 | `POST` | `/api/v1/torrent-client/test` | `handleTorrentClientTest` | `endpoint_torrent_client.go` — signs in to qBittorrent, reads its versions and writes a probe file in the library to check qBittorrent sees it (`torrents.TestQBittorrent`, through `app/getDirectoryContent`). Optional body: the qBittorrent settings being edited (`qbittorrent_url`, user, password, key, `qbittorrent_path_map`, `completed_anime_path`), so the web UI tests before saving; a secret sent as the placeholder uses the saved one. 502 `TORRENT_CLIENT_UNREACHABLE` when it can't connect or sign in; 200 with `problem` when connected but too old or not seeing the library. Also answers qBittorrent's own download queue (`queueing_enabled`, `max_active_downloads`) and `disk_io_type` (absent when it didn't answer its preferences), `sign_in` (`api_key` or `password`), and with `incomplete_path` a second probe there (`incomplete_checked`, `incomplete_visible`, `incomplete_path`). The body takes `incomplete_path` too. Saves nothing. CLI: `torrents test` |
+| `POST` | `/api/v1/shoko/login` | `handleShokoLogin` | `endpoint_shoko.go` — `{url, username, password}`: signs in to Shoko (`shoko.Login`) and saves only `shoko_url` and the API key Shoko returns, never the password. 400 `SHOKO_LOGIN_REFUSED` on a refused login, 502 `SHOKO_UNREACHABLE`. CLI: `shoko login` (password on stdin) |
+| `GET` | `/api/v1/shoko/status` | `handleShokoStatus` | `endpoint_shoko.go` — on/off, signed in, the last sync and full sync, the last error, how many series and owned episodes of followed anime, and the event watcher (`watching`, `last_event`, `watch_error`); the last import request (`last_import_request`, `import_error`), Shoko's import folders as last read (`import_folders`, each with `app_path` through `shoko_path_map`; `import_folders_error`), and in direct mode each saved download folder and the Shoko folder holding it (`download_roots`: `in_shoko`, `folder_id`, `folder_name`). Never the key. CLI: `shoko status` |
+| `POST` | `/api/v1/shoko/sync` | `handleShokoSync` | `endpoint_shoko.go` — starts a check pass that syncs first; `{"full": true}` reads all of Shoko again (`ShokoService.RequestFullSync`). 202; 503 without the service. CLI: `shoko sync [--full]` |
 | `POST` | `/api/v1/torrents/redownload-missing` | `handleTorrentsRedownloadMissing` | `endpoint_torrents.go` — every finished direct-mode torrent whose files are gone (`files_missing`) downloads them again into the same paths (`daemon.RedownloadMissingFiles`, decisions/139). Optional body `{"hashes":[…]}` narrows it (the web UI's dialog lists them all ticked and the user can untick some; an empty list is 400). Answers `{redownloaded, skipped_no_space}`; the disk guard counts each torrent's missing bytes on top of what the session still has to write. Each torrent is removed from rain (keep data) and added back, not restarted (decisions/140). CLI: `torrents redownload-missing [hash…]` (slow timeout) |
 | `POST` | `/api/v1/torrents/{hash}/pause` | `handleTorrentPause` | `endpoint_torrents.go` |
 | `POST` | `/api/v1/torrents/{hash}/resume` | `handleTorrentResume` | `endpoint_torrents.go` |
@@ -210,7 +213,7 @@ All three go through the `min_seeders` floor (`filterSearchResults`).
   `1..total`: both sources failed and "I don't know" is the only honest record (decisions/084)
 - The "unknown range" sentinel is the **end** (`BatchEnd`). A start of 0 or negative is a legitimate
   range ("00 ~ 12", or a season pack recorded under a later cour)
-- `checkDiskSpace` bars a download, **never** the verification pass. A `statfs` error does not
+- `checkRootBudgetSpace` bars a download, **never** the verification pass. A `statfs` error does not
   block. It receives the torrent size and is called **per candidate**: the second in the list may
   fit where the first did not, and the size trigger still applies with the GiB floor off
   ([#93](decisions/093-the-disk-guard-has-two-triggers-and-the-size-one.md)).
@@ -284,7 +287,8 @@ filled counts as done — no re-link and no re-firing the webhook — so the com
 reconciliation pass can both enqueue without fear. Created in `main.go` before `NewServer`, wired
 to the backend/librarian by `SetOrchestration`.
 
-**`disable_seeding` has two halves, in two packages** ([decisions/119](decisions/119-disable-seeding-means-no-upload-at-all-and-a.md)).
+**`disable_seeding` has two halves, in two packages** ([decisions/119](decisions/119-disable-seeding-means-no-upload-at-all-and-a.md)). `releaseTorrent` also has two
+callers outside it: `releaseMovedByShoko` (decisions/152) and `dropPackFiles` (decisions/153).
 The session half is in `torrents`: `SetUploadDisabled` → the next `Ensure` rebuilds the session
 with no unchoking and an empty allowed-fast set (`rainConfig`); with qBittorrent it is an upload
 limit per torrent instead, applied by the poll loop (decisions/144). Call it BEFORE `Ensure`, like
@@ -621,6 +625,54 @@ the marker tried on its own (decisions/075).
 **`nyaa_regex.go`** is package-level precompiled regex, so it is not recompiled inside a
 per-torrent loop. `videoExtEpisodeRegexp` is the one builder (from `videoExtensions` at init).
 
+### `src/internal/shoko/` — the Shoko Server client
+
+Reads a Shoko library (v3 API, measured against v5.3.3: the facts are in the Shoko spec's "Measured
+against v5.3.3"); it never writes to Shoko beyond signing in and `ImportNewFiles`, the drop
+folder's "import new files" request. It imports no internal package.
+`client.go` is the API; `match.go` is `MatchEntry`/`OwnedOf`, the AniList-to-Shoko match through
+the MAL id ([decisions/146](decisions/146-an-anilist-entry-matches-a-shoko-series-through.md)); `store.go` is the synced state in `shoko.json`, one full sync then
+only files imported since the newest seen (`NewestImport`, `NewestImportIDs`); `watch.go` is the
+SignalR client for Shoko's change events (`/signalr/aggregate`, the `shoko` feed), and
+`Store.RefreshSeries` re-reads the series an event names ([decisions/148](decisions/148-shokos-change-events-refresh-only-the-series-they.md)).
+
+The daemon half is `daemon/shoko.go`, `ShokoService`, held by the `State` (`SetShoko` in
+`cmd/daemon/main.go`; nil in tests): `ForPass` runs once per pass after the anime list is built,
+syncs when due, matches each anime (MAL ids from `anilist.MALFactsOf`, a query of its own) and
+hands `processAnimeEpisodes` each anime's owned episodes, which leave the list both selections walk
+([decisions/147](decisions/147-episodes-already-in-shoko-leave-the-list-both.md)). The anime page reads the last pass's outcome (`AnimeStatus`); there is no
+per-request match. `RunAnimeDebug` takes the service too and drops the episodes in Shoko from the
+last sync on disk, as the pass would. `ShokoService.Watch` (a goroutine from `main.go`) keeps the store current between
+passes: an event refreshes its series and works the matches out again (`rematch`) without a pass. Manual downloads (`ManualDownloadEpisode`) don't look at Shoko: the user picked
+the torrent.
+
+**A download folder in one of Shoko's import folders** (the folders read from Shoko and kept in
+`shoko.json`, `Store.ImportFolders`; `ShokoService.ShokoFolder` matches a root through
+`shoko_path_map`; `jobs.go`'s `shokoTakesTorrent` asks it for the torrent's root,
+`Placement.RootOr`, before the organize) is spread over three files, and none of them calls Shoko synchronously
+([decisions/152](decisions/152-a-library-that-is-a-shoko-drop-folder-releases.md)):
+`jobs.go`'s organize marks the records `HandedToShoko` (the torrent keeps seeding), then
+`processDueJobs` calls `ShokoImporter.RequestImport` once per tick that organized such a torrent
+(`executeJob` reports it); `shoko_import.go` coalesces
+those into one `ImportNewFiles` per `importSettle`, the pass (`ForPass` → `retryImport`) sends a
+failed one again, and `releaseMovedByShoko` releases a handed-off torrent whose files Shoko moved;
+`episodes.go`'s `removeEpisodesAndLinks` never deletes a handed-off torrent's files (a seeding one
+leaves Kept with `keepData`, a released one's placement is forgotten), and that check comes before
+the placement lookup, or a pack's second record would find the placement forgotten and delete its
+file as a library hardlink. The queue gets the service through `JobQueue.SetShoko` before `Start`
+in `main.go`; the `State` holds the same one. There is no setting naming Shoko's folders: the app
+reads them from Shoko, and only a torrent in a folder inside one of them is handed off. `GET
+/shoko/status` answers per saved download folder; the settings page shows that answer and never
+works it out itself.
+
+**Removing a pack's episodes already in Shoko** (`shoko_packs.go`, `dropShokoPackFiles`, run by the
+pass after `ForPass`, [decisions/153](decisions/153-a-packs-episodes-already-in-shoko-are-removed-for.md)):
+for an anime that doesn't keep them (`Config.KeepsShokoPackEpisodes`), the files
+`nyaa.FilesInPackWindow` maps to its episodes in Shoko with no record of the app are marked
+`PlacedFile.Skipped` through `TorrentBackend.SkipPlacedFiles` (qBittorrent: `filePrio` 0 by file
+index) and deleted once the placement is `Completed`; a rain torrent still in the client is
+released first. Everything that checks a placement's files on disk must skip `Skipped` ones.
+
 ### `src/internal/torrents/` — embedded BitTorrent client
 
 `github.com/cenkalti/rain/v2` behind the `TorrentBackend` interface. One seam, three sides:
@@ -694,6 +746,16 @@ writes a placed torrent straight to `<library>/<Series>/…` and seeds it from t
   `Placements()` hand them back resolved; the store, `planFiles` and `ownerOf` work relative.
   Anything that deletes or opens must use a resolved placement — `pruneOrphanPlacements` skips
   unresolved ones, which would otherwise resolve against the process's working directory.
+  `Resolve` copies each `PlacedFile` whole and only rewrites its `Path`: rebuilding it field by
+  field dropped `Skipped` (decisions/153).
+- **A placement may live in another download root** (`download_roots`,
+  [decisions/154](decisions/154-several-download-roots-each-placement-records-its.md)):
+  `RootPath` set, `Resolve` uses it instead of the library, and `ownerOf` claims a path per root. A
+  placement in the library keeps `RootPath` empty, so a moved library still carries it. Anything
+  that joins a root to a stored relative path by hand must use `Placement.RootOr(library)`.
+  qBittorrent adds a placed torrent with its root as save path. The root is chosen by the daemon's
+  disk budget (`reserve(…, rootOrder(…))` returns it), never by the placement code; the folder-swap
+  marker still watches the library only.
 
 There is no hardlink anywhere in direct mode: organize (`daemon.organizeTorrent`, placed branch)
 renames the `.part` files (`FinalizePlacement`, which stops and restarts the torrent) and records the

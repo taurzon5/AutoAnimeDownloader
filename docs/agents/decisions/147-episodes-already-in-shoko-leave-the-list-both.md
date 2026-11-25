@@ -1,0 +1,92 @@
+# 147. Episodes already in Shoko leave the list both selections walk, unless the app has its own record of them, and their MAL ids come from a query of their own
+
+**Location:**
+- `internal/daemon/episodes.go`: `withoutOwnedElsewhere`, and `inShoko.episodes` (the `shokoOwned`
+  parameter of `processAnimeEpisodes`), applied before both `selectEpisodes` calls. With tracking
+  on, the second call gets back those a chosen pack covers
+  ([#149](149-a-pack-chosen-for-the-missing-episodes-records-the.md)).
+- `internal/daemon/shoko.go`: `ShokoService.ForPass`, called once per pass in `AnimeVerification`.
+- `internal/anilist/shoko_facts.go`: `MALFactsOf` and `EpisodesOfMALIDs`.
+- `internal/daemon/standalone.go`: `DownloadStandaloneAnime` takes the service and matches the one
+  anime (`ShokoService.OwnedFor`: no sync, but a matched series no sync read yet is read). The
+  debug run uses `OwnedFromLastSync`, which asks Shoko nothing and writes nothing.
+- `internal/api/endpoint_animes.go`: `withShokoOwned`, which counts the episodes in Shoko as there
+  for the progress bar and the "behind" count
+  ([#88](088-the-progress-bar-derives-downloaded-from-episodes.md)).
+
+Pinned by:
+- `TestProcessAnimeEpisodes_EpisodesInShokoAreSkippedAndTakeNoSlot`
+- `TestWithoutOwnedElsewhere_KeepsTheAppsOwnEpisodes`
+- `TestShokoServiceForPass`
+- `TestMALFactsOfAndEpisodesOfMALIDs`
+- `TestWithShokoOwnedCountsShokoEpisodesAsThere`
+
+**What it looks like:**
+- A new parameter on `processAnimeEpisodes`, threaded through every caller and test, where the
+  blacklist map (`blockedMap`) already skips episodes.
+- An episode that is in Shoko and also downloaded by the app is not skipped.
+- An extra AniList query asks for `idMal` beside the pass's own list query, which could have
+  asked for it.
+
+**Why it's right:**
+
+- **Not the blacklist.** A blocked episode still goes through `checkEpisode` and counts toward
+  `max_episodes_per_anime`. With episodes 1–6 in Shoko and a limit of 12, the app would download
+  only 7–12, and the limit would never move past what the user already has. Dropping the owned
+  episodes from the list both selections walk makes them take no slot: 7–18 are downloaded
+  (measured by the test).
+- **The app's own copy keeps its lifecycle.** An episode the app downloaded before Shoko had it
+  (or alongside) has a record and files of its own. Dropping it from the list would take it out
+  of watched pruning and the limit's deletions, and its files would stay forever. Shoko's files are
+  never the app's to delete: the app never has a record of them, so no rule of the app can touch
+  them (the Shoko spec §3). **Amendment (see #152):** with a download folder in one of Shoko's import folders, the
+  app keeps records of files it handed to Shoko, which are Shoko's from then on. There the rule is
+  held by `HandedToShoko`: no delete of such a record touches its files
+  ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)).
+- **The pass's queries stay as they are.** The search golden set replays recorded AniList answers
+  keyed by the request body (`daemon/golden_test.go`). Adding `idMal` to the pass's list query, or
+  to `GetMediaByID`, would turn every recorded case into "not in the recording" and require
+  re-recording them all from the live services. A query of its own, `MALFactsOf` (`id`, `idMal`,
+  `episodes`), sent only when Shoko is on and cached for a day, leaves them untouched. So does
+  `EpisodesOfMALIDs`, the counts for a series' other MAL ids, which only series with several MAL
+  ids need.
+- **What it doesn't do yet:**
+  - A pack chosen to cover the pending window is one torrent. A 01–24 pack chosen for 7–18 still
+    brings the files of 1–6, with no record of them, so in direct mode they land in the library
+    beside Shoko's copies. **Amendment (see #149):** with `shoko_full_packs` on, the default,
+    those the pack covers get records like the rest of the pack
+    ([#149](149-a-pack-chosen-for-the-missing-episodes-records-the.md)). Off (or an anime set to
+    remove them), they are removed: skipped with qBittorrent, deleted once downloaded otherwise
+    ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)).
+  - An owned episode inside the window still takes a slot of the window, as the window is
+    `windowEnd(firstPending)`.
+  - Both waited for per-file selection. **Amendment (see #153):** qBittorrent's file priorities
+    now skip the files of episodes in Shoko for an anime that removes them ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)); the
+    window and the pack choice are unchanged.
+  - The debug pass ignored Shoko at first. It now mirrors the pass from the last sync on disk, and
+    marks the episodes `in_shoko` ([#58](058-runanimedebug-mirrors-processanimeepisodes.md)).
+  - Manual downloads don't look at Shoko either: the user picked the torrent.
+- **The anime page doesn't offer Download first for an episode in Shoko** (`episodeActions`): it
+  stays in the ⋯ menu, for a copy the user really wants. A file Shoko can't reach right now still
+  counts (a re-download would be a duplicate), with a warning on the row
+  (`shoko_file_unavailable`, the spec's proposed default).
+- **A newly followed anime is read at once.** A sync reads the owned episodes only of the series
+  followed at that time. An anime added to a list since, or as a standalone, would own nothing
+  until the next refresh, up to a day, and its episodes in Shoko would be downloaded meanwhile. So
+  `readUnread` reads every matched series no sync has read yet (`Store.HasOwned`) before the
+  episodes are handed out, in the pass and in `OwnedFor`. The debug run doesn't
+  (`OwnedFromLastSync`): `make debug-anime` is another process on the same data dir, and a write
+  of its stale copy would go around `syncMu` and could undo the daemon's. Pinned by
+  `TestShokoReadsANewlyFollowedSeriesAtOnce` and `TestOwnedFromLastSyncDoesNotAskShoko`.
+- **The counts read Shoko's episodes as there.** They have no record, so without
+  `withShokoOwned` the progress bar's yellow segment and the "behind" chip would count them as
+  still to download, forever.
+- **A failed sync doesn't fail the pass.** Shoko being down or the key revoked leaves the last
+  sync's state in place (`Store.Sync` records the error, shown by `GET /shoko/status`). The pass
+  goes on with it, as with a stale AniList cache.
+
+**Don't "fix" by:**
+- Merging the owned episodes into `blockedMap`.
+- Dropping an episode the app has a record of.
+- Adding `idMal` to the pass's list query or `GetMediaByID` without re-recording the golden set.
+- Failing the pass when the Shoko sync fails.

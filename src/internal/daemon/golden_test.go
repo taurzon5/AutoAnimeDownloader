@@ -145,7 +145,7 @@ func runGoldenPass(t *testing.T, animeID int) *DebugSummary {
 	cfg := files.DefaultConfig()
 	defer files.ApplyNyaaSettings(cfg)()
 
-	summary, err := RunAnimeDebug(animeID, cfg, &debugMockFileManager{})
+	summary, err := RunAnimeDebug(animeID, cfg, &debugMockFileManager{}, nil)
 	if err != nil {
 		t.Fatalf("RunAnimeDebug(%d): %v", animeID, err)
 	}

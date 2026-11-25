@@ -14,7 +14,15 @@
     updateConfig,
     triggerCheck,
     testTorrentClient,
+    shokoLogin,
+    getShokoStatus,
+    shokoSync,
+    SECRET_PLACEHOLDER,
     type Config,
+    type DownloadRoot,
+    type ShokoDownloadFolder,
+    type ShokoImportFolder,
+    type ShokoStatus,
     type TorrentClientTestResult,
   } from "../lib/api/client.js";
   import Loading from "../components/Loading.svelte";
@@ -32,7 +40,7 @@
     onboardingDone,
   } from "../lib/stores/onboarding.js";
 
-  type GroupId = "library" | "anilist" | "downloads" | "search" | "client";
+  type GroupId = "library" | "anilist" | "downloads" | "search" | "client" | "shoko";
 
   $: T = $locale && {
     title: m.config_title(),
@@ -158,10 +166,34 @@
     { id: "anilist" as GroupId, label: m.config_section_anilist(), advanced: false },
     { id: "downloads" as GroupId, label: m.config_section_downloads(), advanced: false },
     { id: "client" as GroupId, label: m.config_section_client(), advanced: false },
+    { id: "shoko" as GroupId, label: m.config_section_shoko(), advanced: false },
     { id: "search" as GroupId, label: m.config_section_search(), advanced: true },
   ]) || [];
 
   let activeGroup: GroupId = "library";
+
+  // Download folders (decisions/154): the first add also lists the library, which stops being a
+  // folder of its own once the list has one.
+  function addDownloadRoot() {
+    const roots = [...(config.download_roots ?? [])];
+    if (roots.length === 0 && config.completed_anime_path?.trim()) {
+      roots.push({ name: "library", path: config.completed_anime_path.trim() });
+    }
+    roots.push({ name: "", path: "" });
+    config.download_roots = roots;
+  }
+  function removeDownloadRoot(i: number) {
+    config.download_roots = (config.download_roots ?? []).filter((_, k) => k !== i);
+  }
+  /** Moves a folder up (-1) or down (+1) in the fill order: the first is the highest priority. */
+  function moveDownloadRoot(i: number, by: number) {
+    const roots = [...(config.download_roots ?? [])];
+    const j = i + by;
+    if (j < 0 || j >= roots.length) return;
+    [roots[i], roots[j]] = [roots[j], roots[i]];
+    config.download_roots = roots;
+  }
+  $: rootNames = (config.download_roots ?? []).map((r) => r.name.trim());
 
   /** The state a Toggle's forwarded change event left its switch in. */
   function isOn(e: Event): boolean {
@@ -193,6 +225,7 @@
     auto_delete_downloads: false,
     incomplete_files: "part",
     incomplete_path: "",
+    download_roots: [],
     incomplete_min_free_disk_gb: 10,
     episode_numbering: "season",
     disable_seeding: false,
@@ -217,9 +250,122 @@
     qbittorrent_api_key: "",
     qbittorrent_category: "autoanimedownloader",
     qbittorrent_path_map: [],
+    shoko_path_map: [],
     qbittorrent_manage_settings: false,
     qbittorrent_disable_seeding_upload_kib: 16,
+    shoko_enabled: false,
+    shoko_url: "",
+    shoko_api_key: "",
+    shoko_refresh_hours: 24,
+    shoko_watch: true,
+    shoko_full_resync_days: 30,
+    shoko_full_packs: true,
   };
+
+  // The Shoko group: the sign-in (the password is sent once and kept nowhere, not even here once
+  // sent) and what the last sync read.
+  let shokoUser = "";
+  let shokoPassword = "";
+  let shokoSigningIn = false;
+  let shokoStatus: ShokoStatus | null = null;
+  /** A Shoko import folder's kind in words: Shoko's own drop types are identifiers. */
+  function shokoFolderKind(folder: ShokoImportFolder): string {
+    if (folder.drop_source) return m.config_shoko_folder_drop_source();
+    if (folder.drop_type === "Destination") return m.config_shoko_folder_drop_destination();
+    return m.config_shoko_folder_plain();
+  }
+  // Read in the Library group too, while Shoko is on: each download folder says there whether it
+  // is one of Shoko's import folders.
+  $: if ((activeGroup === "shoko" || (activeGroup === "library" && config.shoko_enabled)) && !shokoStatus) loadShokoStatus();
+
+  // Shoko's import folders (decisions/152): read from Shoko, never managed here. A download folder
+  // is Shoko's when the server, through shoko_path_map, finds it in one of them; the answer is for
+  // the saved folders, so an edited row waits for Save.
+  $: shokoOn = !!config.shoko_enabled && !!shokoStatus?.signed_in;
+  $: shokoRoots = shokoStatus?.download_roots ?? [];
+  // The answers are an argument, not read from the closure: the row must redraw when they change.
+  function rootInShoko(answers: ShokoDownloadFolder[], root: DownloadRoot): ShokoDownloadFolder | undefined {
+    return answers.find((r) => r.name === root.name && r.path === root.path);
+  }
+  const trimSlash = (p: string) => p.replace(/[\\/]+$/, "");
+  // Shoko's folders offered under Download Folders: not one a download folder already is, holds or
+  // lies inside (download folders can't nest). With none listed, the library is the one download
+  // folder, and it stays one after Shoko's.
+  $: rootPaths = ((config.download_roots ?? []).length
+    ? (config.download_roots ?? []).map((r) => trimSlash(r.path.trim()))
+    : [trimSlash(config.completed_anime_path?.trim() ?? "")]).filter(Boolean);
+  const inside = (a: string, b: string) => a === b || a.startsWith(b + "/") || a.startsWith(b + "\\");
+  $: shokoAddable = shokoOn && config.library_mode === "direct"
+    ? (shokoStatus?.import_folders ?? []).filter((f) => {
+        const p = trimSlash(f.app_path);
+        return !!p && !rootPaths.some((r) => inside(p, r) || inside(r, p));
+      })
+    : [];
+  // With no download folders listed, the library is the one, and the server answers for it too.
+  $: libraryShokoShown = shokoOn && config.library_mode === "direct" && !(config.download_roots ?? []).length;
+  $: libraryInShoko = libraryShokoShown ? rootInShoko(shokoRoots, { name: "library", path: config.completed_anime_path ?? "" }) : undefined;
+  function addShokoFolder(folder: ShokoImportFolder) {
+    const roots = [...(config.download_roots ?? [])];
+    // An empty list is the library alone: it stays a download folder, after Shoko's.
+    const keepLibrary = roots.length === 0 && !!config.completed_anime_path?.trim();
+    let name = folder.name.trim() || "shoko";
+    for (let n = 2; roots.some((r) => r.name === name) || (keepLibrary && name === "library"); n++) name = `${folder.name.trim() || "shoko"} ${n}`;
+    roots.push({ name, path: folder.app_path });
+    if (keepLibrary) roots.push({ name: "library", path: config.completed_anime_path.trim() });
+    config.download_roots = roots;
+  }
+  $: anyRootInShoko = shokoRoots.some((r) => r.in_shoko);
+
+  function addShokoPathMapping() {
+    config.shoko_path_map = [...(config.shoko_path_map ?? []), { app: "", shoko: "" }];
+  }
+  function removeShokoPathMapping(index: number) {
+    config.shoko_path_map = (config.shoko_path_map ?? []).filter((_, k) => k !== index);
+  }
+
+  async function loadShokoStatus() {
+    try {
+      shokoStatus = await getShokoStatus();
+    } catch {
+      shokoStatus = null;
+    }
+  }
+
+  async function signInToShoko() {
+    shokoSigningIn = true;
+    try {
+      const url = (config.shoko_url ?? "").trim();
+      await shokoLogin(url, shokoUser, shokoPassword);
+      // The key is saved on the server: this copy must say so, or the next Save would send the old
+      // (empty) one back and wipe it.
+      config.shoko_api_key = SECRET_PLACEHOLDER;
+      config.shoko_url = url.replace(/\/+$/, "");
+      // Saved on the server already: the baseline takes the two fields too, so the page doesn't read
+      // as having unsaved changes for them (decisions/129). Other edits stay unsaved.
+      if (baseline) {
+        const saved = JSON.parse(baseline);
+        saved.shoko_api_key = config.shoko_api_key;
+        saved.shoko_url = config.shoko_url;
+        baseline = snapshot(saved);
+      }
+      shokoPassword = "";
+      toast.success(m.config_shoko_login_ok());
+      await loadShokoStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      shokoSigningIn = false;
+    }
+  }
+
+  async function fullShokoSync() {
+    try {
+      await shokoSync(true);
+      toast.success(m.config_shoko_sync_started());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   // The connection test of the "Torrent client" group: the result of the last run, or its error.
   let qbitTesting = false;
@@ -295,7 +441,17 @@
   // load's normalization below, or the legacy anilist_username fill-in would read as an edit.
   let baseline = "";
 
-  $: setUnsaved("config", baseline !== "" && snapshot(config) !== baseline);
+  // The download folders as the save sends them. An empty Keep Free is "use Min Free Disk Space":
+  // absent, never "" (the daemon reads a number); a cleared field must not read as an edit either.
+  function savedRoots(roots: DownloadRoot[] | undefined): DownloadRoot[] {
+    return (roots ?? []).map(({ min_free_gb, ...root }) => ({
+      ...root,
+      ...(typeof min_free_gb === "number" && Number.isFinite(min_free_gb) ? { min_free_gb } : {}),
+    }));
+  }
+  const configSnapshot = (c: Config) => snapshot({ ...c, download_roots: savedRoots(c.download_roots) });
+
+  $: setUnsaved("config", baseline !== "" && configSnapshot(config) !== baseline);
   onDestroy(() => setUnsaved("config", false));
 
   /**
@@ -350,8 +506,9 @@
       }
       if (!config.notifications) config.notifications = { webhooks: [], batch_window_seconds: 0 };
       if (!Array.isArray(config.qbittorrent_path_map)) config.qbittorrent_path_map = [];
+      if (!Array.isArray(config.shoko_path_map)) config.shoko_path_map = [];
       if (!Array.isArray(config.notifications.webhooks)) config.notifications.webhooks = [];
-      baseline = snapshot(config);
+      baseline = configSnapshot(config);
     } catch (err) {
       loadFailed = true;
       toast.error(err instanceof Error ? err.message : m.config_error_load());
@@ -382,6 +539,14 @@
       group: "library" as GroupId,
       ok: !!config.completed_anime_path?.trim(),
       message: m.config_val_completed_path,
+    },
+    {
+      group: "library" as GroupId,
+      // Direct mode only, as on the server; the server also checks the folders exist.
+      ok:
+        config.library_mode !== "direct" ||
+        ((config.download_roots ?? []).every((r) => r.name.trim() && r.path.trim()) && new Set(rootNames).size === rootNames.length),
+      message: m.config_val_download_roots,
     },
     {
       group: "downloads" as GroupId,
@@ -444,6 +609,29 @@
       message: m.config_val_qbittorrent_url,
     },
     {
+      group: "shoko" as GroupId,
+      ok: !config.shoko_enabled || (config.shoko_refresh_hours ?? 0) >= 1,
+      message: m.config_val_shoko_refresh,
+    },
+    {
+      group: "shoko" as GroupId,
+      ok: (config.shoko_full_resync_days ?? 0) >= 0,
+      message: m.config_val_shoko_full_resync,
+    },
+    // A download folder that is one of Shoko's (decisions/152), as saved: Shoko never sees a
+    // half-written file. The server checks the folders being saved.
+    {
+      group: "downloads" as GroupId,
+      ok: !config.shoko_enabled || !anyRootInShoko || config.incomplete_files !== "in_place" || !!config.incomplete_path?.trim(),
+      message: m.config_val_shoko_folder_in_place,
+    },
+    {
+      group: "downloads" as GroupId,
+      // qBittorrent moves a staged torrent in under its final names (decisions/145).
+      ok: !config.shoko_enabled || !anyRootInShoko || config.torrent_client !== "qbittorrent" || !config.incomplete_path?.trim(),
+      message: m.config_val_shoko_folder_qbit_staging,
+    },
+    {
       group: "downloads" as GroupId,
       // Only while disable seeding is on, the one time the field shows; missing reads as 0, as on the server.
       ok: config.torrent_client !== "qbittorrent" || !config.disable_seeding || (config.qbittorrent_disable_seeding_upload_kib ?? 0) >= 1,
@@ -469,8 +657,11 @@
         throw new Error(invalid.message);
       }
 
+      config.download_roots = savedRoots(config.download_roots);
       const result = await updateConfig(config);
-      baseline = snapshot(config);
+      baseline = configSnapshot(config);
+      // Which download folders are Shoko's follows the saved folders and path map.
+      if (shokoStatus) void loadShokoStatus();
       toast.success(result?.restart_required ? m.config_restart_required() : m.config_saved());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.config_error_save());
@@ -695,6 +886,11 @@
                 placeholder="/path/to/completed"
                 required={true}
               />
+              {#if libraryShokoShown}
+                <p class="mt-2 text-caption {libraryInShoko?.in_shoko ? 'text-accent' : 'text-subtle'}" data-testid="library-shoko">
+                  {$locale && (libraryInShoko ? (libraryInShoko.in_shoko ? m.config_root_in_shoko({ folder: libraryInShoko.folder_name ?? "" }) : m.config_root_not_in_shoko()) : m.config_root_shoko_after_save())}
+                </p>
+              {/if}
             </div>
 
             <!-- The hint always shows: it's precisely what helps decide whether to turn the switch
@@ -761,6 +957,63 @@
                   bind:value={config.incomplete_path}
                   placeholder="/mnt/nvme/aad-incomplete"
                 />
+              </div>
+
+              <!-- Several download folders, filled in order (decisions/154). The library is a root
+                   only while the list is empty, so the first add lists it too. -->
+              <div class="space-y-2.5 p-4.5" data-testid="download-roots">
+                <p class="text-copy font-semibold text-heading">{$locale && m.config_label_download_roots()}</p>
+                <p class="text-caption text-subtle">{$locale && m.config_hint_download_roots()}</p>
+                {#each config.download_roots ?? [] as _, i}
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-end" data-testid="download-root">
+                    <div class="sm:w-40">
+                      <Input id={`download_root_name_${i}`} label={$locale && m.config_label_root_name()} bind:value={config.download_roots[i].name} />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <Input id={`download_root_path_${i}`} label={$locale && m.config_label_root_path()} bind:value={config.download_roots[i].path} placeholder="/mnt/disk2/anime" />
+                    </div>
+                    <div class="sm:w-32">
+                      <Input
+                        id={`download_root_min_free_${i}`}
+                        type="number"
+                        min="0"
+                        label={$locale && m.config_label_root_min_free()}
+                        bind:value={config.download_roots[i].min_free_gb}
+                        placeholder={String(config.min_free_disk_gb ?? 0)}
+                      />
+                    </div>
+                    {#if shokoOn}
+                      {@const inShoko = rootInShoko(shokoRoots, config.download_roots[i])}
+                      <p class="text-caption sm:pb-2.5 {inShoko?.in_shoko ? 'text-accent' : 'text-subtle'}" data-testid={`download_root_shoko_${i}`}>
+                        {$locale && (inShoko ? (inShoko.in_shoko ? m.config_root_in_shoko({ folder: inShoko.folder_name ?? "" }) : m.config_root_not_in_shoko()) : m.config_root_shoko_after_save())}
+                      </p>
+                    {/if}
+                    <div class="flex gap-1.5">
+                      <Button variant="ghost" disabled={i === 0} on:click={() => moveDownloadRoot(i, -1)}>
+                        <span aria-hidden="true">↑</span><span class="sr-only">{$locale && m.config_btn_root_up()}</span>
+                      </Button>
+                      <Button variant="ghost" disabled={i === (config.download_roots ?? []).length - 1} on:click={() => moveDownloadRoot(i, 1)}>
+                        <span aria-hidden="true">↓</span><span class="sr-only">{$locale && m.config_btn_root_down()}</span>
+                      </Button>
+                      <Button variant="ghost" on:click={() => removeDownloadRoot(i)}>{$locale && m.config_btn_remove_root()}</Button>
+                    </div>
+                  </div>
+                {/each}
+                <Button variant="ghost" on:click={addDownloadRoot}>{$locale && m.config_btn_add_root()}</Button>
+                {#if shokoAddable.length}
+                  <div class="space-y-1.5" data-testid="shoko-addable">
+                    <p class="text-caption text-body">{$locale && m.config_shoko_add_from()}</p>
+                    <div class="flex flex-wrap gap-2">
+                      {#each shokoAddable as folder (folder.id)}
+                        <button
+                          type="button"
+                          class="rounded-card border border-neutral/45 bg-control px-3 py-1 text-left font-mono text-caption text-body break-all"
+                          on:click={() => addShokoFolder(folder)}
+                        >{folder.name} · {folder.app_path}</button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               </div>
 
               {#if config.incomplete_path}
@@ -1002,6 +1255,164 @@
                 inline={true}
                 suffix="GiB"
               />
+            </div>
+          {/if}
+
+          {#if activeGroup === "shoko"}
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="shoko_enabled"
+                bind:checked={config.shoko_enabled}
+                label={$locale && m.config_label_shoko_enabled()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_url"
+                label={$locale && m.config_label_shoko_url()}
+                subtitle={$locale && m.config_hint_shoko_url()}
+                bind:value={config.shoko_url}
+                placeholder="http://127.0.0.1:8111"
+              />
+            </div>
+            <div class="space-y-3 p-4.5">
+              <Input id="shoko_username" label={$locale && m.config_label_shoko_username()} bind:value={shokoUser} />
+              <Input
+                id="shoko_password"
+                type="password"
+                label={$locale && m.config_label_shoko_password()}
+                subtitle={$locale && m.config_hint_shoko_password()}
+                bind:value={shokoPassword}
+              />
+              <Button variant="ghost" disabled={shokoSigningIn || !config.shoko_url?.trim() || !shokoUser} on:click={signInToShoko}>
+                {shokoSigningIn ? ($locale && m.config_shoko_signing_in()) : ($locale && m.config_btn_shoko_login())}
+              </Button>
+              <p class="text-caption text-body" data-testid="shoko-status">
+                {#if shokoStatus?.signed_in}
+                  {$locale && m.config_shoko_signed_in({ url: shokoStatus.url ?? "" })}
+                  {#if shokoStatus.last_sync && !shokoStatus.last_sync.startsWith("0001")}
+                    {$locale && m.config_shoko_last_sync({ when: new Date(shokoStatus.last_sync).toLocaleString(), series: String(shokoStatus.series), episodes: String(shokoStatus.owned_episodes) })}
+                  {:else}
+                    {$locale && m.config_shoko_never_synced()}
+                  {/if}
+                {:else}
+                  {$locale && m.config_shoko_not_signed_in()}
+                {/if}
+              </p>
+              {#if shokoStatus?.last_error}
+                <p class="text-caption text-danger">{$locale && m.config_shoko_last_error({ error: shokoStatus.last_error })}</p>
+              {/if}
+            </div>
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="shoko_watch"
+                bind:checked={config.shoko_watch}
+                label={$locale && m.config_label_shoko_watch()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
+              {#if config.shoko_enabled && config.shoko_watch && shokoStatus?.signed_in}
+                <p class="text-caption {shokoStatus.watching ? 'text-body' : 'text-danger'}" data-testid="shoko-watch-status">
+                  {#if shokoStatus.watching}
+                    {$locale && m.config_shoko_watching()}
+                  {:else}
+                    {$locale && m.config_shoko_not_watching({ error: shokoStatus.watch_error ?? "" })}
+                  {/if}
+                </p>
+              {/if}
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_refresh_hours"
+                label={$locale && m.config_label_shoko_refresh()}
+                subtitle={$locale && m.config_hint_shoko_refresh()}
+                type="number"
+                bind:value={config.shoko_refresh_hours}
+                min="1"
+                inline={true}
+                suffix="h"
+              />
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="shoko_full_resync_days"
+                label={$locale && m.config_label_shoko_full_resync()}
+                subtitle={$locale && m.config_hint_shoko_full_resync()}
+                type="number"
+                bind:value={config.shoko_full_resync_days}
+                min="0"
+                inline={true}
+                suffix={$locale && m.config_suffix_days()}
+              />
+            </div>
+            <div class="space-y-1.5 p-4.5">
+              <Button variant="ghost" disabled={!shokoStatus?.signed_in} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+              {#if shokoStatus?.last_full_sync && !shokoStatus.last_full_sync.startsWith("0001")}
+                <p class="text-caption text-body" data-testid="shoko-last-full">{$locale && m.config_shoko_last_full_sync({ when: new Date(shokoStatus.last_full_sync).toLocaleString() })}</p>
+              {/if}
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_sync()}</p>
+            </div>
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="shoko_full_packs"
+                bind:checked={config.shoko_full_packs}
+                label={$locale && m.config_label_shoko_full_packs()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_packs()}</p>
+            </div>
+            <div class="space-y-1.5 p-4.5" data-testid="shoko-folders">
+              <p class="text-copy font-semibold text-heading">{$locale && m.config_label_shoko_folders()}</p>
+              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_folders()}</p>
+              {#if shokoStatus?.signed_in && !shokoStatus.import_folders?.length && !shokoStatus.import_folders_error}
+                <p class="text-caption text-subtle">{$locale && m.config_shoko_no_import_folder()}</p>
+              {/if}
+              {#if anyRootInShoko}
+                <p class="text-caption text-body" data-testid="shoko-roots-in">{$locale && m.config_shoko_roots_in({ folders: shokoRoots.filter((r) => r.in_shoko).map((r) => r.name).join(", ") })}</p>
+                {#if shokoStatus?.last_import_request}
+                  <p class="text-caption text-body" data-testid="shoko-last-import">{$locale && m.config_shoko_last_import({ when: new Date(shokoStatus.last_import_request).toLocaleString() })}</p>
+                {/if}
+                {#if shokoStatus?.import_error}
+                  <p class="text-caption text-danger">{$locale && m.config_shoko_import_error({ error: shokoStatus.import_error })}</p>
+                {/if}
+              {/if}
+              {#if shokoStatus?.import_folders?.length}
+                <p class="text-caption text-body">{$locale && m.config_shoko_import_folders()}</p>
+                <ul class="space-y-0.5" data-testid="shoko-import-folders">
+                  {#each shokoStatus.import_folders as folder (folder.id)}
+                    <li class="text-caption text-body">
+                      <span class="break-all font-mono">{folder.path}</span>
+                      · {$locale && shokoFolderKind(folder)}{#if folder.watched}, {$locale && m.config_shoko_folder_watched()}{/if}
+                      {#if folder.app_path && trimSlash(folder.app_path) !== trimSlash(folder.path)}
+                        · {$locale && m.config_shoko_folder_here()} <span class="break-all font-mono">{folder.app_path}</span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if shokoStatus?.import_folders_error}
+                <p class="text-caption text-danger">{$locale && m.config_shoko_import_folders_error({ error: shokoStatus.import_folders_error })}</p>
+              {/if}
+            </div>
+            <div class="space-y-2.5 p-4.5" data-testid="shoko-path-map">
+              <div class="space-y-1">
+                <p class="text-copy text-body">{$locale && m.config_label_shoko_path_map()}</p>
+                <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_path_map()}</p>
+              </div>
+              {#each config.shoko_path_map ?? [] as mapping, k (k)}
+                <div class="flex flex-col gap-2 md:flex-row md:items-end">
+                  <div class="flex-1">
+                    <Input id={`shoko_map_app_${k}`} label={(T && T.pathMapApp) || ""} bind:value={mapping.app} placeholder="/mnt/anime" />
+                  </div>
+                  <div class="flex-1">
+                    <Input id={`shoko_map_shoko_${k}`} label={$locale && m.config_shoko_path_map_shoko()} bind:value={mapping.shoko} placeholder="/import" />
+                  </div>
+                  <Button variant="ghost" ariaLabel={(T && T.pathMapRemove) || ""} on:click={() => removeShokoPathMapping(k)}>✕</Button>
+                </div>
+              {/each}
+              <Button variant="ghost" on:click={addShokoPathMapping}>{T && T.pathMapAdd}</Button>
             </div>
           {/if}
 

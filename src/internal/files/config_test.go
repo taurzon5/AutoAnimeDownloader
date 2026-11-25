@@ -25,3 +25,63 @@ func TestConfigDownloadPath(t *testing.T) {
 		}
 	})
 }
+
+// Download Full Megapacks starts on, and Shoko sees the app's paths as they are
+// (decisions/149, decisions/152).
+func TestShokoPackAndPathMapDefaults(t *testing.T) {
+	c := DefaultConfig()
+	if !c.ShokoFullPacks {
+		t.Error("shoko_full_packs should default to on")
+	}
+	if c.ShokoPathMap == nil || len(c.ShokoPathMap) != 0 {
+		t.Errorf("shoko_path_map should default to an empty list, got %#v", c.ShokoPathMap)
+	}
+	if got := c.ShokoPath("/mnt/anime/Show"); got != "/mnt/anime/Show" {
+		t.Errorf("no map leaves the path as it is, got %q", got)
+	}
+}
+
+// shoko_path_map translates through the longest matching prefix, both ways, and a folder is
+// Shoko's when the path is it or lies inside it, whatever the separator (decisions/152).
+func TestShokoPathMap(t *testing.T) {
+	c := DefaultConfig()
+	c.ShokoPathMap = []ShokoPathMapping{
+		{App: "/mnt/media", Shoko: "/data"},
+		{App: "/mnt/media/anime/", Shoko: "/import"},
+		{App: "/mnt/win", Shoko: `D:\Anime`},
+	}
+	for app, want := range map[string]string{
+		"/mnt/media/anime/Show": "/import/Show", // the longer prefix wins
+		"/mnt/media/anime":      "/import",
+		"/mnt/media/movies":     "/data/movies",
+		"/mnt/mediax":           "/mnt/mediax", // a prefix of the name, not a folder
+		"/srv/other":            "/srv/other",
+		"/mnt/win/Show":         `D:\Anime/Show`,
+	} {
+		if got := c.ShokoPath(app); got != want {
+			t.Errorf("ShokoPath(%q) = %q, want %q", app, got, want)
+		}
+	}
+	if got := c.AppPathFromShoko("/import/"); got != "/mnt/media/anime" {
+		t.Errorf("AppPathFromShoko(/import/) = %q", got)
+	}
+	if got := c.AppPathFromShoko(`D:\Anime\Show`); got != `/mnt/win\Show` {
+		t.Errorf("AppPathFromShoko(windows) = %q", got)
+	}
+	for _, tc := range []struct {
+		path, folder string
+		want         bool
+	}{
+		{"/import", "/import/", true},
+		{"/import/Show", "/import", true},
+		{"/importer", "/import", false},
+		{"/", "/import", false},
+		{"", "/import", false},
+		{"/import", "", false},
+		{`D:\Anime/Show`, `D:\Anime\`, true},
+	} {
+		if got := UnderFolder(tc.path, tc.folder); got != tc.want {
+			t.Errorf("UnderFolder(%q, %q) = %v, want %v", tc.path, tc.folder, got, tc.want)
+		}
+	}
+}

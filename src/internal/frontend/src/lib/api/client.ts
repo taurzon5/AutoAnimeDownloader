@@ -150,6 +150,8 @@ export interface StatusResponse {
    * frontend would disagree with the daemon.
    */
   disk_low: boolean
+  /** One entry per download folder (decisions/154); with one folder it is the library. */
+  disks?: StatusDisk[]
   /**
    * Optional on purpose: the WebSocket's `status_update` carries only three fields, and Status
    * synthesizes a StatusResponse from it. Also absent on a daemon older than the frontend.
@@ -238,6 +240,8 @@ export interface Config {
   incomplete_files: "part" | "in_place"
   /** Direct mode: existing folder where torrents download before moving into the library ("" = off). */
   incomplete_path: string
+  /** Direct mode's download folders, in fill order; empty = the library alone (decisions/154). */
+  download_roots: DownloadRoot[]
   incomplete_min_free_disk_gb: number
   /** Direct mode + Jellyfin renaming: "season" numbers a split cour across its season (S02E13). */
   episode_numbering: "season" | "entry"
@@ -268,11 +272,33 @@ export interface Config {
   qbittorrent_manage_settings?: boolean
   /** disable_seeding's upload limit per torrent with qBittorrent, KiB/s, at least 1. */
   qbittorrent_disable_seeding_upload_kib?: number
+  /** Episodes already in Shoko are never searched or downloaded. */
+  shoko_enabled?: boolean
+  shoko_url?: string
+  /** The key Shoko gave the app at sign-in; a saved one comes back as SECRET_PLACEHOLDER. */
+  shoko_api_key?: string
+  /** How often Shoko is read again, in hours (at least 1). */
+  shoko_refresh_hours?: number
+  /** Follow Shoko's changes as they happen (its event hub); the refresh stays the safety net. */
+  shoko_watch?: boolean
+  /** Read all of Shoko again every N days; 0 = never on its own. */
+  shoko_full_resync_days?: number
+  /** Download Full Megapacks: a pack chosen for the missing episodes keeps every episode it brings, the ones in Shoko too; off, those are removed. Each anime can override it. */
+  shoko_full_packs?: boolean
+  /** The same folder as the app and as Shoko see it, to tell which download folders are Shoko's
+   *  import folders. Empty = identical paths (decisions/152). */
+  shoko_path_map?: ShokoPathMapping[]
 }
 
 export interface PathMapping {
   app: string
   qbittorrent: string
+}
+
+/** One folder as the app and as Shoko see it (shoko_path_map). */
+export interface ShokoPathMapping {
+  app: string
+  shoko: string
 }
 
 /** What GET /config shows in place of a saved secret (files.SecretPlaceholder). */
@@ -282,6 +308,23 @@ export interface UpdateConfigResult {
   message: string
   /** The torrent client changed: it is picked at startup. */
   restart_required?: boolean
+}
+
+/** One of direct mode's download folders: a name the user picks and an absolute path. */
+export interface DownloadRoot {
+  name: string
+  path: string
+  /** GiB this folder's drive keeps free before the next folder takes over; absent = min_free_disk_gb. */
+  min_free_gb?: number
+}
+
+/** One download folder's drive in GET /status; low = it can't take a new torrent now. */
+export interface StatusDisk {
+  name: string
+  path: string
+  total: number
+  free: number
+  low: boolean
 }
 
 export interface TorrentClientTestResult {
@@ -517,6 +560,13 @@ export interface AnimeEpisodeInfo {
   /** The pack's real range (from the torrent name). Absent/0 = unknown — falls back to min/max. */
   batch_start?: number
   batch_end?: number
+  /** The user already has it in Shoko: never searched or downloaded. shoko_file is its path there. */
+  in_shoko?: boolean
+  shoko_file?: string
+  /** Shoko can't reach that file right now (an unplugged drive); it still counts as in Shoko. */
+  shoko_file_unavailable?: boolean
+  /** Downloaded into one of Shoko's import folders, for Shoko to import; without in_shoko, "Waiting for Shoko". */
+  handed_to_shoko?: boolean
 }
 
 export interface AnimeDetailResponse {
@@ -533,6 +583,101 @@ export interface AnimeDetailResponse {
    * entry. Absent for a standalone no account tracks.
    */
   accounts?: AnimeListAccount[]
+  /** How the anime lines up with Shoko in the last pass; absent with Shoko off. */
+  shoko?: AnimeShokoInfo
+}
+
+/** "matched" (series and offset), "partial" (check it by hand) or "none"; by_hand = set on this page. */
+export interface AnimeShokoInfo {
+  status: 'matched' | 'partial' | 'none'
+  series_id?: number
+  series_name?: string
+  offset?: number
+  by_hand?: boolean
+  /** The anime's own pack choice; absent = the global shoko_full_packs. */
+  pack_episodes?: ShokoPackEpisodes
+  /** What applies: true keeps the episodes in Shoko a pack brings, false removes them. */
+  keep_pack_episodes?: boolean
+  /** The global shoko_full_packs, what "default" follows. */
+  keep_pack_episodes_default?: boolean
+}
+
+/** The Shoko match set by hand: exactly one of a series (with an offset), none, or auto. */
+export interface ShokoMatchRequest {
+  series_id?: number
+  offset?: number
+  none?: boolean
+  auto?: boolean
+}
+
+export interface ShokoStatus {
+  enabled: boolean
+  url?: string
+  signed_in: boolean
+  last_sync?: string
+  last_full_sync?: string
+  last_error?: string
+  series: number
+  owned_episodes: number
+  /** Connected to Shoko's event hub (shoko_watch). */
+  watching?: boolean
+  last_event?: string
+  watch_error?: string
+  /** The last request asking Shoko to import new files, and why it failed. */
+  last_import_request?: string
+  import_error?: string
+  /** Shoko's import folders, read from Shoko and never managed by the app (decisions/152). */
+  import_folders?: ShokoImportFolder[]
+  import_folders_error?: string
+  /** Each download folder as saved, and the import folder of Shoko that holds it (direct mode). */
+  download_roots?: ShokoDownloadFolder[]
+}
+
+/** One of Shoko's import folders: path as Shoko sees it (inside its container, in Docker),
+ *  app_path as the app does through shoko_path_map; drop_source for "Source" or "Both". */
+export interface ShokoImportFolder {
+  id: number
+  name: string
+  path: string
+  app_path: string
+  drop_type: string
+  drop_source: boolean
+  watched: boolean
+}
+
+/** A download folder and whether it is one of Shoko's import folders (which one, when it is). */
+export interface ShokoDownloadFolder {
+  name: string
+  path: string
+  in_shoko: boolean
+  folder_id?: number
+  folder_name?: string
+}
+
+/** An anime's pack choice: keep ("download") or remove the episodes in Shoko a pack brings. */
+export type ShokoPackEpisodes = 'download' | 'remove'
+
+/** Sets what a pack chosen for the anime does with the episodes in Shoko it brings; "default" follows the global setting. */
+export async function updateAnimeShokoPacks(animeId: number, value: ShokoPackEpisodes | 'default'): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { shoko_pack_episodes: value })
+}
+
+/** Signs the daemon in to Shoko; only the API key Shoko returns is saved, never the password. */
+export async function shokoLogin(url: string, username: string, password: string): Promise<void> {
+  return apiRequest<void>('POST', '/shoko/login', { url, username, password })
+}
+
+export async function getShokoStatus(): Promise<ShokoStatus> {
+  return apiRequest<ShokoStatus>('GET', '/shoko/status')
+}
+
+/** Starts a check pass that syncs with Shoko first; full reads all of Shoko again. */
+export async function shokoSync(full: boolean): Promise<void> {
+  return apiRequest<void>('POST', '/shoko/sync', { full })
+}
+
+export async function updateAnimeShoko(animeId: number, match: ShokoMatchRequest): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { shoko: match })
 }
 
 /** One account's own list entry for an anime (the detail screen's "on lists" panel). */
@@ -555,6 +700,17 @@ export interface AnimeListAccount {
 export interface AnimeSettings {
   /** Manual progress — only read for a standalone anime (a list anime's comes from its list). */
   progress?: number
+  /** The download folder this anime's new torrents go to first; absent = the fill order. */
+  root?: string
+}
+
+export async function getAnimeSettings(animeId: number): Promise<AnimeSettings | null> {
+  return apiRequest<AnimeSettings | null>('GET', `/animes/${animeId}/settings`)
+}
+
+/** Sets the download folder an anime's new torrents go to first; "" drops the override. */
+export async function updateAnimeRoot(animeId: number, root: string): Promise<void> {
+  return apiRequest<void>('PUT', `/animes/${animeId}/settings`, { root })
 }
 
 export async function getAnimeDetail(animeId: number): Promise<AnimeDetailResponse> {

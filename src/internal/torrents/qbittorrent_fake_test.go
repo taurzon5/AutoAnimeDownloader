@@ -265,6 +265,13 @@ func (f *fakeQBit) handle(w http.ResponseWriter, r *http.Request) {
 	case "torrents/recheck":
 		f.record("recheck %s", strings.Join(hashes, ","))
 		f.noContent(w)
+	case "torrents/filePrio":
+		if f.torrents[hash] == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		f.record("filePrio %s ids=%s priority=%s", hash, r.Form.Get("id"), r.Form.Get("priority"))
+		f.noContent(w)
 	case "torrents/reannounce":
 		f.record("reannounce %s", strings.Join(hashes, ","))
 		f.noContent(w)

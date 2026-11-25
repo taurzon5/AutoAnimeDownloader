@@ -344,7 +344,7 @@ func TestProcessAnimeEpisodes_BlacklistedAnime_PopulatesKeysToDelete(t *testing.
 
 	backend := torrents.NewFakeBackend()
 
-	result := processAnimeEpisodes(configs, backend, anime, nil, savedEpisodes, nil, map[files.EpisodeKey]bool{}, defaultNyaaSearcher(), nil)
+	result := processAnimeEpisodes(configs, backend, anime, nil, savedEpisodes, nil, map[files.EpisodeKey]bool{}, defaultNyaaSearcher(), nil, shokoOwned{})
 
 	if !containsID(result.keysToDelete, epKey(animeID, episodeNumber)) {
 		t.Errorf("expected episode %d in keysToDelete, got %v", episodeNumber, result.keysToDelete)
@@ -396,7 +396,7 @@ func TestProcessAnimeEpisodes_BlacklistedAnime_KeepsManuallyManaged(t *testing.T
 
 	backend := torrents.NewFakeBackend()
 
-	result := processAnimeEpisodes(configs, backend, anime, nil, savedEpisodes, nil, map[files.EpisodeKey]bool{}, defaultNyaaSearcher(), nil)
+	result := processAnimeEpisodes(configs, backend, anime, nil, savedEpisodes, nil, map[files.EpisodeKey]bool{}, defaultNyaaSearcher(), nil, shokoOwned{})
 
 	if containsID(result.keysToDelete, epKey(animeID, 1)) {
 		t.Errorf("a manually managed episode of a blacklisted anime must not be deleted, got keysToDelete %v", result.keysToDelete)
@@ -517,7 +517,7 @@ func TestProcessAnimeEpisodes_BatchNoRedownload(t *testing.T) {
 
 	backend := torrents.NewFakeBackend()
 
-	result := processAnimeEpisodes(configs, backend, anime, dlTorrents, savedEpisodes, nil, map[files.EpisodeKey]bool{}, mockSearcher, nil)
+	result := processAnimeEpisodes(configs, backend, anime, dlTorrents, savedEpisodes, nil, map[files.EpisodeKey]bool{}, mockSearcher, nil, shokoOwned{})
 
 	if searchAnimeCalled {
 		t.Error("the anime search must not be called: every episode is already in the client by hash")
@@ -1081,7 +1081,7 @@ func TestProcessAnimeEpisodes_NoMagnets_SkipsNewEpisodeWebhook(t *testing.T) {
 	}
 
 	backend := torrents.NewFakeBackend()
-	result := processAnimeEpisodes(configs, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, noResults, nil)
+	result := processAnimeEpisodes(configs, backend, anime, nil, nil, nil, map[files.EpisodeKey]bool{}, noResults, nil, shokoOwned{})
 
 	if len(result.newEpisodes) > 0 {
 		t.Errorf("no episode should be saved without a magnet, got %d", len(result.newEpisodes))

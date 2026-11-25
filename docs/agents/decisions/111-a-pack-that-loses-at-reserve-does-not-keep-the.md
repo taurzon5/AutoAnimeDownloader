@@ -19,6 +19,6 @@ The reservation stays for the pass, so `attemptDownloadWithRetries` sees the has
 and does not pay twice. If `Add` then fails for a non-disk reason, that reservation is not given
 back — conservative for one pass, rebuilt from the session on the next.
 
-**Don't "fix" by:** dropping reserved from `checkDiskSpace` (that is #101); splitting `reserve`
+**Don't "fix" by:** dropping reserved from `checkRootBudgetSpace` (that is #101); splitting `reserve`
 into a check and a later count (the parallel animes would race between the two); or waiting until
 the next pass for the singles (the window was lost for every episode of that anime, this pass).

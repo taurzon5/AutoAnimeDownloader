@@ -99,6 +99,13 @@ autoanimedownloader animes remove 154587 --yes
 autoanimedownloader animes remove 154587 --yes --delete-episodes
 autoanimedownloader animes settings 154587
 autoanimedownloader animes settings 154587 progress 12
+autoanimedownloader animes settings 154587 shoko 3 12   # Shoko series 3, its episode 13 is this anime's 1
+autoanimedownloader animes settings 154587 shoko none   # not in Shoko
+autoanimedownloader animes settings 154587 shoko auto   # back to the match from the MAL id
+autoanimedownloader animes settings 154587 shoko-packs remove   # a pack's episodes already in Shoko are removed
+autoanimedownloader animes settings 154587 shoko-packs default  # back to shoko_full_packs
+autoanimedownloader animes settings 154587 root hdd    # new torrents of this anime go to the hdd download folder first
+autoanimedownloader animes settings 154587 root none   # back to the fill order
 autoanimedownloader animes episodes 154587
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3
@@ -184,6 +191,36 @@ One hash on `prioritize` hits `POST /torrents/{hash}/prioritize`. Two or more hi
 `POST /torrents/prioritize` with `{"hashes":[…]}` in the order given.
 
 `--keep-data` and `--block` default to false.
+
+## Shoko
+
+```bash
+echo -n "$SHOKO_PASSWORD" | autoanimedownloader shoko login --url http://127.0.0.1:8111 --user admin
+autoanimedownloader shoko status
+autoanimedownloader shoko sync
+autoanimedownloader shoko sync --full
+```
+
+`login` hits `POST /shoko/login`. It reads the password from standard input: piped, or typed after
+the prompt, where it shows as you type. It saves only the address and the API key Shoko returns.
+Then turn Shoko on with `config set shoko_enabled true`. `status` shows whether it is on and signed
+in, the last sync, how many episodes of followed anime Shoko has, whether it follows Shoko's
+changes as they happen (`shoko_watch`), Shoko's import folders as Shoko sees them (a drop source
+marked), and the last time the app asked Shoko to import new files. `sync` starts a check pass that
+syncs first, and `--full` reads all of Shoko again, so files deleted or moved there stop counting.
+A match that needs checking by hand is set with `animes settings <id> shoko …`, above. A pack chosen
+for the missing episodes downloads whole, so it also brings the episodes Shoko has. With
+`shoko_full_packs` on (the default) the app keeps them as its own; `config set shoko_full_packs
+false` removes them instead (skipped with qBittorrent, deleted once downloaded otherwise), and
+`animes settings <id> shoko-packs download|remove|default` chooses for one anime. To download into
+Shoko, list one of Shoko's import folders among the download folders (direct mode only). `shoko
+status` lists Shoko's folders, as Shoko sees them and, through `shoko_path_map`, as the app does,
+and says for each download folder whether it is in Shoko. When the two see a folder at different
+paths (Docker), map it: `config set shoko_path_map '[{"app":"/mnt/shoko-drop","shoko":"/import"}]'`.
+`config set download_roots` replaces the whole list, so name every folder:
+`config set download_roots '[{"name":"shoko","path":"/mnt/shoko-drop"},{"name":"library","path":"/mnt/anime"}]'`.
+Each download that finishes in a folder in Shoko keeps seeding, and Shoko is asked to import it;
+any other folder takes what you download outside Shoko.
 
 ## Logs
 

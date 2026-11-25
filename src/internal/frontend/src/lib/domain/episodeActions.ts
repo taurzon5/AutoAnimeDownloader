@@ -79,6 +79,12 @@ function classify(ep: AnimeEpisodeInfo, torrent: TorrentInfo | undefined): Episo
     return { principal: REDOWNLOAD, menu: [REPLACE, DELETE] }
   }
 
+  if (ep.in_shoko) {
+    // Already in the user's Shoko library: the app doesn't download it on its own, and Download
+    // stays in the menu only, for a copy the user really wants (the Shoko spec §3).
+    return { principal: undefined, menu: [DOWNLOAD] }
+  }
+
   if (ep.is_aired) {
     // Row: "Aired and not downloaded"
     return { principal: DOWNLOAD, menu: [REPLACE] }
