@@ -18,8 +18,8 @@ migration. If presenting the repo to employers gets urgent, `v3.0.0` can move up
 A shelf of just-landed, still-unwatched episodes on Status, and last-check rows that open the
 anime. Independent of the picker; does not wait for the `v3.0.0` UI overhaul.
 
-- Recents shelf, clickable last-check rows. Spec designed on 2026-10-23:
-  [dashboard-recent-shelf](superpowers/specs/2026-10-23-dashboard-recent-shelf-design.md).
+- Recents shelf, clickable last-check rows. Merged into master; waits for the `v2.12.0` stamp
+  ([decisions/151](agents/decisions/151-the-recents-shelf-is-derived-in-get-animes-after.md)).
 
 ## `v2.13.0` — episode torrent picker
 

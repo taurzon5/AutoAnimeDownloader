@@ -172,6 +172,10 @@
   "config_error_save": "Falha ao salvar configurações",
   "config_val_completed_path": "Pasta de animes completos é obrigatória",
   "config_val_interval": "Intervalo de verificação deve ser maior que 0",
+  "config_label_recent_shelf_days": "Prateleira de baixados recentemente",
+  "config_hint_recent_shelf_days": "Quantos dias um download concluído fica na prateleira Baixados recentemente da página Status enquanto você não o assistiu. 0 desliga a prateleira.",
+  "config_suffix_recent_shelf_days": "dias",
+  "config_val_recent_shelf_days": "A prateleira Baixados recentemente aceita de 0 (desligada) a 30 dias",
   "config_hint_max_episodes": "Quantos episódios de um anime existem ao mesmo tempo. Vale apenas no caminho episódio a episódio — um pack é um torrent só, então limitar registros não limitaria bytes. Use 0 para não limitar (aí a busca de pack cobre todos os episódios pendentes de uma vez).",
   "config_val_max_episodes": "Máx. episódios por anime não pode ser negativo",
   "config_val_retry": "Limite de tentativas não pode ser negativo",
@@ -874,6 +878,11 @@
   "detail_untrack_done": "Não está mais acompanhando este anime",
   "lastcheck_section_problems": "Problemas ({count})",
   "lastcheck_section_limits": "Limites aplicados ({count})",
+  "recent_title": "Baixados recentemente",
+  "recent_new": "Novo",
+  "recent_caption_episode": "Episódio {n}",
+  "recent_caption_episodes": "Episódios {span}",
+  "recent_caption_pack": "{span} · lote",
   "lastcheck_episodes": "ep. {episodes}",
   "lastcheck_all_above_size_limit": [
     {

@@ -208,6 +208,7 @@
     mal_usernames: [],
     completed_anime_path: "",
     check_interval: 10,
+    recent_shelf_days: 3,
     max_episodes_per_anime: 12,
     max_batch_torrent_size_gb: 100,
     max_episode_torrent_size_gb: 5,
@@ -553,6 +554,11 @@
       group: "downloads" as GroupId,
       ok: config.check_interval > 0,
       message: m.config_val_interval,
+    },
+    {
+      group: "downloads" as GroupId,
+      ok: (config.recent_shelf_days ?? 3) >= 0 && (config.recent_shelf_days ?? 3) <= 30,
+      message: m.config_val_recent_shelf_days,
     },
     {
       group: "downloads" as GroupId,
@@ -1111,6 +1117,19 @@
                 required={true}
                 inline={true}
                 suffix="min"
+              />
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="recent_shelf_days"
+                label={$locale && m.config_label_recent_shelf_days()}
+                subtitle={$locale && m.config_hint_recent_shelf_days()}
+                type="number"
+                bind:value={config.recent_shelf_days}
+                min="0"
+                max="30"
+                inline={true}
+                suffix={$locale && m.config_suffix_recent_shelf_days()}
               />
             </div>
             <div class="space-y-1.5 p-4.5">

@@ -99,7 +99,8 @@ export function canonicalAccounts(selected: string[], configured: string[]): str
  * among them, same rule the backend uses across all accounts. Without the projection "Unwatched",
  * the progress bar, the "behind" chip and the sort would keep answering for the account furthest
  * behind, even an unselected one. Runs BEFORE filterAnimes, so every count downstream agrees.
- * An empty selection returns the list untouched (decisions/125).
+ * `recent` (the Recents shelf) follows the same account: the selected one furthest behind
+ * (decisions/151). An empty selection returns the list untouched (decisions/125).
  */
 export function scopeToAccounts(animes: AnimeInfo[], selected: string[]): AnimeInfo[] {
   if (selected.length === 0) return animes
@@ -108,10 +109,12 @@ export function scopeToAccounts(animes: AnimeInfo[], selected: string[]): AnimeI
   for (const a of animes) {
     const mine = (a.accounts ?? []).filter(acc => wanted.has(accountKey(acc.source, acc.username)))
     if (mine.length === 0) continue
+    const behind = mine.reduce((low, acc) => (acc.episodes_watched < low.episodes_watched ? acc : low))
     scoped.push({
       ...a,
-      episodes_watched: Math.min(...mine.map(acc => acc.episodes_watched)),
+      episodes_watched: behind.episodes_watched,
       episodes_pending: Math.max(...mine.map(acc => acc.episodes_pending)),
+      recent: behind.recent,
     })
   }
   return scoped

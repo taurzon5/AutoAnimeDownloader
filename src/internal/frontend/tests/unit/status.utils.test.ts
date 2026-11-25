@@ -260,6 +260,23 @@ describe('scopeToAccounts', () => {
   it('tells the same username apart by source', () => {
     expect(scopeToAccounts(all, [accountKey('mal', 'a')])).toEqual([])
   })
+
+  it("projects the Recents shelf onto the selected account furthest behind", () => {
+    const r = (from: number, to: number) => ({ ranges: [{ from, to }], is_batch: false, downloaded_at: '2026-11-24T10:00:00Z' })
+    const anime = makeAnime({
+      anime_id: 4,
+      episodes_watched: 2,
+      recent: r(3, 6),
+      accounts: [
+        { source: 'anilist', username: 'a', episodes_watched: 6, episodes_pending: 0 },
+        { source: 'anilist', username: 'b', episodes_watched: 2, episodes_pending: 0, recent: r(3, 6) },
+        { source: 'mal', username: 'c', episodes_watched: 4, episodes_pending: 0, recent: r(5, 6) },
+      ],
+    })
+    // a watched everything: nothing new for a, even though b hasn't.
+    expect(scopeToAccounts([anime], [accountKey('anilist', 'a')])[0].recent).toBeUndefined()
+    expect(scopeToAccounts([anime], [accountKey('anilist', 'a'), accountKey('mal', 'c')])[0].recent).toEqual(r(5, 6))
+  })
 })
 
 describe('sortAnimes', () => {

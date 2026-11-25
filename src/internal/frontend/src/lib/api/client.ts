@@ -213,6 +213,8 @@ export interface Config {
   mal_usernames?: string[]
   completed_anime_path: string
   check_interval: number
+  /** Days a downloaded, still-unwatched episode stays on the Status page's Recents shelf; 0 = off, at most 30. */
+  recent_shelf_days?: number
   max_episodes_per_anime: number
   /** Torrent size ceilings in GiB. 0 disables. */
   max_batch_torrent_size_gb: number
@@ -386,6 +388,18 @@ export interface AnimeInfo {
    * account tracks.
    */
   accounts?: AnimeAccount[]
+  /**
+   * The Recents shelf card: episodes downloaded in the last `recent_shelf_days` and still above the
+   * watch progress, as inclusive runs. Absent when there are none (or the shelf is off).
+   */
+  recent?: AnimeRecent
+}
+
+export interface AnimeRecent {
+  ranges: { from: number; to: number }[]
+  /** Every qualifying episode came from one torrent, and there are two or more of them. */
+  is_batch: boolean
+  downloaded_at: string
 }
 
 export type AccountSource = 'anilist' | 'mal'
@@ -396,6 +410,8 @@ export interface AnimeAccount {
   username: string
   episodes_watched: number
   episodes_pending: number
+  /** `recent` from this account's own progress; the user filter projects the shelf with it. */
+  recent?: AnimeRecent
 }
 
 /** Reasons an anime can't be added as standalone — they come ready from the server. */

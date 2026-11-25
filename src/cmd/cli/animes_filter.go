@@ -88,7 +88,8 @@ func resolveAccounts(values, configured []string) ([]string, error) {
 
 // scopeToAccounts keeps the animes at least one selected account tracks (OR) and re-projects
 // episodes_watched / episodes_pending onto THOSE accounts: the lowest progress, the highest
-// pending (decisions/125). An empty selection returns the list untouched.
+// pending (decisions/125). `recent` follows the selected account furthest behind, the first on a
+// tie, as on the dashboard (decisions/151). An empty selection returns the list untouched.
 func scopeToAccounts(animes []api.AnimeInfo, selected []string) []api.AnimeInfo {
 	if len(selected) == 0 {
 		return animes
@@ -101,11 +102,13 @@ func scopeToAccounts(animes []api.AnimeInfo, selected []string) []api.AnimeInfo 
 				continue
 			}
 			if !found {
-				a.EpisodesWatched, a.EpisodesPending = acc.EpisodesWatched, acc.EpisodesPending
+				a.EpisodesWatched, a.EpisodesPending, a.Recent = acc.EpisodesWatched, acc.EpisodesPending, acc.Recent
 				found = true
 				continue
 			}
-			a.EpisodesWatched = min(a.EpisodesWatched, acc.EpisodesWatched)
+			if acc.EpisodesWatched < a.EpisodesWatched {
+				a.EpisodesWatched, a.Recent = acc.EpisodesWatched, acc.Recent
+			}
 			a.EpisodesPending = max(a.EpisodesPending, acc.EpisodesPending)
 		}
 		if found {

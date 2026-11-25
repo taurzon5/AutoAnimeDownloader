@@ -752,6 +752,7 @@ func TestHandleAnimes(t *testing.T) {
 				AnilistUsernames:      []string{"accountA", "accountB"},
 				DownloadStatuses:      []string{"CURRENT"},
 				DownloadMediaStatuses: []string{"RELEASING", "FINISHED"},
+				RecentShelfDays:       3,
 			},
 		}}
 
@@ -771,6 +772,15 @@ func TestHandleAnimes(t *testing.T) {
 		got := response.Data[0]
 		if got.EpisodesWatched != 0 || got.EpisodesPending != 3 {
 			t.Errorf("combined view is the lowest progress (0) → 3 pending, got watched=%d pending=%d", got.EpisodesWatched, got.EpisodesPending)
+		}
+		// Episode 1, downloaded just now, is on B's Recents (B hasn't watched it) and not on A's
+		// (decisions/151).
+		if len(got.Accounts) != 2 || got.Accounts[0].Recent != nil || got.Accounts[1].Recent == nil ||
+			got.Accounts[1].Recent.Ranges[0] != (EpisodeRange{From: 1, To: 1}) {
+			t.Fatalf("per-account recent: %+v", got.Accounts)
+		}
+		for i := range got.Accounts {
+			got.Accounts[i].Recent = nil
 		}
 		want := []AnimeAccount{
 			{Source: "anilist", Username: "accountA", EpisodesWatched: 3, EpisodesPending: 1},
