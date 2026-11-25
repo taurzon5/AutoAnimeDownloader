@@ -2,6 +2,7 @@ package api
 
 import (
 	"AutoAnimeDownloader/src/internal/anilist"
+	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"errors"
 	"fmt"
@@ -58,6 +59,10 @@ type AnimeInfo struct {
 	// user picks accounts (decisions/125). Empty for standalone animes and for orphans no
 	// account tracks.
 	Accounts []AnimeAccount `json:"accounts,omitempty"`
+	// Recent is the anime's card on the Status page's Recents shelf: what was downloaded in the last
+	// recent_shelf_days and is still above the watch progress. Absent when there is none
+	// (recentShelf).
+	Recent *AnimeRecent `json:"recent,omitempty"`
 }
 
 // AnimeAccount is one account's progress on an anime. Source is "anilist" or "mal": the same
@@ -68,6 +73,9 @@ type AnimeAccount struct {
 	EpisodesWatched int    `json:"episodes_watched" example:"5"`
 	// EpisodesPending is AnimeInfo.EpisodesPending computed from this account's progress.
 	EpisodesPending int `json:"episodes_pending" example:"2"`
+	// Recent is AnimeInfo.Recent from this account's progress, so the dashboard's user filter can
+	// project the Recents shelf as it projects the progress (decisions/125, decisions/151).
+	Recent *AnimeRecent `json:"recent,omitempty"`
 }
 
 // animeAccounts converts the stamped accounts of a MediaList. Pending is filled at the end of the
@@ -162,6 +170,8 @@ func handleAnimes(server *Server) http.HandlerFunc {
 		// Episode numbers already on disk, per anime — the base of the EpisodesPending computed at the
 		// end, after the AniList merge filled in released/watched.
 		downloadedNums := make(map[string]map[int]bool)
+		// The saved episodes per anime, for the Recents shelf computed after the merge.
+		savedByKey := make(map[string][]files.EpisodeStruct)
 
 		for _, episode := range episodes {
 			var key string
@@ -177,6 +187,7 @@ func handleAnimes(server *Server) http.HandlerFunc {
 				displayName = extractAnimeName(episode.EpisodeName)
 			}
 
+			savedByKey[key] = append(savedByKey[key], episode)
 			if episode.EpisodeNumber > 0 {
 				if downloadedNums[key] == nil {
 					downloadedNums[key] = make(map[int]bool)
@@ -278,11 +289,16 @@ func handleAnimes(server *Server) http.HandlerFunc {
 		}
 
 		animes := make([]AnimeInfo, 0, len(animeMap))
+		now := time.Now()
 		for key, animeInfo := range animeMap {
+			// After the merge: the watch progress is only known now (AniList, MAL or the standalone's
+			// own), and it is what takes an episode off the shelf.
+			animeInfo.Recent = recentShelf(savedByKey[key], animeInfo.EpisodesWatched, config.RecentShelfDays, now)
 			animeInfo.EpisodesPending = countPendingEpisodes(animeInfo.EpisodesWatched, animeInfo.EpisodesReleased, downloadedNums[key])
 			for i := range animeInfo.Accounts {
 				acc := &animeInfo.Accounts[i]
 				acc.EpisodesPending = countPendingEpisodes(acc.EpisodesWatched, animeInfo.EpisodesReleased, downloadedNums[key])
+				acc.Recent = recentShelf(savedByKey[key], acc.EpisodesWatched, config.RecentShelfDays, now)
 			}
 			animeInfo.IsStandalone = standaloneSet[animeInfo.AnimeID]
 			animes = append(animes, *animeInfo)

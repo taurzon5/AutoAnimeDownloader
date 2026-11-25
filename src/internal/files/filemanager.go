@@ -121,6 +121,9 @@ type Config struct {
 	// everything else still comes from AniList — see decisions/095.
 	MALUsernames  []string `json:"mal_usernames"`
 	CheckInterval int      `json:"check_interval"`
+	// RecentShelfDays is how long a downloaded, still-unwatched episode stays on the Status page's
+	// Recents shelf (GET /animes' "recent"). 0 turns the shelf off; at most 30.
+	RecentShelfDays int `json:"recent_shelf_days"`
 	// MaxEpisodesPerAnime limits how many episodes of an anime exist at the same time, and applies
 	// ONLY on the episode-by-episode path: a batch is a single torrent, so limiting records wouldn't
 	// limit bytes or files in the library (decisions/048). 0 means NO CEILING (see
@@ -410,6 +413,7 @@ func DefaultConfig() *Config {
 		AnilistUsernames:      []string{},
 		MALUsernames:          []string{},
 		CheckInterval:         10,
+		RecentShelfDays:       3,
 		MaxEpisodesPerAnime:   12,
 		MaxBatchTorrentSizeGB: 100,
 		// Passes a WEB-DL (~1.4 GB) and a BD encode (~2 GB), bars a BDRemux (~6-8 GB).

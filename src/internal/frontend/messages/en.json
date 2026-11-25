@@ -170,6 +170,10 @@
   "config_error_save": "Failed to save configuration",
   "config_val_completed_path": "Completed anime path is required",
   "config_val_interval": "Check interval must be greater than 0",
+  "config_label_recent_shelf_days": "Recently Downloaded Shelf",
+  "config_hint_recent_shelf_days": "How many days a finished download stays on the Status page's Recently downloaded shelf while you haven't watched it. 0 turns the shelf off.",
+  "config_suffix_recent_shelf_days": "days",
+  "config_val_recent_shelf_days": "The Recently downloaded shelf takes 0 (off) to 30 days",
   "config_hint_max_episodes": "How many episodes of one anime exist at the same time. Applies to the episode-by-episode path only — a pack is a single torrent, so limiting records would not limit bytes. Set to 0 for no limit (a pack search then covers every pending episode at once).",
   "config_val_max_episodes": "Max episodes per anime must be non-negative",
   "config_val_retry": "Episode retry limit must be non-negative",
@@ -707,6 +711,11 @@
   "detail_untrack_done": "No longer tracking this anime",
   "lastcheck_section_problems": "Problems ({count})",
   "lastcheck_section_limits": "Limits applied ({count})",
+  "recent_title": "Recently downloaded",
+  "recent_new": "New",
+  "recent_caption_episode": "Episode {n}",
+  "recent_caption_episodes": "Episodes {span}",
+  "recent_caption_pack": "{span} · pack",
   "lastcheck_episodes": "ep. {episodes}",
   "lastcheck_all_above_size_limit": [
     {

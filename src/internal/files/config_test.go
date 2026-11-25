@@ -1,6 +1,7 @@
 package files
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -24,4 +25,20 @@ func TestConfigDownloadPath(t *testing.T) {
 			t.Errorf("DownloadPath() = %q, want empty string", got)
 		}
 	})
+}
+
+// A config.json from before recent_shelf_days reads it as 3: LoadConfigs unmarshals over
+// DefaultConfig().
+func TestRecentShelfDaysDefaultsToThree(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"check_interval": 10}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := newTestManagerIn(t, dir).LoadConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.RecentShelfDays != 3 {
+		t.Errorf("recent_shelf_days %d, want 3", c.RecentShelfDays)
+	}
 }

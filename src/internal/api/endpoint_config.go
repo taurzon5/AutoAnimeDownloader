@@ -121,6 +121,11 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
+		if config.RecentShelfDays < 0 || config.RecentShelfDays > 30 {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Recent shelf days must be between 0 (off) and 30")
+			return
+		}
+
 		// max_episodes_per_anime accepts 0 = no cap, aligned with the project's other caps
 		// (max_batch_torrent_size_gb, min_seeders, watched_episodes_to_keep).
 		if config.MaxEpisodesPerAnime < 0 {

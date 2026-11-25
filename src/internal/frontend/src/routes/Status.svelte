@@ -58,6 +58,7 @@
   import { formatRelative, nextAiringIn } from "../lib/utils/relativeTime.js";
   import { issueMessage, batchNote } from "../lib/domain/checkIssue.js";
   import { passErrorMessage } from "../lib/domain/passError.js";
+  import { recentShelf, recentCaption } from "../lib/domain/recent.js";
   import { onboardingSteps, allDone } from "../lib/domain/onboarding.js";
   import {
     ONBOARDING_STEP_IDS,
@@ -343,6 +344,19 @@
     : null;
 
   $: hasReport = !!lastCheck && (lastCheck.problems.length > 0 || lastCheck.limits.length > 0);
+
+  // Recents shelf: the user filter's projection (whose watching counts, decisions/151), not the
+  // table's search or type filters — the shelf doesn't filter the table, and they don't filter it.
+  $: shelf = recentShelf(scopedAnimes);
+  function recentCaptionText(anime: AnimeInfo): string {
+    if (!anime.recent) return "";
+    const c = recentCaption(anime.recent);
+    if (c.kind === "episode") return m.recent_caption_episode({ n: String(c.n) });
+    if (c.kind === "pack") return m.recent_caption_pack({ span: c.span });
+    return m.recent_caption_episodes({ span: c.span });
+  }
+  // Last-check rows open the anime; their cover comes from the list already loaded.
+  $: coverById = new Map(animes.map((a) => [a.anime_id, a.cover_image]));
   // The pass error beats the generic text when it exists; the generic one is still the fallback for
   // the moment between has_error arriving and the report being fetched. The sentence comes from the
   // CODE, never from Go's raw text — which used to dump AniList's response JSON into the banner.
@@ -927,13 +941,26 @@
             <ul class="mt-2 space-y-1.5">
               {#each lastCheck.problems as issue (`${issue.anime_id}-${issue.code}`)}
                 <li class="text-copy text-heading">
-                  <span class="font-semibold">{issue.anime_name}</span>
-                  {#if issue.episodes && issue.episodes.length > 0}
-                    <span class="text-subtle">
-                      · {$locale && m.lastcheck_episodes({ episodes: issue.episodes.join(", ") })}
+                  <svelte:element
+                    this={issue.anime_id ? "a" : "div"}
+                    href={issue.anime_id ? `#/status/${issue.anime_id}` : undefined}
+                    data-testid="last-check-row"
+                    class="-mx-2 flex items-center gap-2.5 rounded-field px-2 py-1 {issue.anime_id ? 'transition-colors hover:bg-warn-tint/12 focus-visible:bg-warn-tint/12' : ''}"
+                  >
+                    {#if issue.anime_id}
+                      <span class="h-9 w-6 shrink-0 overflow-hidden"><Cover src={coverById.get(issue.anime_id)} alt="" /></span>
+                    {/if}
+                    <span class="min-w-0 flex-1">
+                      <span class="font-semibold">{issue.anime_name}</span>
+                      {#if issue.episodes && issue.episodes.length > 0}
+                        <span class="text-subtle">
+                          · {$locale && m.lastcheck_episodes({ episodes: issue.episodes.join(", ") })}
+                        </span>
+                      {/if}
+                      <span class="text-warn">· {issueMessage(issue)}</span>
                     </span>
-                  {/if}
-                  <span class="text-warn">· {issueMessage(issue)}</span>
+                    {#if issue.anime_id}<ChevronRight size={16} class="shrink-0 text-subtle" aria-hidden="true" />{/if}
+                  </svelte:element>
                 </li>
               {/each}
             </ul>
@@ -948,11 +975,24 @@
             <ul class="mt-2 space-y-1.5">
               {#each lastCheck.limits as issue (`${issue.anime_id}-${issue.code}`)}
                 <li class="text-copy text-heading">
-                  <span class="font-semibold">{issue.anime_name}</span>
-                  <span class="text-tertiary">· {issueMessage(issue)}</span>
-                  {#if batchNote(issue)}
-                    <span class="text-subtle">· {batchNote(issue)}</span>
-                  {/if}
+                  <svelte:element
+                    this={issue.anime_id ? "a" : "div"}
+                    href={issue.anime_id ? `#/status/${issue.anime_id}` : undefined}
+                    data-testid="last-check-row"
+                    class="-mx-2 flex items-center gap-2.5 rounded-field px-2 py-1 {issue.anime_id ? 'transition-colors hover:bg-control focus-visible:bg-control' : ''}"
+                  >
+                    {#if issue.anime_id}
+                      <span class="h-9 w-6 shrink-0 overflow-hidden"><Cover src={coverById.get(issue.anime_id)} alt="" /></span>
+                    {/if}
+                    <span class="min-w-0 flex-1">
+                      <span class="font-semibold">{issue.anime_name}</span>
+                      <span class="text-tertiary">· {issueMessage(issue)}</span>
+                      {#if batchNote(issue)}
+                        <span class="text-subtle">· {batchNote(issue)}</span>
+                      {/if}
+                    </span>
+                    {#if issue.anime_id}<ChevronRight size={16} class="shrink-0 text-subtle" aria-hidden="true" />{/if}
+                  </svelte:element>
                 </li>
               {/each}
             </ul>
@@ -1064,6 +1104,38 @@
         </div>
       </div>
     </div>
+
+    <!-- Recents: what landed in the last recent_shelf_days and is still unwatched (the API's
+         `recent`). Absent when empty, like the last-check report: a permanent "0 recent" block
+         trains the eye to skip it. Watching is the only way off it; opening a card is inspection. -->
+    {#if shelf.length > 0}
+      <section data-testid="recent-shelf" aria-labelledby="recent-shelf-title" class="space-y-2.5">
+        <h2 id="recent-shelf-title" class="text-card-title text-heading">{$locale && m.recent_title()}</h2>
+        <ul class="flex gap-3 overflow-x-auto pb-1.5">
+          {#each shelf as anime (anime.anime_id)}
+            <li class="w-32 shrink-0 sm:w-36">
+              <a
+                href="#/status/{anime.anime_id}"
+                data-testid="recent-card"
+                class="group block rounded-card border border-default bg-card p-2 transition-colors hover:bg-control focus-visible:bg-control"
+              >
+                <div class="relative aspect-[2/3] w-full overflow-hidden rounded-field">
+                  <Cover src={anime.cover_image} alt={anime.name} />
+                  <span class="absolute left-1.5 top-1.5 rounded-pill bg-danger px-1.5 py-0.5 font-mono text-[10px] font-extrabold uppercase text-on-danger">
+                    {$locale && m.recent_new()}
+                  </span>
+                </div>
+                <p class="mt-1.5 line-clamp-2 text-caption font-semibold text-heading" title={anime.name}>{anime.name}</p>
+                <p class="text-caption text-body">{$locale && recentCaptionText(anime)}</p>
+                {#if anime.recent}
+                  <p class="font-mono text-[11px] text-subtle">{formatRelative(Date.parse(anime.recent.downloaded_at), now, $locale)}</p>
+                {/if}
+              </a>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
 
     <!-- Anime list -->
     <section class="rounded-card border border-default bg-card">

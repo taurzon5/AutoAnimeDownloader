@@ -57,9 +57,13 @@ func names(list []api.AnimeInfo) string {
 }
 
 func TestAnimesAccountFilterProjectsProgress(t *testing.T) {
+	// The combined shelf is bob's (the slowest); alice watched everything, so hers is empty.
+	bobsShelf := &api.AnimeRecent{Ranges: []api.EpisodeRange{{From: 3, To: 10}}, IsBatch: true}
+	bob := acc("mal", "bob", 2, 8)
+	bob.Recent = bobsShelf
 	animes := []api.AnimeInfo{
 		{Name: "Both", EpisodesWatched: 2, EpisodesPending: 8, EpisodesReleased: 10, LastDownloadDate: "2026-11-03T00:00:00Z",
-			Accounts: []api.AnimeAccount{acc("anilist", "alice", 10, 0), acc("mal", "bob", 2, 8)}},
+			Recent: bobsShelf, Accounts: []api.AnimeAccount{acc("anilist", "alice", 10, 0), bob}},
 		{Name: "Bob only", EpisodesWatched: 1, EpisodesReleased: 3, LastDownloadDate: "2026-11-02T00:00:00Z",
 			Accounts: []api.AnimeAccount{acc("mal", "bob", 1, 2)}},
 		{Name: "Standalone", IsStandalone: true, LastDownloadDate: "2026-11-01T00:00:00Z"},
@@ -73,6 +77,10 @@ func TestAnimesAccountFilterProjectsProgress(t *testing.T) {
 	if got[0].EpisodesWatched != 10 || got[0].EpisodesPending != 0 {
 		t.Errorf("alice's progress not projected: watched=%d pending=%d", got[0].EpisodesWatched, got[0].EpisodesPending)
 	}
+	// Nor episodes alice watched on her Recents shelf because bob hasn't (decisions/151).
+	if got[0].Recent != nil {
+		t.Errorf("alice's recent not projected: %+v, want none", got[0].Recent)
+	}
 	// "Unwatched" answers for alice, not for bob who is behind on the same anime.
 	if got := runAnimesJSON(t, srv, "--account", "alice", "--unwatched"); len(got) != 0 {
 		t.Errorf("alice --unwatched: got %q, want none", names(got))
@@ -84,6 +92,9 @@ func TestAnimesAccountFilterProjectsProgress(t *testing.T) {
 	}
 	if got[0].EpisodesWatched != 2 || got[0].EpisodesPending != 8 {
 		t.Errorf("two accounts: want the one furthest behind, got watched=%d pending=%d", got[0].EpisodesWatched, got[0].EpisodesPending)
+	}
+	if r := got[0].Recent; r == nil || len(r.Ranges) != 1 || r.Ranges[0] != (api.EpisodeRange{From: 3, To: 10}) {
+		t.Errorf("two accounts: recent %+v, want bob's, the one furthest behind", r)
 	}
 
 	if got := runAnimesJSON(t, srv); len(got) != 3 {
