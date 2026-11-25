@@ -20,8 +20,10 @@ const (
 	ReleaseStateQueued      = "queued"
 	ReleaseStateSeeding     = "seeding"
 	ReleaseStateStopped     = "stopped"
-	// ReleaseStateReleased: disable_seeding took the torrent out of the client, its files stay in
-	// the library (decisions/119).
+	// ReleaseStateReleased: the torrent left the client and its files were kept (releaseTorrent sets
+	// TorrentReleased): disable_seeding once its episodes were organized (decisions/119), Shoko moving
+	// its files away (decisions/152), or a pack whose episodes already in Shoko were removed
+	// (decisions/153).
 	ReleaseStateReleased = "released"
 	// ReleaseStateMissing: episodes still point at it, but the client doesn't have it.
 	ReleaseStateMissing = "missing"
