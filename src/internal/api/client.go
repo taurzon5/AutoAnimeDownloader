@@ -263,6 +263,15 @@ func (c *Client) GetAnimeSettings(id int) (*files.AnimeSettings, error) {
 	return &settings, nil
 }
 
+// AnimeReleases lists the torrents that brought an anime's episodes, with their release details.
+func (c *Client) AnimeReleases(id int) ([]AnimeReleaseCard, error) {
+	var out []AnimeReleaseCard
+	if err := c.get("/api/v1/animes/"+strconv.Itoa(id)+"/releases", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *Client) UpdateAnimeSettings(id, progress int) error {
 	body := map[string]int{"progress": progress}
 	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/settings", body, nil)

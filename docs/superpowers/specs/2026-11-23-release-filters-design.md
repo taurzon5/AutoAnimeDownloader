@@ -1,8 +1,10 @@
 # Release filters, fewer Nyaa requests, upgrades, and the torrents an anime downloaded
 
 **Date:** 2026-11-23
-**Status:** designed, not implemented — the user's decisions are recorded at the end; a few
-proposed defaults wait for a yes
+**Status:** step 1 implemented on branch `feat/release-filters` (decision 150), except the `.mkv`
+track read, which waits for a choice: the repo already reads `.mkv` headers itself
+(`files/mkv.go`), so extending that reader would need no library. Steps 2–6 not started. The
+user's decisions are recorded at the end; a few proposed defaults wait for a yes
 **Origin:** "spec the filters for different audio languages, subtitles, resolution, audio and
 video codec, bitrate, web or br and other conditions i'll tell you later", then "add a section in
 the watched anime show which shows which torrents were downloaded and their metadata, for

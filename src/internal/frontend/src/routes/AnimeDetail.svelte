@@ -36,6 +36,7 @@
   import TorrentDeleteDialog from "../components/TorrentDeleteDialog.svelte";
   import TorrentFiles from "../components/TorrentFiles.svelte";
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
+  import AnimeReleasesPanel from "../components/AnimeReleasesPanel.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -1208,5 +1209,8 @@
         {/each}
       </div>
     </section>
+  {/if}
+  {#if detail}
+    <AnimeReleasesPanel {animeId} tick={detail} />
   {/if}
 </div>

@@ -199,6 +199,13 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 		rollbackStandaloneID(fm, mediaID)
 		return 0, err
 	}
+	// Recorded even when the range is unknown and no episode record is written: the torrent is in
+	// the client either way.
+	numbers := make([]int, len(records))
+	for i, r := range records {
+		numbers[i] = r.EpisodeNumber
+	}
+	PickedRelease{Name: name, NyaaID: nyaaID, SizeBytes: sizeBytes}.record(hash, magnet, mediaID, numbers...)
 	if len(records) == 0 {
 		return 0, nil
 	}

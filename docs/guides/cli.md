@@ -100,6 +100,7 @@ autoanimedownloader animes remove 154587 --yes --delete-episodes
 autoanimedownloader animes settings 154587
 autoanimedownloader animes settings 154587 progress 12
 autoanimedownloader animes episodes 154587
+autoanimedownloader animes releases 154587   # the torrents that brought its episodes, with their tags
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3
 autoanimedownloader animes redownload 154587 3 --yes

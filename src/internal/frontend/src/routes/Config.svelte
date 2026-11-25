@@ -191,6 +191,7 @@
     rename_files_for_jellyfin: false,
     library_mode: "hardlink",
     auto_delete_downloads: false,
+    keep_removed_release_cards: true,
     incomplete_files: "part",
     incomplete_path: "",
     incomplete_min_free_disk_gb: 10,
@@ -734,6 +735,16 @@
                 inline={true}
               />
               <p class="text-caption text-subtle">{T && T.hintAutoDeleteDownloads}</p>
+            </div>
+
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="keep_removed_release_cards"
+                bind:checked={config.keep_removed_release_cards}
+                label={$locale && m.config_label_keep_removed_release_cards()}
+                inline={true}
+              />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_keep_removed_release_cards()}</p>
             </div>
 
             {#if config.library_mode === "direct"}

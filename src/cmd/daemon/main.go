@@ -292,6 +292,8 @@ func main() {
 		}
 	}
 	jobQueue := daemon.NewJobQueue(fileManager, filepath.Join(dataDir, "pending_jobs.json"))
+	// What each added torrent was (the anime page's torrent cards), written at every add.
+	daemon.SetReleaseStore(files.NewReleaseStore(filepath.Join(dataDir, daemon.ReleasesFileName)))
 
 	// The torrent client (the embedded rain session, or qBittorrent) and the library organizer
 	// (hardlinks into the completed-anime folder). The session is created lazily once the save path

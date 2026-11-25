@@ -234,6 +234,8 @@ export interface Config {
   library_mode: "hardlink" | "direct"
   /** Direct mode: false = keep forever (no automatic deletion, no per-anime episode limit). */
   auto_delete_downloads: boolean
+  /** The anime page keeps the card of a torrent that is gone, marked removed. */
+  keep_removed_release_cards?: boolean
   /** Direct mode: "part" writes <name>.part until the torrent completes; "in_place" doesn't. */
   incomplete_files: "part" | "in_place"
   /** Direct mode: existing folder where torrents download before moving into the library ("" = off). */
@@ -581,8 +583,61 @@ export async function replaceEpisodeWithMagnet(animeId: number, episodeNumber: n
   return apiRequest<void>('POST', `/animes/${animeId}/episodes/${episodeNumber}/replace`, { magnet })
 }
 
-export async function replaceAnimeWithMagnet(animeId: number, magnet: string): Promise<void> {
-  return apiRequest<void>('POST', `/animes/${animeId}/replace`, { magnet })
+/** pick: the picker's row (name, Nyaa id, size), recorded with the release; absent for a pasted magnet. */
+export async function replaceAnimeWithMagnet(
+  animeId: number,
+  magnet: string,
+  pick?: { name?: string; nyaa_id?: number; size_bytes?: number },
+): Promise<void> {
+  return apiRequest<void>('POST', `/animes/${animeId}/replace`, { magnet, ...pick })
+}
+
+/** What a release name says, in the release filters' vocabulary; `assumed` lists the fields a smart default filled. */
+export interface ReleaseTags {
+  group?: string
+  resolution?: string
+  source?: string
+  service?: string
+  video_codec?: string
+  bit_depth?: number
+  audio_codec?: string
+  audio_channels?: string
+  audio_languages?: string[]
+  subtitle_languages?: string[]
+  hardsub?: boolean
+  container?: string
+  version?: number
+  repack?: boolean
+  uncensored?: boolean
+  batch?: boolean
+  assumed?: string[]
+}
+
+export type ReleaseState = 'downloading' | 'queued' | 'seeding' | 'stopped' | 'released' | 'missing' | 'removed'
+export type ReleaseOrigin = 'search' | 'manual' | 'picker' | 'magnet'
+
+/** One torrent that brought an anime's episodes. recorded false: added before release details were kept. */
+export interface AnimeReleaseCard {
+  hash: string
+  name: string
+  detail_url?: string
+  episodes: number[]
+  origin?: ReleaseOrigin
+  added_at?: string
+  uploaded_at?: string
+  size?: number
+  seeders?: number
+  leechers?: number
+  trusted?: boolean
+  remake?: boolean
+  release: ReleaseTags
+  state: ReleaseState
+  progress: number
+  recorded: boolean
+}
+
+export async function getAnimeReleases(animeId: number): Promise<AnimeReleaseCard[]> {
+  return apiRequest<AnimeReleaseCard[]>('GET', `/animes/${animeId}/releases`)
 }
 
 export async function updateAnimeSettings(animeId: number, settings: AnimeSettings): Promise<void> {

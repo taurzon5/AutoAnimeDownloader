@@ -132,6 +132,7 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 	if err != nil || hash == "" {
 		return files.EpisodeStruct{}, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
+	recordMagnet(hash, magnet, files.ReleaseOriginMagnet, animeId, targetNode.Episode)
 
 	return files.EpisodeStruct{
 		AnimeID:         animeId,
@@ -145,8 +146,9 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 }
 
 // ManualDownloadAnimeWithMagnet downloads an entire anime using a user-supplied batch magnet link.
-// Marks all aired episodes as downloaded sharing the same torrent hash.
-func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, animeId int, magnet string, configs *files.Config) ([]files.EpisodeStruct, error) {
+// Marks all aired episodes as downloaded sharing the same torrent hash. picked is the Nyaa row the
+// torrent picker chose it from; empty for a pasted magnet.
+func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, animeId int, magnet string, configs *files.Config, picked PickedRelease) ([]files.EpisodeStruct, error) {
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return nil, err
 	}
@@ -183,6 +185,11 @@ func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.Tor
 	if len(episodes) == 0 {
 		return nil, fmt.Errorf("no aired episodes found for anime %d", animeId)
 	}
+	numbers := make([]int, len(episodes))
+	for i, ep := range episodes {
+		numbers[i] = ep.EpisodeNumber
+	}
+	picked.record(hash, magnet, animeId, numbers...)
 
 	return episodes, nil
 }
@@ -227,6 +234,7 @@ func ManualDownloadEpisode(fm FileManagerInterface, backend torrents.TorrentBack
 		h, err := addAndPrioritize(backend, results[i].MagnetLink, results[i].Size, configs, target)
 		if err == nil && h != "" {
 			hash = h
+			recordRelease(hash, results[i], files.ReleaseOriginManual, animeId, targetNode.Episode)
 			break
 		}
 	}

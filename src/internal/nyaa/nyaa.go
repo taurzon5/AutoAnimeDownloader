@@ -40,9 +40,28 @@ type TorrentResult struct {
 	// size ("[man] Azumanga Daioh [BD 1080p HEVC FLAC]"). Its range must come from the file list:
 	// unlike a labeled pack, an unknown range never counts as "covers everything".
 	UnlabeledPack bool `json:"-"`
-	// DetailURL is the row's /view/<id> page. PackFileRange and FetchTorrentDetail consume it; the
-	// anime and movie searches fill it.
+	// DetailURL is the row's /view/<id> page. PackFileRange and FetchTorrentDetail consume it; every
+	// search fills it.
 	DetailURL string `json:"detailUrl,omitempty"`
+	// Trusted and Remake are the row's class on Nyaa (green "success", red "danger"). Recorded with
+	// the release the app adds; nothing ranks by them (the release-filters spec §1).
+	Trusted bool `json:"trusted,omitempty"`
+	Remake  bool `json:"remake,omitempty"`
+}
+
+// withRowInfo fills what the row itself says beyond its cells' text: the upload time (the date
+// cell's data-timestamp, else its text) and the trusted/remake class.
+func withRowInfo(t TorrentResult, row, cells *goquery.Selection) TorrentResult {
+	dateCell := cells.Eq(4)
+	if ts, err := strconv.ParseInt(dateCell.AttrOr("data-timestamp", ""), 10, 64); err == nil && ts > 0 {
+		t.Date = time.Unix(ts, 0).UTC()
+	} else if d, err := parseNyaaDate(strings.TrimSpace(dateCell.Text())); err == nil {
+		t.Date = d
+	}
+	class := " " + row.AttrOr("class", "") + " "
+	t.Trusted = strings.Contains(class, " success ")
+	t.Remake = strings.Contains(class, " danger ")
+	return t
 }
 
 var videoExtensions = map[string]bool{
@@ -203,15 +222,22 @@ func removeSpecialCharacters(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// extractFansub extracts the fansub name from the torrent title. It looks for patterns like
-// [FANSUB] or (FANSUB)
+// extractFansub extracts the release group from the torrent name, lowercased: a leading [Group]
+// or (Group), else a scene-style "-GROUP" at the end (14% of the names measured for the
+// release-filters spec carry no bracketed group).
 func extractFansub(name string) string {
-	matches := reFansub.FindStringSubmatch(name)
-	if len(matches) > 1 {
-		return strings.ToLower(strings.TrimSpace(matches[1]))
+	if m := reFansub.FindStringSubmatch(name); m != nil {
+		// The (Group) alternative fills the second capture.
+		return strings.ToLower(strings.TrimSpace(m[1] + m[2]))
+	}
+	if m := reSceneGroup.FindStringSubmatch(strings.TrimSpace(name)); m != nil && !notSceneGroups[strings.ToLower(m[1])] {
+		return strings.ToLower(m[1])
 	}
 	return ""
 }
+
+// notSceneGroups are tags that end a name after a dash without being a group: "WEB-DL".
+var notSceneGroups = map[string]bool{"dl": true, "rip": true, "sub": true, "subs": true, "dub": true, "audio": true, "hd": true}
 
 // IsBatch reports whether the torrent is a batch (multiple episodes)
 func IsBatch(name string) bool {
@@ -1074,7 +1100,7 @@ func ScrapNyaa(animeName string, episode int, requestedSeason, requestedPart *in
 		}
 
 		// Add the result to the array
-		results = append(results, TorrentResult{
+		results = append(results, withRowInfo(TorrentResult{
 			Name:       name,
 			Seeders:    seeders,
 			Leechers:   leechers,
@@ -1085,7 +1111,8 @@ func ScrapNyaa(animeName string, episode int, requestedSeason, requestedPart *in
 			Resolution: resolution,
 			Size:       size,
 			Fansub:     fansub,
-		})
+			DetailURL:  detailURL(cells.Eq(1).Find("a").Not(".comments").AttrOr("href", "")),
+		}, s, cells))
 	}
 
 	var searched bool
@@ -1188,7 +1215,7 @@ func ScrapNyaaForAnime(animeName string, episodes []int, requestedSeason, reques
 		part := ExtractPart(name)
 		res := ExtractResolution(name)
 
-		row := TorrentResult{
+		row := withRowInfo(TorrentResult{
 			Name:       name,
 			Seeders:    strings.TrimSpace(cells.Eq(5).Text()),
 			Leechers:   ParseSeeders(strings.TrimSpace(cells.Eq(6).Text())),
@@ -1199,7 +1226,7 @@ func ScrapNyaaForAnime(animeName string, episodes []int, requestedSeason, reques
 			Size:       parseSize(strings.TrimSpace(cells.Eq(3).Text())),
 			Fansub:     extractFansub(name),
 			DetailURL:  detailURL(cells.Eq(1).Find("a").Not(".comments").AttrOr("href", "")),
-		}
+		}, s, cells)
 
 		// A whole-series release often names nothing but the title and the source — old anime
 		// especially. Without this it fell through to the episode path, had no number, and the
@@ -1356,7 +1383,7 @@ func ScrapNyaaForMovie(animeName string, isFormatMovie ...bool) ([]TorrentResult
 		}
 
 		// Add the result
-		results = append(results, TorrentResult{
+		results = append(results, withRowInfo(TorrentResult{
 			Name:       name,
 			Seeders:    seeders,
 			Leechers:   leechers,
@@ -1366,7 +1393,7 @@ func ScrapNyaaForMovie(animeName string, isFormatMovie ...bool) ([]TorrentResult
 			Fansub:     fansub,
 			IsBatch:    false,
 			DetailURL:  detailURL(cells.Eq(1).Find("a").Not(".comments").AttrOr("href", "")),
-		})
+		}, s, cells))
 	}
 
 	if err := fetchSearchPages(nyaaURL, enoughCandidates, func() int { return len(results) }, parsePagesWith(parseRow)); err != nil {

@@ -235,6 +235,10 @@ type Config struct {
 	// also carries the download's own requests, so a download runs at most a few hundred times it.
 	// At least 1 (decisions/144).
 	QBittorrentDisableSeedingUploadKiB int `json:"qbittorrent_disable_seeding_upload_kib"`
+	// KeepRemovedReleaseCards keeps the anime page's card of a torrent that is gone (watched and
+	// pruned, deleted), marked removed, from what releases.json recorded. Off, a card goes with its
+	// torrent (the release-filters spec §9, decisions/150).
+	KeepRemovedReleaseCards bool `json:"keep_removed_release_cards"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -438,6 +442,7 @@ func DefaultConfig() *Config {
 		QBittorrentCategory:                "autoanimedownloader",
 		QBittorrentPathMap:                 []PathMapping{},
 		QBittorrentDisableSeedingUploadKiB: 16,
+		KeepRemovedReleaseCards:            true,
 	}
 }
 

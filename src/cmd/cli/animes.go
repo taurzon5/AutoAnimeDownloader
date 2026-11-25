@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/api"
+	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 
 	"github.com/urfave/cli/v2"
@@ -98,6 +99,16 @@ func animesCommand() *cli.Command {
 				Usage:     "List episodes of an anime",
 				ArgsUsage: "<id>",
 				Action:    handleAnimesEpisodes,
+			},
+			{
+				Name:      "releases",
+				Usage:     "List the torrents that brought an anime's episodes",
+				ArgsUsage: "<id>",
+				Description: "One row per torrent: its release name, the episodes it brought, its state (downloading,\n" +
+					"seeding, released, missing, removed), how it was added and the tags its name gives. A\n" +
+					"torrent added before release details were kept shows \"before records\". --json gives\n" +
+					"every field, including the Nyaa page, the seeders when chosen and the upload date.",
+				Action: handleAnimesReleases,
 			},
 			{
 				Name:      "download",
@@ -373,6 +384,89 @@ func handleAnimesEpisodes(c *cli.Context) error {
 		return writeSliceTable(detail.Accounts, "")
 	}
 	return nil
+}
+
+func handleAnimesReleases(c *cli.Context) error {
+	if err := requireArgs(c, 1, "animes releases <id>"); err != nil {
+		return err
+	}
+	id, err := parsePositiveInt(c.Args().Get(0), "id")
+	if err != nil {
+		return err
+	}
+	cards, err := getClient().AnimeReleases(id)
+	if err != nil {
+		return mapClientError(err)
+	}
+	if outputJSON {
+		outputJSONResponse(cards)
+		return nil
+	}
+	type row struct {
+		Name     string `json:"name"`
+		Episodes string `json:"episodes"`
+		State    string `json:"state"`
+		Origin   string `json:"origin"`
+		Tags     string `json:"tags"`
+	}
+	rows := make([]row, len(cards))
+	for i, c := range cards {
+		origin := c.Origin
+		if !c.Recorded {
+			origin = "before records"
+		}
+		rows[i] = row{Name: c.Name, Episodes: episodeSpan(c.Episodes), State: c.State, Origin: origin, Tags: releaseTags(c.Release)}
+	}
+	return writeSliceTable(rows, "No torrents for this anime")
+}
+
+// episodeSpan writes episodes as "5", "1-12", or "1-3, 5" when there are gaps.
+func episodeSpan(eps []int) string {
+	var parts []string
+	for i := 0; i < len(eps); {
+		j := i
+		for j+1 < len(eps) && eps[j+1] == eps[j]+1 {
+			j++
+		}
+		if i == j {
+			parts = append(parts, strconv.Itoa(eps[i]))
+		} else {
+			parts = append(parts, strconv.Itoa(eps[i])+"-"+strconv.Itoa(eps[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ", ")
+}
+
+// releaseTags is a release's tags on one line, an assumed value marked with "?".
+func releaseTags(r nyaa.Release) string {
+	assumed := func(field, v string) string {
+		if slices.Contains(r.Assumed, field) {
+			return v + "?"
+		}
+		return v
+	}
+	var tags []string
+	for _, v := range []string{r.Resolution, assumed("source", r.Source), r.Service, r.VideoCodec, r.AudioCodec, r.AudioChannels} {
+		if v != "" {
+			tags = append(tags, v)
+		}
+	}
+	if r.BitDepth > 0 {
+		tags = append(tags, strconv.Itoa(r.BitDepth)+"bit")
+	}
+	if len(r.AudioLanguages) > 0 {
+		tags = append(tags, "audio "+assumed("audio_languages", strings.Join(r.AudioLanguages, "+")))
+	}
+	if r.Hardsub {
+		tags = append(tags, "hardsub")
+	} else if len(r.SubtitleLanguages) > 0 {
+		tags = append(tags, "subs "+assumed("subtitle_languages", strings.Join(r.SubtitleLanguages, "+")))
+	}
+	if r.Version > 1 {
+		tags = append(tags, "v"+strconv.Itoa(r.Version))
+	}
+	return strings.Join(tags, " ")
 }
 
 func handleAnimesDebug(c *cli.Context) error {

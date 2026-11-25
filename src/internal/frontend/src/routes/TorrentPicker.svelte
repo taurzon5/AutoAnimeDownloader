@@ -223,7 +223,11 @@
     confirming = true;
     try {
       if (mode === "replace") {
-        await replaceAnimeWithMagnet(mediaId, selected.magnet);
+        await replaceAnimeWithMagnet(mediaId, selected.magnet, {
+          name: selected.name,
+          nyaa_id: selected.nyaa_id,
+          size_bytes: selected.size_bytes,
+        });
         await afterSuccess();
         return;
       }
