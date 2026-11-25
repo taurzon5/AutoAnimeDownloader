@@ -15,7 +15,7 @@ Pinned by:
 - `TestProcessAnimeEpisodes_TrackedPackRecordsTheShokoEpisodesItBrings` and
   `TestProcessAnimeEpisodes_TrackedPackAddsOnlyWhatItCovers`.
 - `TestRunAnimeDebugMirrorsTheTrackedPackEpisodes`.
-- `TestShokoPackAndDropFolderDefaults`, and the frontend's `Config.shoko.test.ts`.
+- `TestShokoPackAndPathMapDefaults`, and the frontend's `Config.shoko.test.ts`.
 - The per-anime override: see #153's tests.
 
 **What it looks like:**
