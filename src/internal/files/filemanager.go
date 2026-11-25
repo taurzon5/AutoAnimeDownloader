@@ -276,6 +276,10 @@ type Config struct {
 	// through the longest matching prefix, is one or lies inside one; the app reads those folders
 	// from Shoko and never manages them (decisions/152). Empty = identical paths.
 	ShokoPathMap []ShokoPathMapping `json:"shoko_path_map"`
+	// KeepRemovedReleaseCards keeps the anime page's card of a torrent that is gone (watched and
+	// pruned, deleted), marked removed, from what releases.json recorded. Off, a card goes with its
+	// torrent (the release-filters spec §9, decisions/150).
+	KeepRemovedReleaseCards bool `json:"keep_removed_release_cards"`
 }
 
 // ShokoPathMapping is one folder as each side sees it: the app at App, Shoko at Shoko.
@@ -633,6 +637,7 @@ func DefaultConfig() *Config {
 		ShokoWatch:                         true,
 		ShokoFullResyncDays:                30,
 		ShokoFullPacks:                     true,
+		KeepRemovedReleaseCards:            true,
 	}
 }
 

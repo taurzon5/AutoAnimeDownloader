@@ -48,6 +48,7 @@ const saved = {
   qbittorrent_category: 'aad',
   qbittorrent_path_map: [],
   qbittorrent_disable_seeding_upload_kib: 16,
+  keep_removed_release_cards: true,
   notifications: { webhooks: [], batch_window_seconds: 60 },
 }
 

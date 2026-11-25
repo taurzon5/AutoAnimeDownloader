@@ -383,10 +383,11 @@ func processAnimeEpisodes(
 		if series, ok := seriesIndex[anime.Media.Id]; ok {
 			target.series = &series
 		}
-		hash, torrentSize := attemptDownloadWithRetries(configs, backend, disk, candidates, epName, target)
+		hash, chosen := attemptDownloadWithRetries(configs, backend, disk, candidates, epName, target)
 
 		if hash != "" {
 			added[torrentKey] = true
+			recordRelease(hash, chosen, files.ReleaseOriginSearch, anime.Media.Id, ep.Episode)
 			result.newEpisodes = append(result.newEpisodes, files.EpisodeStruct{
 				AnimeID:            anime.Media.Id,
 				AnimeTotalEpisodes: totalEpisodes,
@@ -397,7 +398,7 @@ func processAnimeEpisodes(
 				IsBatch:            skipSubfolder,
 				BatchStart:         resolved.batchStart,
 				BatchEnd:           resolved.batchEnd,
-				TorrentSize:        torrentSize,
+				TorrentSize:        chosen.Size,
 				DownloadDate:       time.Now(),
 				AnimeSeason:        animeSeason,
 				SeriesOffset:       seriesOffset,
@@ -1109,17 +1110,17 @@ func handleAlreadySavedEpisode(maxEpisodes int, downloadedEpisodes *int, isInTor
 	return true, false
 }
 
-// attemptDownloadWithRetries returns the hash of the torrent it added and the size Nyaa announced
-// for it, which the record keeps so the disk budget can count the torrent while it waits in the
-// queue (newDiskBudget).
-func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentBackend, disk *diskBudget, candidates []nyaa.TorrentResult, fileName string, target torrentTarget) (hash string, size int64) {
+// attemptDownloadWithRetries returns the hash of the torrent it added and the candidate it added:
+// the episode record keeps its size, so the disk budget can count the torrent while it waits in the
+// queue (newDiskBudget), and the release store keeps the rest of the Nyaa row (decisions/150).
+func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentBackend, disk *diskBudget, candidates []nyaa.TorrentResult, fileName string, target torrentTarget) (hash string, added nyaa.TorrentResult) {
 	// Full disk: not a single magnet is tried and there's no retry — the candidate isn't the problem,
 	// and trying 3 times would only fill the log. Each candidate's size is checked in the loop. A
 	// candidate already paid for (another episode of the same pack) skips this: it adds no bytes.
 	if !disk.counts(candidates) {
 		if err := disk.check(configs, 0); err != nil {
 			logger.Logger.Warn().Err(err).Str("episode", fileName).Msg("Skipping download: insufficient free disk space")
-			return "", 0
+			return "", nyaa.TorrentResult{}
 		}
 	}
 
@@ -1160,7 +1161,7 @@ func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentB
 				Str("episode", fileName).
 				Str("hash", h).
 				Msg("Successfully added episode to embedded torrent client")
-			return h, candidates[i].Size
+			return h, candidates[i]
 		}
 		undo()
 	}
@@ -1169,7 +1170,7 @@ func attemptDownloadWithRetries(configs *files.Config, backend torrents.TorrentB
 		Str("episode", fileName).
 		Int("attempts", maxAttempts).
 		Msg("Failed to download episode after all attempts")
-	return "", 0
+	return "", nyaa.TorrentResult{}
 }
 
 // RemoveEpisodesWithLinks removes the given episodes from the saved-episodes file and frees

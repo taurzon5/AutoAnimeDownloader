@@ -32,6 +32,15 @@ Per-anime episode list, opened by clicking an anime on the Status page:
 - Header **Replace torrent** opens the [torrent picker](#torrent-picker) (`/status/:id/torrents`)
 - Per-episode actions: download, delete, re-download, replace with a manual magnet link (the
   per-episode modal stays here)
+- **Torrents** — below the episode table, one card per torrent that brought the anime's episodes:
+  the release name (linked to its Nyaa page), the episodes it covers, its group and size, its state
+  (downloading, seeding, in the library without seeding, not in the client, removed), how it came
+  (a check, a manual download, the picker, a pasted magnet), when it was added and uploaded, the
+  seeders when it was chosen, and chips for what its name says: resolution, source and service,
+  codecs, audio and subtitle languages. A value the name doesn't state is assumed (Japanese audio,
+  English subtitles, WEB-DL) and its chip is dashed with a "?". A torrent added before release
+  details were kept says so. **Keep Cards of Removed Torrents** (Downloads settings, on by default)
+  keeps the card of a torrent that is gone, marked removed
 - Bulk actions on selected episodes: download, delete, release (unpin from retry queue)
 - File list of the torrent attached to an episode, when metadata is in
 

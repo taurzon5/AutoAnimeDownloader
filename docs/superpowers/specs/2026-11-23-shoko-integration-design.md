@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-23
 **Status:** step 1 (read-only matching and the sync), Download Full Megapacks (§3) and the
-downloading into Shoko's own import folders (§7), implemented on branch `feat/shoko-sync`
+downloading into Shoko's own import folders (§7), implemented and merged into master
 (decisions 146 to 149, 152 to 154); steps 2–3 wait for the release filters. The
 API below was measured against a real Shoko Server v5.3.3 on 2026-11-24 (see "Measured against
 v5.3.3"); the user's decisions are recorded at the end

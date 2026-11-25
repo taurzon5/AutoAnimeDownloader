@@ -107,6 +107,7 @@ autoanimedownloader animes settings 154587 shoko-packs default  # back to shoko_
 autoanimedownloader animes settings 154587 root hdd    # new torrents of this anime go to the hdd download folder first
 autoanimedownloader animes settings 154587 root none   # back to the fill order
 autoanimedownloader animes episodes 154587
+autoanimedownloader animes releases 154587   # the torrents that brought its episodes, with their tags
 autoanimedownloader animes debug 154587
 autoanimedownloader animes download 154587 3
 autoanimedownloader animes redownload 154587 3 --yes

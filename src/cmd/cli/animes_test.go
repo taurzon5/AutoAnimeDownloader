@@ -10,6 +10,7 @@ import (
 
 	"AutoAnimeDownloader/src/internal/api"
 	"AutoAnimeDownloader/src/internal/daemon"
+	"AutoAnimeDownloader/src/internal/nyaa"
 )
 
 func TestAnimesSearchShortTermReturnsEmptyList(t *testing.T) {
@@ -280,5 +281,32 @@ func TestAnimesAddMagnetSendsTheMatchingCandidate(t *testing.T) {
 	}
 	if req.Magnet != unknown || req.Name != "" || req.NyaaID != 0 {
 		t.Errorf("req = %+v, want the magnet alone", req)
+	}
+}
+
+// releases lists one row per torrent, its episodes as a span and its tags on one line, an assumed
+// value marked with "?".
+func TestAnimesReleases(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/animes/21/releases" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.SuccessResponse{Success: true, Data: []api.AnimeReleaseCard{
+			{Hash: "h", Name: "[Erai-raws] Show 01-12", Episodes: []int{1, 2, 3, 5}, State: "seeding", Origin: "search", Recorded: true,
+				Release: nyaa.ParseRelease("[Erai-raws] Show 01-12 [1080p CR WEB-DL AVC AAC][MultiSub]")},
+			{Hash: "o", Name: "old one", Episodes: []int{7}, State: "missing"},
+		}})
+	}))
+	defer srv.Close()
+
+	stdout, _, err := runCLI(t, "--endpoint", srv.URL, "animes", "releases", "21")
+	if err != nil {
+		t.Fatalf("releases: %v", err)
+	}
+	for _, want := range []string{"1-3, 5", "seeding", "1080p web-dl cr h.264 aac audio ja? subs en+multi", "before records"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("output lacks %q:\n%s", want, stdout)
+		}
 	}
 }

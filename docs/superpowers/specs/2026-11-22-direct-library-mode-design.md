@@ -1,7 +1,7 @@
 # Direct library mode: no hardlinks, Series/Season layout, packs as-is, several download roots
 
 **Date:** 2026-11-22
-**Status:** PR 1 (direct mode, one root) merged. PR 2 (several roots) implemented on `feat/download-roots` (decisions/154), without the per-root swap marker and `series_drive_first`, which waits for PR 3's rules. PRs 3–4 (rules and the movie library, pack season rename) not started — no fixed release
+**Status:** PR 1 (direct mode, one root) merged. PR 2 (several roots) merged too (decisions/154), without the per-root swap marker and `series_drive_first`, which waits for PR 3's rules. PRs 3–4 (rules and the movie library, pack season rename) not started — no fixed release
 **Origin:** a user who seeds without limit wants the library file to *be* the seeding file (no
 `.torrents` copy, no hardlink, so filesystems without hardlinks work too), episodes filed as
 `<Series>/Season 01/`, multi-season packs left in their own layout, and torrents spread across

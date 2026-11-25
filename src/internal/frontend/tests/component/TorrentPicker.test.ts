@@ -327,8 +327,13 @@ describe('TorrentPicker — confirm', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
 
+    // The picked row goes along, so the release is recorded as a pick with its Nyaa page.
     await waitFor(() =>
-      expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(21, 'magnet:?xt=urn:btih:aaa'),
+      expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(21, 'magnet:?xt=urn:btih:aaa', {
+        name: '[SubsPlease] Frieren (01-16) [1080p]',
+        nyaa_id: 12345,
+        size_bytes: 12_000_000_000,
+      }),
     )
     expect(addStandaloneAnime).not.toHaveBeenCalled()
     expect(push).toHaveBeenCalledWith('/status/21')
@@ -338,7 +343,7 @@ describe('TorrentPicker — confirm', () => {
     await mountPicker('#/status/21/torrents')
     await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
     await waitFor(() =>
-      expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(21, 'magnet:?xt=urn:btih:aaa'),
+      expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(21, 'magnet:?xt=urn:btih:aaa', expect.objectContaining({ nyaa_id: 12345 })),
     )
 
     replaceAnimeWithMagnet.mockClear()

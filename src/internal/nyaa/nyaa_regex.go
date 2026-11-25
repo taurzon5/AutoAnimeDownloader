@@ -64,6 +64,9 @@ var (
 
 	// Fansub extraction
 	reFansub = regexp.MustCompile(`(?i)^\[([^\]]+)\]|^\(([^\)]+)\)`)
+	// reSceneGroup is a scene-style group at the end of the name, glued to the last tag by a dash:
+	// "… AAC2.0 H.264-VARYG.mkv". A spaced " - 07" is an episode, not a group.
+	reSceneGroup = regexp.MustCompile(`[^\s-]-([A-Za-z][A-Za-z0-9]{1,15})(?:\.(?:mkv|mp4|avi))?\s*$`)
 
 	// Episode number patterns (ordered by specificity)
 	reEpisodePatterns = []struct {
@@ -147,7 +150,8 @@ var (
 	}{
 		{regexp.MustCompile(`(?i)HEVC|\s*x265\s*`), "HEVC"},
 		{regexp.MustCompile(`(?i)AV1`), "AV1"},
-		{regexp.MustCompile(`(?i)H\.264|\s*x264\s*`), "H.264"},
+		// AVC is H.264's other name: Erai-raws writes "[1080p CR WEB-DL AVC AAC]".
+		{regexp.MustCompile(`(?i)H\.264|\s*x264\s*|\bAVC\b`), "H.264"},
 		{regexp.MustCompile(`(?i)XviD`), "XviD"},
 	}
 
@@ -163,6 +167,8 @@ var (
 		{regexp.MustCompile(`(?i)AAC`), "AAC"},
 		{regexp.MustCompile(`(?i)AC3|Dolby\s*Digital`), "AC3"},
 		{regexp.MustCompile(`(?i)MP3`), "MP3"},
+		// Last: a name with Opus and another codec ranks by the other one, as before Opus was read.
+		{regexp.MustCompile(`(?i)\bOpus\b`), "Opus"},
 	}
 
 	// Season/Part name stripping patterns (used to sanitize batch search queries)

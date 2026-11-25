@@ -38,6 +38,7 @@
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
   import ShokoMatchPanel from "../components/ShokoMatchPanel.svelte";
   import AnimeRootPicker from "../components/AnimeRootPicker.svelte";
+  import AnimeReleasesPanel from "../components/AnimeReleasesPanel.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
@@ -1223,5 +1224,8 @@
         {/each}
       </div>
     </section>
+  {/if}
+  {#if detail}
+    <AnimeReleasesPanel {animeId} tick={detail} />
   {/if}
 </div>
