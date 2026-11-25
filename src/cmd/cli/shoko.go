@@ -88,8 +88,8 @@ func handleShokoStatus(c *cli.Context) error {
 	case st.WatchError != "":
 		fmt.Printf("Not following Shoko's changes (retrying): %s\n", st.WatchError)
 	}
-	// The drop folder (decisions/152): Shoko's import folders, as Shoko sees them, and the last
-	// request asking it to import new files.
+	// Shoko's import folders (decisions/152), as Shoko sees them and, through shoko_path_map, as
+	// the app does; which download folders are Shoko's; the last request asking it to import.
 	for _, f := range st.ImportFolders {
 		kind := "import folder"
 		if f.DropSource {
@@ -99,7 +99,18 @@ func handleShokoStatus(c *cli.Context) error {
 		if f.Watched {
 			watched = ", watched"
 		}
-		fmt.Printf("Shoko %s %d %q: %s (%s%s)\n", kind, f.ID, f.Name, f.Path, f.DropType, watched)
+		here := ""
+		if f.AppPath != "" && f.AppPath != f.Path {
+			here = fmt.Sprintf(", here %s", f.AppPath)
+		}
+		fmt.Printf("Shoko %s %d %q: %s (%s%s%s)\n", kind, f.ID, f.Name, f.Path, f.DropType, watched, here)
+	}
+	for _, r := range st.DownloadRoots {
+		if r.InShoko {
+			fmt.Printf("Download folder %q (%s): in Shoko, its folder %q\n", r.Name, r.Path, r.FolderName)
+		} else {
+			fmt.Printf("Download folder %q (%s): not in Shoko\n", r.Name, r.Path)
+		}
 	}
 	if st.ImportFoldersError != "" {
 		fmt.Printf("Could not read Shoko's import folders: %s\n", st.ImportFoldersError)

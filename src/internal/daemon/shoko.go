@@ -37,7 +37,7 @@ type ShokoService struct {
 	// config, while connected and while waiting to.
 	settle      time.Duration
 	configCheck time.Duration
-	// The drop folder hand-off (shoko_import.go, decisions/152): a request is wanted, one is on its
+	// The hand-off to Shoko (shoko_import.go, decisions/152): a request is wanted, one is on its
 	// way, whether the last one failed (the next pass sends it again), its time and error.
 	// importSettle is how long a request waits for more finished downloads to share it.
 	importWanted  bool
@@ -46,8 +46,9 @@ type ShokoService struct {
 	lastImport    time.Time
 	importError   string
 	importSettle  time.Duration
-	// folders is Shoko's import folders as last read, for the Shoko group.
-	folders      []shoko.ImportFolder
+	// Shoko's import folders live in the store (on disk); foldersRead says this run read them once,
+	// and foldersError why the last read failed.
+	foldersRead  bool
 	foldersError string
 }
 
@@ -414,9 +415,8 @@ func (s *ShokoService) ForPass(ctx context.Context, cfg *files.Config, animes []
 			logger.Logger.Info().Bool("full", full).Int("count", len(s.store.SeriesList())).Msg("Synced with Shoko")
 		}
 	}
-	// The drop folder: Shoko's import folders for the Shoko group, read with the sync whether or not
-	// the setting is on yet (the group lists them when it is turned on), and a failed import request
-	// sent again (decisions/152).
+	// Shoko's import folders, read with the sync: which download folders are Shoko's, and the Shoko
+	// group's list. A failed import request is sent again (decisions/152).
 	s.readFolders(ctx, cfg, synced)
 	s.retryImport(cfg)
 

@@ -329,3 +329,22 @@ func TestImportNewFilesAndImportFolders(t *testing.T) {
 		t.Error("Both is a drop source, None is not")
 	}
 }
+
+// Shoko's import folders are kept on disk, so a restart knows them before Shoko is read again,
+// and a sync, which rebuilds the state, keeps them (decisions/152).
+func TestStoreKeepsTheImportFolders(t *testing.T) {
+	f := newFakeShoko(t)
+	c, _ := NewClient(f.server.URL, "key-1")
+	dir := t.TempDir()
+	store := NewStore(dir)
+	folders := []ImportFolder{{ID: 1, Name: "drop", Path: "/import/", DropType: "Source"}}
+	if err := store.SetImportFolders(folders); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Sync(context.Background(), c, f.server.URL, nil, nil, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := NewStore(dir).ImportFolders(); len(got) != 1 || got[0].Path != "/import/" {
+		t.Fatalf("import folders after a sync and a reload = %+v", got)
+	}
+}

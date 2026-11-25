@@ -540,7 +540,7 @@ func TestOrganizeTorrent_PartiallyOrganizedSkipsWebhook(t *testing.T) {
 		},
 	}
 
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 	if len(fm.upserted) != 1 {

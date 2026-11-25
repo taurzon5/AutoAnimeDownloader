@@ -314,8 +314,8 @@ func main() {
 		},
 	)
 	jobQueue.SetOrchestration(torrentManager, librarian)
-	// Created before the queue starts: a download handed to Shoko's drop folder asks Shoko to
-	// import it (decisions/152), from the first organize on.
+	// Created before the queue starts: a download that finishes in one of Shoko's import folders
+	// asks Shoko to import it (decisions/152), from the first organize on.
 	shokoService := daemon.NewShokoService(dataDir)
 	jobQueue.SetShoko(shokoService)
 	jobQueue.Start()

@@ -38,8 +38,10 @@ Pinned by:
 **Why it's right:**
 
 - **Asked by the user** (2026-11-24): several download folders now, on their own branch, as the
-  direct-library-mode spec's PR 2. The Shoko "imports from here" switch per folder comes once this
-  branch meets `feat/shoko-sync` (decisions/152 there).
+  direct-library-mode spec's PR 2. Once this branch met `feat/shoko-sync`, each
+  folder says whether it is in one of Shoko's import folders, read from Shoko through
+  `shoko_path_map` ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)): a torrent is
+  handed to Shoko by the root its placement is in.
 - **The root lives in the placement.** Paths stay relative to their root. A moved library keeps its
   seeds ([#136](136-direct-mode-places-a-torrent-before-the-add-and.md)), and a moved root is
   followed by name (below). Every

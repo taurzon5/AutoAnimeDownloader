@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -156,6 +157,23 @@ func TestAnimeSettingsShokoMatch(t *testing.T) {
 }
 
 func TestUpdateConfig_ValidatesShoko(t *testing.T) {
+	// shokoServer has a Shoko service that read one import folder, "/import/" as Shoko sees it.
+	shokoServer := func(t *testing.T) *Server {
+		svc := daemon.NewShokoService(t.TempDir())
+		if err := svc.Store().SetImportFolders([]shoko.ImportFolder{{ID: 1, Name: "drop", Path: "/import/", DropType: "Source"}}); err != nil {
+			t.Fatal(err)
+		}
+		state := daemon.NewState()
+		state.SetShoko(svc)
+		return &Server{State: state, FileManager: &mockFileManager{configs: files.DefaultConfig()}}
+	}
+	// inShoko makes a download folder Shoko's: Shoko sees it as /import.
+	inShoko := func(c *files.Config, dir string) {
+		c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "http://x:8111", "k"
+		c.LibraryMode = files.LibraryModeDirect
+		c.DownloadRoots = []files.DownloadRoot{{Name: "shoko", Path: dir}}
+		c.ShokoPathMap = []files.ShokoPathMapping{{App: dir, Shoko: "/import"}}
+	}
 	for name, edit := range map[string]func(c *files.Config){
 		"refresh under an hour": func(c *files.Config) {
 			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoRefreshHours = true, "http://x:8111", "k", 0
@@ -163,48 +181,58 @@ func TestUpdateConfig_ValidatesShoko(t *testing.T) {
 		"on without a sign-in":  func(c *files.Config) { c.ShokoEnabled, c.ShokoAPIKey = true, "" },
 		"on without an address": func(c *files.Config) { c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "", "k" },
 		"negative full resync":  func(c *files.Config) { c.ShokoFullResyncDays = -1 },
-		"drop folder in hardlink mode": func(c *files.Config) {
-			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
+		"path map with a relative folder": func(c *files.Config) {
+			c.ShokoPathMap = []files.ShokoPathMapping{{App: "anime", Shoko: "/import"}}
 		},
-		"drop folder writing in place": func(c *files.Config) {
-			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
-			c.LibraryMode, c.IncompleteFiles = files.LibraryModeDirect, files.IncompleteFilesInPlace
+		"path map nesting Shoko's folders": func(c *files.Config) {
+			c.ShokoPathMap = []files.ShokoPathMapping{{App: "/mnt/a", Shoko: "/import"}, {App: "/mnt/b", Shoko: "/import/sub"}}
 		},
-		"drop folder staged by qBittorrent": func(c *files.Config) {
-			c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, "http://x:8111", "k", true
-			c.LibraryMode, c.IncompletePath = files.LibraryModeDirect, t.TempDir()
+		"shoko folder writing in place": func(c *files.Config) {
+			inShoko(c, t.TempDir())
+			c.IncompleteFiles = files.IncompleteFilesInPlace
+		},
+		"shoko folder staged by qBittorrent": func(c *files.Config) {
+			inShoko(c, t.TempDir())
+			c.IncompletePath = t.TempDir()
 			c.TorrentClient, c.QBittorrentURL = files.TorrentClientQBittorrent, "http://qbit:8080"
 		},
 	} {
 		c := files.DefaultConfig()
 		c.CompletedAnimePath = t.TempDir()
 		edit(c)
-		server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
-		if w := putConfig(t, server, c); w.Code != http.StatusBadRequest {
+		if w := putConfig(t, shokoServer(t), c); w.Code != http.StatusBadRequest {
 			t.Errorf("%s: PUT = %d, want 400", name, w.Code)
 		}
 	}
+	server := shokoServer(t)
 	c := files.DefaultConfig()
 	c.CompletedAnimePath = t.TempDir()
 	c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, "http://127.0.0.1:8111", "k"
-	server := &Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: files.DefaultConfig()}}
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
 		t.Fatalf("a signed-in Shoko = %d %s", w.Code, w.Body.String())
 	}
-	// The drop folder in direct mode: with .part names, or writing in place into a staging folder,
-	// Shoko never sees a half-written file (decisions/152).
-	c.ShokoDropFolder, c.LibraryMode = true, files.LibraryModeDirect
+	// A download folder that is one of Shoko's, in direct mode: with .part names, or writing in
+	// place into a staging folder, Shoko never sees a half-written file (decisions/152).
+	inShoko(c, t.TempDir())
+	c.DownloadRoots = append(c.DownloadRoots, files.DownloadRoot{Name: "other", Path: t.TempDir()})
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
-		t.Fatalf("a drop folder with .part names = %d %s", w.Code, w.Body.String())
+		t.Fatalf("a Shoko folder with .part names = %d %s", w.Code, w.Body.String())
 	}
 	c.IncompleteFiles, c.IncompletePath = files.IncompleteFilesInPlace, t.TempDir()
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
-		t.Fatalf("a drop folder staging elsewhere = %d %s", w.Code, w.Body.String())
+		t.Fatalf("a Shoko folder staging elsewhere = %d %s", w.Code, w.Body.String())
 	}
-	// Shoko off: the drop folder isn't read, so it doesn't stop a save.
-	c.ShokoEnabled, c.LibraryMode = false, files.LibraryModeHardlink
+	// No folder of Shoko's (the map gone, the paths differ): writing in place is fine.
+	c.IncompletePath = ""
+	c.ShokoPathMap = nil
 	if w := putConfig(t, server, c); w.Code != http.StatusOK {
-		t.Fatalf("the drop folder with Shoko off = %d %s", w.Code, w.Body.String())
+		t.Fatalf("no Shoko folder, writing in place = %d %s", w.Code, w.Body.String())
+	}
+	// Shoko off: no folder is Shoko's.
+	inShoko(c, c.DownloadRoots[0].Path)
+	c.ShokoEnabled = false
+	if w := putConfig(t, server, c); w.Code != http.StatusOK {
+		t.Fatalf("a Shoko folder with Shoko off = %d %s", w.Code, w.Body.String())
 	}
 }
 
@@ -244,23 +272,42 @@ func TestWithShokoOwnedCountsShokoEpisodesAsThere(t *testing.T) {
 	}
 }
 
-// The status lists Shoko's import folders, a drop source marked, and the last import request.
-func TestShokoStatusCarriesTheDropFolder(t *testing.T) {
+// The status lists Shoko's import folders as Shoko and the app see them, the last import request,
+// and which download folders are Shoko's (decisions/152).
+func TestShokoStatusCarriesShokosFolders(t *testing.T) {
+	configs := files.DefaultConfig()
 	var st ShokoStatus
-	st.setImport(daemon.ImportStatus{})
-	if body, _ := json.Marshal(st); strings.Contains(string(body), "import") {
+	st.setImport(configs, nil, daemon.ImportStatus{})
+	if body, _ := json.Marshal(st); strings.Contains(string(body), "import") || strings.Contains(string(body), "download_roots") {
 		t.Fatalf("nothing asked and nothing read must leave the import fields out: %s", body)
 	}
-	at := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
-	st.setImport(daemon.ImportStatus{LastRequest: at, Error: "refused", Folders: []shoko.ImportFolder{
+	folders := []shoko.ImportFolder{
 		{ID: 1, Name: "drop", Path: "/import/", DropType: "Both"},
 		{ID: 2, Name: "library", Path: "/anime/", DropType: "Destination", Watched: true},
-	}})
+	}
+	svc := daemon.NewShokoService(t.TempDir())
+	if err := svc.Store().SetImportFolders(folders); err != nil {
+		t.Fatal(err)
+	}
+	configs.CompletedAnimePath = "/mnt/lib"
+	configs.LibraryMode, configs.ShokoEnabled = files.LibraryModeDirect, true
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "shoko", Path: "/mnt/drop/Seasonal"}, {Name: "hdd", Path: "/mnt/hdd"}}
+	configs.ShokoPathMap = []files.ShokoPathMapping{{App: "/mnt/drop", Shoko: "/import"}}
+	at := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
+	st = ShokoStatus{}
+	st.setImport(configs, svc, daemon.ImportStatus{LastRequest: at, Error: "refused", Folders: folders})
 	if st.LastImportRequest == nil || !st.LastImportRequest.Equal(at) || st.ImportError != "refused" || len(st.ImportFolders) != 2 {
 		t.Fatalf("status = %+v", st)
 	}
 	if !st.ImportFolders[0].DropSource || st.ImportFolders[1].DropSource || !st.ImportFolders[1].Watched {
 		t.Errorf("folders = %+v, want the first a drop source and the second a watched destination", st.ImportFolders)
+	}
+	if st.ImportFolders[0].AppPath != "/mnt/drop" || st.ImportFolders[1].AppPath != "/anime/" {
+		t.Errorf("app paths = %q, %q; want through the map, else as Shoko sees it", st.ImportFolders[0].AppPath, st.ImportFolders[1].AppPath)
+	}
+	want := []ShokoDownloadFolder{{Name: "shoko", Path: "/mnt/drop/Seasonal", InShoko: true, FolderID: 1, FolderName: "drop"}, {Name: "hdd", Path: "/mnt/hdd"}}
+	if !reflect.DeepEqual(st.DownloadRoots, want) {
+		t.Errorf("download folders = %+v, want %+v", st.DownloadRoots, want)
 	}
 }
 

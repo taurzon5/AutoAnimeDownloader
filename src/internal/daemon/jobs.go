@@ -59,9 +59,11 @@ type JobQueue struct {
 	done        chan struct{}
 }
 
-// ShokoImporter asks Shoko to import new files; *ShokoService is the one the daemon wires in
-// (SetShoko). An interface so the job queue's tests count the requests.
+// ShokoImporter says whether a download root is one of Shoko's import folders and asks Shoko to
+// import new files; *ShokoService is the one the daemon wires in (SetShoko). An interface so the
+// job queue's tests count the requests.
 type ShokoImporter interface {
+	InShoko(cfg *files.Config, root string) bool
 	RequestImport(cfg *files.Config)
 }
 
@@ -206,10 +208,11 @@ func (q *JobQueue) processDueJobs() {
 	changed := false
 	handedOff := false
 	for _, job := range due {
-		success := q.executeJob(job, backend, librarian, configs)
-		// An organize into a Shoko drop folder handed its files to Shoko: one import request for the
-		// whole tick, however many finished (decisions/152).
-		handedOff = handedOff || (success && job.Type == JobOrganize && configs.HandsOffToShoko())
+		success, toShoko := q.executeJob(job, backend, librarian, configs)
+		// An organize in one of Shoko's import folders: one import request for the whole tick,
+		// however many finished there. Any other download folder asks nothing of Shoko
+		// (decisions/152).
+		handedOff = handedOff || toShoko
 
 		q.mu.Lock()
 		if success {
@@ -265,19 +268,26 @@ func retryBackoff(attempts int) time.Duration {
 
 // executeJob runs one job. Returns true when the job is done (remove it) or should be
 // dropped; false to retry with backoff.
-func (q *JobQueue) executeJob(job *Job, backend torrents.TorrentBackend, librarian files.Librarian, configs *files.Config) bool {
+func (q *JobQueue) executeJob(job *Job, backend torrents.TorrentBackend, librarian files.Librarian, configs *files.Config) (success, toShoko bool) {
 	switch job.Type {
 	case JobOrganize:
 		var p OrganizePayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			logger.Logger.Error().Err(err).Str("id", job.ID).Msg("Job queue: failed to unmarshal organize payload")
-			return true // drop malformed job
+			return true, false // drop malformed job
 		}
-		return organizeTorrent(p.Hash, backend, librarian, q.fileManager, configs)
+		// Read before the organize: with disable_seeding on, organize releases the torrent, and Shoko
+		// must still be asked to import what it left (decisions/152).
+		_, inClient := backend.Get(p.Hash)
+		toShoko := inClient && shokoTakesTorrent(configs, backend, q.shoko, p.Hash)
+		if !organizeTorrent(p.Hash, backend, librarian, q.fileManager, configs, toShoko) {
+			return false, false
+		}
+		return true, toShoko
 
 	default:
 		logger.Logger.Warn().Str("type", string(job.Type)).Msg("Job queue: unknown job type, dropping")
-		return true
+		return true, false
 	}
 }
 
@@ -328,13 +338,28 @@ func (q *JobQueue) loadFromDisk() {
 	logger.Logger.Info().Int("count", len(jobs)).Msg("Job queue: loaded pending jobs from disk")
 }
 
+// shokoTakesTorrent reports whether a torrent's files are in one of Shoko's import folders: its
+// placement's root, else the library. Organize then marks its records handed to Shoko, and the job
+// queue asks Shoko to import (decisions/152). No Shoko service (tests, the debug run): never.
+func shokoTakesTorrent(configs *files.Config, backend torrents.TorrentBackend, shoko ShokoImporter, hash string) bool {
+	if shoko == nil {
+		return false
+	}
+	root := configs.CompletedAnimePath
+	if p, ok := backend.Placement(hash); ok {
+		root = p.RootOr(configs.CompletedAnimePath)
+	}
+	return shoko.InShoko(configs, root)
+}
+
 // organizeTorrent hardlinks a completed torrent's files into the library and, exactly once,
 // writes back the created LibraryPaths and fires the completion webhook. Idempotent across
 // restarts: episodes whose LibraryPaths are already set are treated as done (no webhook,
-// no re-link). Shared by JobOrganize and directly testable.
+// no re-link). Shared by JobOrganize and directly testable. toShoko: the torrent is in one of
+// Shoko's import folders (shokoTakesTorrent), so its records are marked handed to Shoko.
 //
 // Returns true when done/dropped; false to retry with backoff.
-func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian files.Librarian, fm FileManagerInterface, configs *files.Config) bool {
+func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian files.Librarian, fm FileManagerInterface, configs *files.Config, toShoko bool) bool {
 	info, ok := backend.Get(hash)
 	if !ok {
 		logger.Logger.Debug().Str("hash", hash).Msg("Organize: torrent no longer present, dropping")
@@ -469,9 +494,9 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 		for _, i := range idxs {
 			matched[i].LibraryPaths = created
 			matched[i].DirectLibrary = placed
-			// The library is a Shoko drop folder: Shoko imports these files, and the torrent keeps
-			// seeding them (decisions/152).
-			matched[i].HandedToShoko = matched[i].HandedToShoko || configs.HandsOffToShoko()
+			// Its download root is one of Shoko's import folders: Shoko imports these files, and
+			// the torrent keeps seeding them (decisions/152).
+			matched[i].HandedToShoko = matched[i].HandedToShoko || toShoko
 		}
 	}
 
@@ -517,13 +542,14 @@ func organizeTorrent(hash string, backend torrents.TorrentBackend, librarian fil
 // second name to keep them. The placement stays with them, so the provider never claims those
 // paths for another torrent (decisions/137).
 //
-// toShoko is the same release for a torrent handed to Shoko whose files Shoko moved away, so it
-// can't seed them any more: the records stay marked handed to Shoko (releaseMovedByShoko,
-// decisions/152).
-func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManagerInterface, matched []files.EpisodeStruct, placed, toShoko bool) bool {
+// movedByShoko is the same release for a torrent handed to Shoko whose files Shoko moved away, so
+// it can't seed them any more: the records stay marked handed to Shoko (releaseMovedByShoko,
+// decisions/152). Not organize's toShoko: a disable_seeding release of a torrent in Shoko's folder
+// was marked by organize already.
+func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManagerInterface, matched []files.EpisodeStruct, placed, movedByShoko bool) bool {
 	for i := range matched {
 		matched[i].TorrentReleased = true
-		matched[i].HandedToShoko = matched[i].HandedToShoko || toShoko
+		matched[i].HandedToShoko = matched[i].HandedToShoko || movedByShoko
 	}
 	if err := fm.UpsertEpisodes(matched); err != nil {
 		logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Release: failed to mark the episodes released; keeping the torrent")
@@ -533,7 +559,7 @@ func releaseTorrent(hash string, backend torrents.TorrentBackend, fm FileManager
 		logger.Logger.Warn().Err(err).Str("hash", hash).Msg("Release: failed to remove the organized torrent")
 		return false
 	}
-	if toShoko {
+	if movedByShoko {
 		logger.Logger.Info().Str("hash", hash).Str("anime", matched[0].AnimeName).Msg("Shoko moved this torrent's files: removed it from the client, as it can't seed them")
 	} else {
 		logger.Logger.Info().Str("hash", hash).Str("anime", matched[0].AnimeName).Msg("Disable seeding: removed the organized torrent and its download copy")

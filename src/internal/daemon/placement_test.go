@@ -184,7 +184,7 @@ func TestOrganizeTorrent_DirectModeFinalizesAndRecordsThePlacedFiles(t *testing.
 	backend.AddCompleted(directHash, p.SeriesDir)
 
 	fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show Season 2", EpisodeNumber: 5}}, configs: configs}
-	if ok := organizeTorrent(directHash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, configs); !ok {
+	if ok := organizeTorrent(directHash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 
@@ -567,7 +567,7 @@ func TestOrganizeTorrent_LeavesAFinishedTorrentWithMissingFilesAlone(t *testing.
 	}
 	fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show", EpisodeNumber: 1}}, configs: configs}
 
-	if ok := organizeTorrent(directHash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, configs); !ok {
+	if ok := organizeTorrent(directHash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, configs, false); !ok {
 		t.Fatal("the job is done: there is nothing to retry")
 	}
 	if len(fm.upserted) != 0 || len(fm.saved[0].LibraryPaths) != 0 {

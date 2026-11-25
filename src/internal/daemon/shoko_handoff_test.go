@@ -15,16 +15,24 @@ import (
 	"AutoAnimeDownloader/src/internal/torrents"
 )
 
-// dropFolderConfig is direct mode with the library as a Shoko drop folder (decisions/152).
-func dropFolderConfig(lib, shokoURL string) *files.Config {
+// shokoOnConfig is direct mode with the library as the one download folder and Shoko on. Whether
+// the library is one of Shoko's import folders is the importer's answer (decisions/152).
+func shokoOnConfig(lib, shokoURL string) *files.Config {
 	c := directConfig(lib)
-	c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey, c.ShokoDropFolder = true, shokoURL, "key", true
+	c.ShokoEnabled, c.ShokoURL, c.ShokoAPIKey = true, shokoURL, "key"
 	return c
 }
 
+// countingImporter counts the import requests; roots are the download folders it reports as
+// Shoko's import folders.
 type countingImporter struct {
 	mu    sync.Mutex
 	calls int
+	roots map[string]bool
+}
+
+func (c *countingImporter) InShoko(_ *files.Config, root string) bool {
+	return c.roots[filepath.Clean(root)]
 }
 
 func (c *countingImporter) RequestImport(*files.Config) {
@@ -54,20 +62,19 @@ func placedCompleted(t *testing.T, configs *files.Config, backend *torrents.Fake
 	return p.Files[0].Path
 }
 
-// The library as a Shoko drop folder: once organized, the torrent keeps seeding, its record is
-// marked handed to Shoko, and the job queue asks Shoko to import once for the tick. With the
-// setting off, nothing is handed off and Shoko is not asked (decisions/152).
-func TestOrganize_DropFolderHandsTheTorrentToShoko(t *testing.T) {
+// The library in one of Shoko's import folders: once organized, the torrent keeps seeding, its
+// record is marked handed to Shoko, and the job queue asks Shoko to import once for the tick. Not
+// in one, nothing is handed off and Shoko is not asked (decisions/152).
+func TestOrganize_ShokoFolderHandsTheTorrentToShoko(t *testing.T) {
 	for _, drop := range []bool{true, false} {
 		lib := t.TempDir()
-		configs := dropFolderConfig(lib, "http://shoko:8111")
-		configs.ShokoDropFolder = drop
+		configs := shokoOnConfig(lib, "http://shoko:8111")
 		backend := torrents.NewFakeBackend()
 		backend.LibraryRoot = lib
 		final := placedCompleted(t, configs, backend)
 
 		fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show", EpisodeNumber: 5}}, configs: configs}
-		imp := &countingImporter{}
+		imp := &countingImporter{roots: map[string]bool{lib: drop}}
 		q := NewJobQueue(fm, filepath.Join(t.TempDir(), "jobs.json"))
 		q.SetOrchestration(backend, files.NewLibrarian(files.NewOSFileSystem()))
 		q.SetShoko(imp)
@@ -90,13 +97,42 @@ func TestOrganize_DropFolderHandsTheTorrentToShoko(t *testing.T) {
 	}
 }
 
+// With disable_seeding on, organize releases the torrent it just handed to Shoko: Shoko is still
+// asked to import, since nothing else would ask it (decisions/152).
+func TestOrganize_DisableSeedingStillAsksShokoToImport(t *testing.T) {
+	lib := t.TempDir()
+	configs := shokoOnConfig(lib, "http://shoko:8111")
+	configs.DisableSeeding = true
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	placedCompleted(t, configs, backend)
+
+	fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show", EpisodeNumber: 5}}, configs: configs}
+	imp := &countingImporter{roots: map[string]bool{lib: true}}
+	q := NewJobQueue(fm, filepath.Join(t.TempDir(), "jobs.json"))
+	q.SetOrchestration(backend, files.NewLibrarian(files.NewOSFileSystem()))
+	q.SetShoko(imp)
+	q.EnqueueOrganize(directHash)
+	q.processDueJobs()
+
+	if _, inClient := backend.Get(directHash); inClient || !fm.saved[0].TorrentReleased {
+		t.Fatalf("disable_seeding must release the torrent: inClient=%v record=%+v", inClient, fm.saved[0])
+	}
+	if !fm.saved[0].HandedToShoko {
+		t.Error("the record must be handed to Shoko")
+	}
+	if imp.calls != 1 {
+		t.Errorf("Shoko asked %d times, want 1", imp.calls)
+	}
+}
+
 // Shoko moved a handed-off torrent's files on import: the torrent leaves the client with its
 // records released and its placement forgotten. While Shoko has none of its episodes, a missing
 // file is the user's deletion and the torrent stays, as decisions/139 says (decisions/152).
 func TestReleaseMovedByShoko(t *testing.T) {
 	for _, imported := range []bool{true, false} {
 		lib := t.TempDir()
-		configs := dropFolderConfig(lib, "http://shoko:8111")
+		configs := shokoOnConfig(lib, "http://shoko:8111")
 		backend := torrents.NewFakeBackend()
 		backend.LibraryRoot = lib
 		final := placedCompleted(t, configs, backend)
@@ -163,14 +199,14 @@ func (f *fakeShokoImports) counts() (int, int) {
 }
 
 // Downloads that finish close together share one import request; a refused one is shown and sent
-// again by the next pass; nothing is asked when the library isn't a drop folder (decisions/152).
+// again by the next pass; nothing is asked with Shoko off or in hardlink mode (decisions/152).
 func TestRequestImport(t *testing.T) {
 	shk := &fakeShokoImports{}
 	srv := httptest.NewServer(shk.handler())
 	defer srv.Close()
 	svc := NewShokoService(t.TempDir())
 	svc.importSettle = 30 * time.Millisecond
-	cfg := dropFolderConfig(t.TempDir(), srv.URL)
+	cfg := shokoOnConfig(t.TempDir(), srv.URL)
 
 	for range 3 {
 		svc.RequestImport(cfg)
@@ -204,15 +240,15 @@ func TestRequestImport(t *testing.T) {
 		t.Fatalf("a pass after a good request asked again: %d requests, want 3", n)
 	}
 
-	off := dropFolderConfig(t.TempDir(), srv.URL)
-	off.ShokoDropFolder = false
+	off := shokoOnConfig(t.TempDir(), srv.URL)
+	off.ShokoEnabled = false
 	svc.RequestImport(off)
-	hardlink := dropFolderConfig(t.TempDir(), srv.URL)
+	hardlink := shokoOnConfig(t.TempDir(), srv.URL)
 	hardlink.LibraryMode = files.LibraryModeHardlink
 	svc.RequestImport(hardlink)
 	time.Sleep(80 * time.Millisecond)
 	if n, _ := shk.counts(); n != 3 {
-		t.Fatalf("Shoko was asked without a drop folder in direct mode: %d requests, want 3", n)
+		t.Fatalf("Shoko was asked while off or in hardlink mode: %d requests, want 3", n)
 	}
 	var nilService *ShokoService
 	nilService.RequestImport(cfg) // the debug run and tests have none
@@ -223,7 +259,7 @@ func TestReadImportFolders(t *testing.T) {
 	shk := &fakeShokoImports{}
 	srv := httptest.NewServer(shk.handler())
 	svc := NewShokoService(t.TempDir())
-	cfg := dropFolderConfig(t.TempDir(), srv.URL)
+	cfg := shokoOnConfig(t.TempDir(), srv.URL)
 	ctx := t.Context()
 
 	svc.readFolders(ctx, cfg, false)
@@ -243,12 +279,12 @@ func TestReadImportFolders(t *testing.T) {
 }
 
 // Deleting an episode handed to Shoko removes its record and placement and never its file: Shoko
-// imports where the file lies unless its renamer moves it, so the file in the drop folder is
+// imports where the file lies unless its renamer moves it, so the file in Shoko's folder is
 // Shoko's. A released torrent that wasn't handed off still loses its files (decisions/137).
 func TestRemoveEpisodes_HandedToShokoKeepsTheFile(t *testing.T) {
 	for _, handed := range []bool{true, false} {
 		lib := t.TempDir()
-		configs := dropFolderConfig(lib, "http://shoko:8111")
+		configs := shokoOnConfig(lib, "http://shoko:8111")
 		backend := torrents.NewFakeBackend()
 		backend.LibraryRoot = lib
 		if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
@@ -292,7 +328,7 @@ func TestRemoveEpisodes_HandedToShokoKeepsTheFile(t *testing.T) {
 // by reconcileLibrary), whose library file is Shoko's too.
 func TestRemoveEpisodes_HandedToShokoPackKeepsEveryFile(t *testing.T) {
 	lib := t.TempDir()
-	configs := dropFolderConfig(lib, "http://shoko:8111")
+	configs := shokoOnConfig(lib, "http://shoko:8111")
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
 	if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), batch: true}, files.DownloadRoot{}); err != nil {
@@ -312,7 +348,7 @@ func TestRemoveEpisodes_HandedToShokoPackKeepsEveryFile(t *testing.T) {
 		}
 		paths = append(paths, f.Path)
 	}
-	// The hardlink-era torrent: no placement, its library file in the drop folder.
+	// The hardlink-era torrent: no placement, its library file in Shoko's folder.
 	const linked = "3333333333333333333333333333333333333333"
 	linkedFile := filepath.Join(lib, "Other", "ep01.mkv")
 	if err := os.MkdirAll(filepath.Dir(linkedFile), 0755); err != nil {
@@ -349,7 +385,7 @@ func TestRemoveEpisodes_HandedToShokoPackKeepsEveryFile(t *testing.T) {
 // and its placement Kept, so the orphan sweep never deletes Shoko's files (decisions/152).
 func TestRemoveEpisodes_HandedToShokoSeedingKeepsTheFiles(t *testing.T) {
 	lib := t.TempDir()
-	configs := dropFolderConfig(lib, "http://shoko:8111")
+	configs := shokoOnConfig(lib, "http://shoko:8111")
 	backend := torrents.NewFakeBackend()
 	backend.LibraryRoot = lib
 	final := placedCompleted(t, configs, backend)
@@ -372,5 +408,91 @@ func TestRemoveEpisodes_HandedToShokoSeedingKeepsTheFiles(t *testing.T) {
 	}
 	if len(fm.deleted) != 1 {
 		t.Errorf("the record must be deleted, got %v", fm.deleted)
+	}
+}
+
+// Each download folder is in Shoko or not: a torrent organized in Shoko's folder is handed to
+// Shoko, one in another folder is an ordinary download (decisions/152, decisions/154).
+func TestOrganize_OnlyTheShokoFolderHandsOff(t *testing.T) {
+	lib := t.TempDir()
+	shokoDir, otherDir := t.TempDir(), t.TempDir()
+	configs := directConfig(lib)
+	configs.ShokoEnabled, configs.ShokoURL, configs.ShokoAPIKey = true, "http://shoko:8111", "key"
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "shoko", Path: shokoDir}, {Name: "other", Path: otherDir}}
+	for _, tc := range []struct {
+		root   files.DownloadRoot
+		handed bool
+	}{{configs.DownloadRoots[0], true}, {configs.DownloadRoots[1], false}} {
+		backend := torrents.NewFakeBackend()
+		backend.LibraryRoot = lib
+		if err := registerPlacement(configs, backend, directMagnet, torrentTarget{anime: titledAnime(3, "Show", anilist.MediaFormatTV), episode: 5}, tc.root); err != nil {
+			t.Fatal(err)
+		}
+		p, err := backend.PlaceFiles(directHash, []string{"ep05.mkv"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(p.Files[0].Path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p.Files[0].Path+".part", []byte("video"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		backend.AddCompleted(directHash, p.SeriesDir)
+		fm := &orchestrationFM{saved: []files.EpisodeStruct{{AnimeID: 3, EpisodeHash: directHash, AnimeName: "Show", EpisodeNumber: 5}}, configs: configs}
+		imp := &countingImporter{roots: map[string]bool{shokoDir: true}}
+		q := NewJobQueue(fm, filepath.Join(t.TempDir(), "jobs.json"))
+		q.SetOrchestration(backend, files.NewLibrarian(files.NewOSFileSystem()))
+		q.SetShoko(imp)
+		q.EnqueueOrganize(directHash)
+		q.processDueJobs()
+		if len(fm.saved[0].LibraryPaths) != 1 {
+			t.Fatalf("root %s: record must be organized: %+v", tc.root.Name, fm.saved[0])
+		}
+		if got := fm.saved[0].HandedToShoko; got != tc.handed {
+			t.Errorf("root %s: handed_to_shoko = %v, want %v", tc.root.Name, got, tc.handed)
+		}
+		// Another folder has the switch, this one doesn't: Shoko is not asked.
+		if want := map[bool]int{true: 1, false: 0}[tc.handed]; imp.calls != want {
+			t.Errorf("root %s: Shoko asked %d times, want %d", tc.root.Name, imp.calls, want)
+		}
+	}
+}
+
+// A download folder is Shoko's when, as Shoko sees it through shoko_path_map, it is one of Shoko's
+// import folders or lies inside one; the deepest folder wins. Read from the folders as last read,
+// only with Shoko on and in direct mode (decisions/152).
+func TestShokoFolder(t *testing.T) {
+	svc := NewShokoService(t.TempDir())
+	if err := svc.store.SetImportFolders([]shoko.ImportFolder{
+		{ID: 1, Name: "drop", Path: "/import/", DropType: "Source"},
+		{ID: 2, Name: "anime", Path: "/anime/", DropType: "Destination"},
+		{ID: 3, Name: "seasonal", Path: "/anime/seasonal/", DropType: "None"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := shokoOnConfig("/mnt/lib", "http://shoko:8111")
+	cfg.ShokoPathMap = []files.ShokoPathMapping{{App: "/mnt/shoko-drop", Shoko: "/import"}}
+	for root, want := range map[string]int{
+		"/mnt/shoko-drop":        1,
+		"/mnt/shoko-drop/sub":    1,
+		"/import":                1, // unmapped: the same path on both sides
+		"/anime/seasonal/winter": 3, // the deepest folder
+		"/anime":                 2,
+		"/mnt/lib":               0,
+		"/mnt/shoko-dropped":     0,
+	} {
+		f, ok := svc.ShokoFolder(cfg, root)
+		if got := map[bool]int{true: f.ID, false: 0}[ok]; got != want {
+			t.Errorf("ShokoFolder(%q) = folder %d, want %d", root, got, want)
+		}
+	}
+	off := *cfg
+	off.ShokoEnabled = false
+	hardlink := *cfg
+	hardlink.LibraryMode = files.LibraryModeHardlink
+	var nilService *ShokoService
+	if svc.InShoko(&off, "/mnt/shoko-drop") || svc.InShoko(&hardlink, "/mnt/shoko-drop") || nilService.InShoko(cfg, "/mnt/shoko-drop") {
+		t.Error("Shoko off, hardlink mode or no service: no folder is Shoko's")
 	}
 }

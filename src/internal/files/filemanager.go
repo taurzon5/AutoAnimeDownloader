@@ -76,9 +76,9 @@ type EpisodeStruct struct {
 	// and downloads the episode again. Stays true if disable_seeding is turned off later — the
 	// file is still in the library.
 	TorrentReleased bool `json:"torrent_released,omitempty"`
-	// HandedToShoko marks a record whose files went to Shoko: the library is a Shoko drop folder
-	// (shoko_drop_folder), so Shoko imports (and may move) them while the torrent keeps seeding; the
-	// app never deletes them. The episode stays downloaded for the app; the anime page says "Waiting
+	// HandedToShoko marks a record whose files went to Shoko: its download root is one of Shoko's
+	// import folders (ShokoPathMap), so Shoko imports (and may move) them while the torrent keeps
+	// seeding; the app never deletes them. The episode stays downloaded for the app; the anime page says "Waiting
 	// for Shoko" until Shoko has a file for it (decisions/152).
 	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
 	// AnimeSeason is the season number extracted from the AniList titles at download/adopt
@@ -271,10 +271,17 @@ type Config struct {
 	// skipped with qBittorrent, deleted once downloaded otherwise (decisions/153). An anime
 	// overrides it (AnimeSettings.ShokoPackEpisodes, Config.KeepsShokoPackEpisodes).
 	ShokoFullPacks bool `json:"shoko_full_packs"`
-	// ShokoDropFolder: the library (completed_anime_path) is a folder Shoko imports from. Direct mode
-	// only. Organize marks each torrent's records handed to Shoko, the torrent keeps seeding, and the
-	// app asks Shoko to import new files (decisions/152).
-	ShokoDropFolder bool `json:"shoko_drop_folder"`
+	// ShokoPathMap is each folder as the app and Shoko see it, when one of them runs in Docker or on
+	// another machine. A download folder is one of Shoko's import folders when its path, translated
+	// through the longest matching prefix, is one or lies inside one; the app reads those folders
+	// from Shoko and never manages them (decisions/152). Empty = identical paths.
+	ShokoPathMap []ShokoPathMapping `json:"shoko_path_map"`
+}
+
+// ShokoPathMapping is one folder as each side sees it: the app at App, Shoko at Shoko.
+type ShokoPathMapping struct {
+	App   string `json:"app"`
+	Shoko string `json:"shoko"`
 }
 
 // PathMapping is one folder as each side sees it: the app at App, qBittorrent at QBittorrent.
@@ -438,11 +445,47 @@ func (c *Config) KeepsShokoPackEpisodes(s AnimeSettings) bool {
 	return c.ShokoFullPacks
 }
 
-// HandsOffToShoko reports whether finished downloads go to Shoko: Shoko on, the library a Shoko
-// drop folder, direct mode. Organize then marks the records handed to Shoko, the torrent keeps
-// seeding, and the job queue asks Shoko to import new files (decisions/152).
-func (c *Config) HandsOffToShoko() bool {
-	return c.ShokoEnabled && c.ShokoDropFolder && c.IsDirectMode()
+// ShokoPath is appPath as Shoko sees it, through the longest matching prefix of shoko_path_map.
+// No match, or no map, leaves it as it is.
+func (c *Config) ShokoPath(appPath string) string {
+	return mapShokoPath(appPath, c.ShokoPathMap, true)
+}
+
+// AppPathFromShoko is a path Shoko reports, as the app sees it: the map the other way.
+func (c *Config) AppPathFromShoko(shokoPath string) string {
+	return mapShokoPath(shokoPath, c.ShokoPathMap, false)
+}
+
+func mapShokoPath(path string, maps []ShokoPathMapping, toShoko bool) string {
+	best, bestLen := -1, -1
+	for i, m := range maps {
+		from := m.App
+		if !toShoko {
+			from = m.Shoko
+		}
+		from = strings.TrimRight(from, `/\`)
+		if from != "" && UnderFolder(path, from) && len(from) > bestLen {
+			best, bestLen = i, len(from)
+		}
+	}
+	if best < 0 {
+		return path
+	}
+	from, to := maps[best].App, maps[best].Shoko
+	if !toShoko {
+		from, to = to, from
+	}
+	return strings.TrimRight(to, `/\`) + strings.TrimRight(path, `/\`)[len(strings.TrimRight(from, `/\`)):]
+}
+
+// UnderFolder reports whether path is folder or lies inside it. Either separator counts (Shoko may
+// run on Windows), and a trailing one is ignored: Shoko reports "/import/".
+func UnderFolder(path, folder string) bool {
+	path, folder = strings.TrimRight(path, `/\`), strings.TrimRight(folder, `/\`)
+	if path == "" || folder == "" {
+		return false
+	}
+	return path == folder || strings.HasPrefix(path, folder+"/") || strings.HasPrefix(path, folder+`\`)
 }
 
 // StagingPath is where new torrents download before moving into the library: IncompletePath in
@@ -584,6 +627,7 @@ func DefaultConfig() *Config {
 		TorrentClient:                      TorrentClientBuiltin,
 		QBittorrentCategory:                "autoanimedownloader",
 		QBittorrentPathMap:                 []PathMapping{},
+		ShokoPathMap:                       []ShokoPathMapping{},
 		QBittorrentDisableSeedingUploadKiB: 16,
 		ShokoRefreshHours:                  24,
 		ShokoWatch:                         true,

@@ -32,7 +32,7 @@ Pinned by:
   episodes in Shoko it covers. In direct mode they land in the library beside Shoko's copies
   whatever the setting. On, they get records like the rest of the pack: they show as downloaded on
   the anime page and follow the app's rules, and the user can delete them there. Removed instead,
-  they are skipped or deleted ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)). With the library as a Shoko drop folder
+  they are skipped or deleted ([#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)). In a download folder inside one of Shoko's import folders
   ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)), Shoko imports them too, and
   the app keeps its records: the user's "wait for shoko to add it and track on our side too".
 - **On by default, for the whole list, with a per-anime override.** The user asked for "download

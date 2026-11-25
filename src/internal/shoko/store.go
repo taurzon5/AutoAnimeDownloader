@@ -29,6 +29,9 @@ type State struct {
 	LastFullSync    time.Time `json:"last_full_sync"`
 	LastSync        time.Time `json:"last_sync"`
 	LastError       string    `json:"last_error,omitempty"`
+	// ImportFolders are Shoko's import folders as last read, kept so a torrent that finishes right
+	// after a restart, before Shoko is read again, still goes to Shoko (decisions/152).
+	ImportFolders []ImportFolder `json:"import_folders,omitempty"`
 }
 
 // Store keeps the State in a file and syncs it with Shoko.
@@ -100,6 +103,21 @@ func (s *Store) OwnedEpisodes(seriesID int) []Episode {
 	return s.state.Owned[seriesID]
 }
 
+// ImportFolders returns Shoko's import folders as last read.
+func (s *Store) ImportFolders() []ImportFolder {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]ImportFolder(nil), s.state.ImportFolders...)
+}
+
+// SetImportFolders keeps Shoko's import folders, as just read, and saves them.
+func (s *Store) SetImportFolders(folders []ImportFolder) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.ImportFolders = append([]ImportFolder(nil), folders...)
+	return s.saveLocked()
+}
+
 func (s *Store) saveLocked() error {
 	data, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
@@ -157,6 +175,8 @@ func (s *Store) Sync(ctx context.Context, c *Client, url string, tracked, bySeri
 		next.LastFullSync = now
 	}
 	next.LastError = ""
+	// The import folders are read apart (SetImportFolders), maybe while this sync ran.
+	next.ImportFolders = s.state.ImportFolders
 	s.state = next
 	return s.saveLocked()
 }

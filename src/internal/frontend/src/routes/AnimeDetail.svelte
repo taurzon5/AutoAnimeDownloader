@@ -227,7 +227,7 @@
     }
     if (ep.is_blocked) return { variant: "danger" as const, label: m.detail_chip_blocked() };
     if (ep.is_manually_managed) return { variant: "neutral" as const, label: m.detail_chip_manual() };
-    // Downloaded into Shoko's drop folder: waiting until Shoko has a file for it (decisions/152).
+    // Downloaded into one of Shoko's import folders: waiting until Shoko has a file for it (decisions/152).
     if (ep.is_downloaded && ep.handed_to_shoko) {
       return ep.in_shoko
         ? { variant: "ok" as const, label: m.detail_chip_in_shoko() }

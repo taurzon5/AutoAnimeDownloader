@@ -213,9 +213,14 @@ for the missing episodes downloads whole, so it also brings the episodes Shoko h
 `shoko_full_packs` on (the default) the app keeps them as its own; `config set shoko_full_packs
 false` removes them instead (skipped with qBittorrent, deleted once downloaded otherwise), and
 `animes settings <id> shoko-packs download|remove|default` chooses for one anime. To download into
-Shoko's drop folder, set the library path to that folder (`shoko status` lists Shoko's folders as
-Shoko sees them) and run `config set shoko_drop_folder true` (direct mode only): each finished
-download keeps seeding, and Shoko is asked to import it.
+Shoko, list one of Shoko's import folders among the download folders (direct mode only). `shoko
+status` lists Shoko's folders, as Shoko sees them and, through `shoko_path_map`, as the app does,
+and says for each download folder whether it is in Shoko. When the two see a folder at different
+paths (Docker), map it: `config set shoko_path_map '[{"app":"/mnt/shoko-drop","shoko":"/import"}]'`.
+`config set download_roots` replaces the whole list, so name every folder:
+`config set download_roots '[{"name":"shoko","path":"/mnt/shoko-drop"},{"name":"library","path":"/mnt/anime"}]'`.
+Each download that finishes in a folder in Shoko keeps seeding, and Shoko is asked to import it;
+any other folder takes what you download outside Shoko.
 
 ## Logs
 

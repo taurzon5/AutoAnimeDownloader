@@ -11,9 +11,9 @@ import (
 	"AutoAnimeDownloader/src/internal/api"
 )
 
-// shoko status prints Shoko's import folders and the last import request, so the drop folder can
-// be set up from the CLI too (decisions/152).
-func TestShokoStatusPrintsTheDropFolder(t *testing.T) {
+// shoko status prints Shoko's import folders (with the app's path for one the path map moves),
+// which download folders are Shoko's, and the last import request (decisions/152).
+func TestShokoStatusPrintsShokosFolders(t *testing.T) {
 	asked := time.Date(2026, 11, 24, 18, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/shoko/status" {
@@ -24,8 +24,12 @@ func TestShokoStatusPrintsTheDropFolder(t *testing.T) {
 			Enabled: true, SignedIn: true, URL: "http://shoko:8111",
 			LastImportRequest: &asked, ImportError: "shoko Action/ImportNewFiles answered HTTP 403",
 			ImportFolders: []api.ShokoImportFolder{
-				{ID: 1, Name: "drop", Path: "/import/", DropType: "Source", DropSource: true},
-				{ID: 2, Name: "library", Path: "/anime/", DropType: "Destination", Watched: true},
+				{ID: 1, Name: "drop", Path: "/import/", AppPath: "/mnt/drop", DropType: "Source", DropSource: true},
+				{ID: 2, Name: "library", Path: "/anime/", AppPath: "/anime/", DropType: "Destination", Watched: true},
+			},
+			DownloadRoots: []api.ShokoDownloadFolder{
+				{Name: "shoko", Path: "/mnt/drop", InShoko: true, FolderID: 1, FolderName: "drop"},
+				{Name: "hdd", Path: "/mnt/hdd"},
 			},
 		}})
 	}))
@@ -36,7 +40,9 @@ func TestShokoStatusPrintsTheDropFolder(t *testing.T) {
 		t.Fatalf("shoko status: %v", err)
 	}
 	for _, want := range []string{
-		`Shoko drop source 1 "drop": /import/ (Source)`,
+		`Shoko drop source 1 "drop": /import/ (Source, here /mnt/drop)`,
+		`Download folder "shoko" (/mnt/drop): in Shoko, its folder "drop"`,
+		`Download folder "hdd" (/mnt/hdd): not in Shoko`,
 		`Shoko import folder 2 "library": /anime/ (Destination, watched)`,
 		"Last asked Shoko to import new files",
 		"Asking Shoko to import failed (the next pass asks again): shoko Action/ImportNewFiles answered HTTP 403",

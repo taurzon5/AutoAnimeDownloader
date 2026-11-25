@@ -67,7 +67,7 @@ describe('AnimeDetail — Shoko', () => {
     expect(screen.getAllByText(/Shoko can't reach its file right now/).length).toBeGreaterThan(0)
   })
 
-  it("says Waiting for Shoko for a download handed to Shoko's drop folder, until Shoko has it", async () => {
+  it("says Waiting for Shoko for a download handed to Shoko, until Shoko has it", async () => {
     const detail: AnimeDetailResponse = {
       anime_id: 42, total_episodes: 2, progress: 0, status: 'CURRENT',
       shoko: { status: 'matched', series_id: 1, series_name: 'Sousou no Frieren' },

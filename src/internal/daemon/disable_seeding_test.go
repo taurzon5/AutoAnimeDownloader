@@ -24,7 +24,7 @@ func TestOrganizeTorrent_DisableSeedingReleasesTheTorrent(t *testing.T) {
 		configs: &files.Config{CompletedAnimePath: completed, RenameFilesForJellyfin: true, DisableSeeding: true},
 	}
 
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 
@@ -66,7 +66,7 @@ func TestDisableSeeding_ReleasesTorrentsOrganizedBefore(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	backend.AddCompleted(hash, t.TempDir())
 	fm := &orchestrationFM{saved: saved, configs: &files.Config{DisableSeeding: true}}
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 	if _, ok := backend.Get(hash); ok || !fm.saved[0].TorrentReleased {

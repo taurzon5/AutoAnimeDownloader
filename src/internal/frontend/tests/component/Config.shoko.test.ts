@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/svelte'
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/svelte'
 import { tick } from 'svelte'
 import { get } from 'svelte/store'
 import { hasUnsavedChanges } from '../../src/lib/stores/unsavedChanges.js'
@@ -62,7 +62,7 @@ describe('Config — Shoko', () => {
   beforeEach(() => {
     vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), torrent_client: 'builtin', shoko_enabled: false, shoko_url: '', shoko_api_key: '', shoko_refresh_hours: 24,
       // What GET /config always carries; missing, the page fills them in and reads as unsaved before any edit.
-      auto_delete_downloads: false, check_for_updates: false, incomplete_path: '', rename_files_for_jellyfin: false, shoko_watch: true, shoko_full_resync_days: 30, shoko_full_packs: true, shoko_drop_folder: false } as never)
+      auto_delete_downloads: false, check_for_updates: false, incomplete_path: '', rename_files_for_jellyfin: false, shoko_watch: true, shoko_full_resync_days: 30, shoko_full_packs: true } as never)
     vi.mocked(client.updateConfig).mockReset().mockResolvedValue({ message: 'ok' })
     vi.mocked(client.shokoLogin).mockReset().mockResolvedValue(undefined)
     vi.mocked(client.getShokoStatus).mockReset().mockResolvedValue({ enabled: false, signed_in: false, series: 0, owned_episodes: 0 })
@@ -116,58 +116,128 @@ describe('Config — Shoko', () => {
     expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ shoko_full_packs: false }))
   })
 
-  it("suggests Shoko's drop folder, fills in its path, and saves it with direct mode once the user says so", async () => {
-    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, library_mode: 'hardlink', incomplete_files: 'part', completed_anime_path: '/anime' } as never)
+  it("lists Shoko's import folders and offers them under Download Folders; adding one waits for Save", async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, incomplete_files: 'part', completed_anime_path: '/anime', download_roots: [] } as never)
     vi.mocked(client.getShokoStatus).mockResolvedValue({
       enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2,
       import_folders: [
-        { id: 1, name: 'drop', path: '/import/', drop_type: 'Source', drop_source: true, watched: false },
-        { id: 2, name: 'library', path: '/anime/', drop_type: 'Destination', drop_source: false, watched: true },
+        { id: 2, name: 'library', path: '/anime/', app_path: '/anime/', drop_type: 'Destination', drop_source: false, watched: true },
+        { id: 1, name: 'drop', path: '/import/', app_path: '/mnt/shoko/import', drop_type: 'Source', drop_source: true, watched: false },
       ],
+      download_roots: [{ name: 'library', path: '/anime', in_shoko: true, folder_id: 2, folder_name: 'library' }],
     })
     await openShokoGroup()
-    const card = screen.getByTestId('shoko-drop-suggestion')
-    expect(card.textContent).toContain('Suggested')
-    const folders = screen.getByTestId('shoko-import-folders').textContent ?? ''
+    const folders = screen.getByTestId('shoko-folders').textContent ?? ''
+    // Shoko's types read as words; a folder the path map moves shows where this app sees it.
     expect(folders).toContain('drop source')
     expect(folders).toContain('drop destination')
     expect(folders).not.toContain('Destination')
-    const path = document.getElementById('shoko_drop_path') as HTMLInputElement
-    expect(path.value).toBe('/import/')
-    // In Docker this app sees the folder elsewhere: the user has the final say on the path.
-    await fireEvent.input(path, { target: { value: '/mnt/shoko/import' } })
-    await fireEvent.click(screen.getByRole('button', { name: 'Use This Folder' }))
+    expect(folders).toContain('/mnt/shoko/import')
+    expect(screen.queryByTestId('shoko-drop-suggestion')).toBeNull()
+
+    await fireEvent.click(screen.getByRole('button', { name: /^Library/ }))
+    await flush()
+    // The library is the one download folder, and Shoko's: it says so, and only the other folder
+    // is offered.
+    expect(screen.getByTestId('library-shoko').textContent).toContain('In Shoko: library')
+    const addable = screen.getByTestId('shoko-addable')
+    expect(addable.textContent).toContain('/mnt/shoko/import')
+    expect(addable.textContent).not.toContain('/anime/')
+    await fireEvent.click(screen.getByRole('button', { name: /^drop · / }))
     await flush()
     expect(client.updateConfig).not.toHaveBeenCalled()
-    expect(screen.getByTestId('shoko-drop-in-use').textContent).toContain('/mnt/shoko/import')
+    expect(screen.queryByTestId('shoko-addable')).toBeNull()
+    expect(screen.getByTestId('download_root_shoko_0').textContent).toContain('Save to see')
+    // Saved, the server answers for the new folder, and the row says so.
+    vi.mocked(client.getShokoStatus).mockResolvedValue({
+      enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2,
+      download_roots: [
+        { name: 'drop', path: '/mnt/shoko/import', in_shoko: true, folder_id: 1, folder_name: 'drop' },
+        { name: 'library', path: '/anime', in_shoko: true, folder_id: 2, folder_name: 'library' },
+      ],
+    })
     await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
     await flush()
-    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ completed_anime_path: '/mnt/shoko/import', library_mode: 'direct', shoko_drop_folder: true }))
+    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      download_roots: [{ name: 'drop', path: '/mnt/shoko/import' }, { name: 'library', path: '/anime' }],
+    }))
+    expect(screen.getByTestId('download_root_shoko_0').textContent).toContain('In Shoko: drop')
+    expect(screen.queryByTestId('library-shoko')).toBeNull() // the list answers for it now
   })
 
-  it('shows the drop folder in use, with the last import request, and stops using it', async () => {
-    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, library_mode: 'direct', incomplete_files: 'part', completed_anime_path: '/import', shoko_drop_folder: true } as never)
+  it("doesn't offer a Shoko folder that holds a download folder or lies inside one", async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, incomplete_files: 'part', completed_anime_path: '/anime',
+      download_roots: [{ name: 'seasonal', path: '/mnt/drop/Seasonal' }, { name: 'hdd', path: '/mnt/hdd' }] } as never)
+    vi.mocked(client.getShokoStatus).mockResolvedValue({
+      enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2,
+      import_folders: [
+        { id: 1, name: 'drop', path: '/import/', app_path: '/mnt/drop', drop_type: 'Source', drop_source: true, watched: false },
+        { id: 2, name: 'old', path: '/mnt/hdd/old/', app_path: '/mnt/hdd/old/', drop_type: 'None', drop_source: false, watched: false },
+        { id: 3, name: 'new', path: '/mnt/new/', app_path: '/mnt/new/', drop_type: 'None', drop_source: false, watched: false },
+      ],
+    })
+    await openShokoGroup()
+    await fireEvent.click(screen.getByRole('button', { name: /^Library/ }))
+    await flush()
+    const addable = screen.getByTestId('shoko-addable').textContent ?? ''
+    expect(addable).toContain('/mnt/new/')
+    expect(addable).not.toContain('/mnt/drop')
+    expect(addable).not.toContain('/mnt/hdd/old')
+  })
+
+  it('says which download folders are in Shoko, with the last import request', async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, incomplete_files: 'part', completed_anime_path: '/anime',
+      download_roots: [{ name: 'drop', path: '/import' }, { name: 'outside', path: '/mnt/other' }] } as never)
     vi.mocked(client.getShokoStatus).mockResolvedValue({
       enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2,
       last_import_request: '2026-11-24T18:00:00Z', import_error: 'HTTP 403',
-      import_folders: [{ id: 1, name: 'drop', path: '/import/', drop_type: 'Source', drop_source: true, watched: false }],
+      import_folders: [{ id: 1, name: 'shokodrop', path: '/import/', app_path: '/import/', drop_type: 'Source', drop_source: true, watched: false }],
+      download_roots: [
+        { name: 'drop', path: '/import', in_shoko: true, folder_id: 1, folder_name: 'shokodrop' },
+        { name: 'outside', path: '/mnt/other', in_shoko: false },
+      ],
     })
     await openShokoGroup()
-    expect(screen.queryByTestId('shoko-drop-suggestion')).toBeNull()
-    expect(screen.getByTestId('shoko-drop-in-use').textContent).toContain('/import')
+    const inShoko = screen.getByTestId('shoko-roots-in').textContent ?? ''
+    expect(inShoko).toContain('drop')
+    expect(inShoko).not.toContain('outside')
     expect(screen.getByTestId('shoko-last-import')).not.toBeNull()
     expect(document.body.textContent).toContain('HTTP 403')
-    await fireEvent.click(screen.getByRole('button', { name: "Stop Using Shoko's Folder" }))
+
+    await fireEvent.click(screen.getByRole('button', { name: /^Library/ }))
     await flush()
-    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    expect(screen.getByTestId('download_root_shoko_0').textContent).toContain('In Shoko: shokodrop')
+    expect(screen.getByTestId('download_root_shoko_1').textContent).toContain('Not in Shoko')
+    // Only Shoko answers for a folder, through the server: an edited row waits for Save.
+    await fireEvent.input(document.getElementById('download_root_path_1') as HTMLInputElement, { target: { value: '/mnt/elsewhere' } })
     await flush()
-    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ shoko_drop_folder: false }))
+    expect(screen.getByTestId('download_root_shoko_1').textContent).toContain('Save to see')
+    expect(document.getElementById('download_root_shoko_0')).toBeNull() // a status, not a switch
   })
 
-  it('refuses the drop folder outside direct mode, or writing in place without a staging folder', async () => {
-    for (const extra of [{ library_mode: 'hardlink' }, { library_mode: 'direct', incomplete_files: 'in_place', incomplete_path: '' }]) {
+  it('saves the Shoko path map', async () => {
+    vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_watch: true, incomplete_files: 'part' } as never)
+    vi.mocked(client.getShokoStatus).mockResolvedValue({ enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2 })
+    await openShokoGroup()
+    const map = screen.getByTestId('shoko-path-map')
+    await fireEvent.click(within(map).getByRole('button', { name: /add/i }))
+    await flush()
+    await fireEvent.input(document.getElementById('shoko_map_app_0') as HTMLInputElement, { target: { value: '/mnt/anime' } })
+    await fireEvent.input(document.getElementById('shoko_map_shoko_0') as HTMLInputElement, { target: { value: '/import' } })
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ shoko_path_map: [{ app: '/mnt/anime', shoko: '/import' }] }))
+  })
+
+  it('refuses a download folder in Shoko that would show Shoko half-written files', async () => {
+    for (const extra of [
+      { incomplete_files: 'in_place', incomplete_path: '' },
+      { incomplete_files: 'part', incomplete_path: '/mnt/nvme/incomplete', torrent_client: 'qbittorrent', qbittorrent_url: 'http://qbit:8080' },
+    ]) {
       vi.mocked(client.updateConfig).mockClear()
-      vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, shoko_drop_folder: true, ...extra } as never)
+      vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), shoko_enabled: true, shoko_url: 'http://shoko:8111', shoko_api_key: '__saved__', shoko_refresh_hours: 24, download_roots: [{ name: 'drop', path: '/import' }], ...extra } as never)
+      vi.mocked(client.getShokoStatus).mockResolvedValue({ enabled: true, signed_in: true, url: 'http://shoko:8111', series: 1, owned_episodes: 2,
+        download_roots: [{ name: 'drop', path: '/import', in_shoko: true, folder_id: 1, folder_name: 'drop' }] })
       await openShokoGroup()
       await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
       await flush()

@@ -63,5 +63,5 @@ stays rain's.
 
 **Amendment (see [#152](152-a-library-that-is-a-shoko-drop-folder-releases.md) and [#153](153-a-packs-episodes-already-in-shoko-are-removed-for.md)):** `releaseTorrent` has two more callers, neither
 tied to `disable_seeding` nor to `reconcileLibrary`: `releaseMovedByShoko`, for a torrent handed
-to Shoko whose files Shoko moved (`toShoko` keeps the records marked `HandedToShoko`), and
+to Shoko whose files Shoko moved (`movedByShoko` keeps the records marked `HandedToShoko`), and
 `dropPackFiles`, for a rain pack whose episodes already in Shoko are deleted.

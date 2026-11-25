@@ -60,10 +60,11 @@ Pinned by:
   metadata comes. A pack downloads for longer than a check interval almost always, so the skip
   usually lands before the files are written; when it doesn't, the files are deleted at the next
   check ("otherwise delete them").
-- **Handed to Shoko, only skipped.** With the library as a Shoko drop folder, a file written there
-  is Shoko's, and the app never deletes Shoko's files ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)). So for a pack handed to Shoko,
-  removing them is the skip alone: qBittorrent never writes them, and what rain wrote stays for
-  Shoko.
+- **Handed to Shoko, only skipped.** In one of Shoko's import folders, a file written there is
+  Shoko's, and the app never deletes Shoko's files
+  ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)). So for a pack handed to Shoko,
+  or one in such a folder (records marked or not), removing them is the skip alone: qBittorrent
+  never writes them, and what rain wrote stays for Shoko.
 - **A re-added finished pack writes a skipped file again.** `Open` refuses to recreate a finished
   torrent's missing file (#139), but a skipped file is one the daemon deleted, and
   `PlacedFilesMissing` doesn't count it. Refusing it would stop the torrent on an error the failure

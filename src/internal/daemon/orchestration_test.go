@@ -70,7 +70,7 @@ func TestOrganizeTorrent_SingleEpisode(t *testing.T) {
 	}
 	lib := files.NewLibrarian(files.NewOSFileSystem())
 
-	if ok := organizeTorrent(hash, backend, lib, fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, lib, fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 
@@ -85,7 +85,7 @@ func TestOrganizeTorrent_SingleEpisode(t *testing.T) {
 	}
 
 	// Idempotent: second run does not re-organize (no new upsert).
-	if ok := organizeTorrent(hash, backend, lib, fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, lib, fm, fm.configs, false); !ok {
 		t.Fatal("second organizeTorrent should succeed (no-op)")
 	}
 	if len(fm.upserted) != 1 {
@@ -117,7 +117,7 @@ func TestOrganizeTorrent_BatchRenamesEachFile(t *testing.T) {
 		configs: &files.Config{CompletedAnimePath: completed, RenameFilesForJellyfin: true},
 	}
 
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 
@@ -138,7 +138,7 @@ func TestOrganizeTorrent_NotCompletedRetries(t *testing.T) {
 		saved:   []files.EpisodeStruct{{EpisodeNumber: 1, EpisodeHash: hash}},
 		configs: &files.Config{CompletedAnimePath: t.TempDir()},
 	}
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); ok {
 		t.Error("organizeTorrent should return false (retry) when torrent not completed")
 	}
 }
@@ -148,7 +148,7 @@ func TestOrganizeTorrent_NoMatchingEpisodeRetries(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	backend.AddCompleted(hash, t.TempDir())
 	fm := &orchestrationFM{saved: nil, configs: &files.Config{CompletedAnimePath: t.TempDir()}}
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); ok {
 		t.Error("organizeTorrent should return false (retry) when no saved episode matches")
 	}
 }
@@ -890,7 +890,7 @@ func TestOrganizeTorrent_BatchContinuousNumbering(t *testing.T) {
 		configs: &files.Config{CompletedAnimePath: completed, RenameFilesForJellyfin: true},
 	}
 
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 	for _, name := range []string{"My Anime Season 2 - E01.mkv", "My Anime Season 2 - E02.mkv"} {
@@ -942,7 +942,7 @@ func TestOrganizeTorrent_RestartPackSplitsByAnimeID(t *testing.T) {
 		configs: &files.Config{CompletedAnimePath: completed, RenameFilesForJellyfin: true},
 	}
 
-	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs); !ok {
+	if ok := organizeTorrent(hash, backend, files.NewLibrarian(files.NewOSFileSystem()), fm, fm.configs, false); !ok {
 		t.Fatal("organizeTorrent should succeed")
 	}
 	s1dir := filepath.Join(completed, "Kaguya-sama Love is War")

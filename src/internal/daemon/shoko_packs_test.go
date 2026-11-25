@@ -78,7 +78,7 @@ func TestDropShokoPackFiles(t *testing.T) {
 		backend.LibraryRoot = lib
 		records, paths := packInLibrary(t, configs, backend, true)
 		fm := &orchestrationFM{saved: records, configs: configs}
-		dropShokoPackFiles(configs, backend, fm, fm.saved, owned, remove)
+		dropShokoPackFiles(configs, backend, fm, nil, fm.saved, owned, remove)
 		if exists(paths[0]) || exists(paths[1]) || !exists(paths[2]) {
 			t.Fatalf("want 01 and 02 deleted and 03 kept: %v %v %v", exists(paths[0]), exists(paths[1]), exists(paths[2]))
 		}
@@ -101,7 +101,7 @@ func TestDropShokoPackFiles(t *testing.T) {
 		backend.LibraryRoot = lib
 		records, paths := packInLibrary(t, configs, backend, true)
 		fm := &orchestrationFM{saved: records, configs: configs}
-		dropShokoPackFiles(configs, backend, fm, fm.saved, owned, remove)
+		dropShokoPackFiles(configs, backend, fm, nil, fm.saved, owned, remove)
 		if exists(paths[0]) || exists(paths[1]) || !exists(paths[2]) {
 			t.Fatal("want 01 and 02 deleted and 03 kept")
 		}
@@ -111,7 +111,7 @@ func TestDropShokoPackFiles(t *testing.T) {
 		if !slices.Contains(backend.SkippedCalls, directHash) {
 			t.Error("the files must be skipped through the backend (priority 0)")
 		}
-		dropShokoPackFiles(configs, backend, fm, fm.saved, owned, remove)
+		dropShokoPackFiles(configs, backend, fm, nil, fm.saved, owned, remove)
 		if len(backend.SkippedCalls) != 1 {
 			t.Errorf("a pass with nothing new must not skip again: %d calls", len(backend.SkippedCalls))
 		}
@@ -140,7 +140,7 @@ func TestDropShokoPackFiles(t *testing.T) {
 				backend.LibraryRoot = lib
 				records, paths := packInLibrary(t, configs, backend, tc.finished)
 				fm := &orchestrationFM{saved: append(records, tc.extra...), configs: configs}
-				dropShokoPackFiles(configs, backend, fm, fm.saved, owned, tc.settings)
+				dropShokoPackFiles(configs, backend, fm, nil, fm.saved, owned, tc.settings)
 				for i, want := range tc.want {
 					if exists(paths[i]) != want {
 						t.Errorf("file %d on disk = %v, want %v", i+1, !want, want)
@@ -164,7 +164,7 @@ func TestDropShokoPackFiles(t *testing.T) {
 		records, paths := packInLibrary(t, configs, backend, true)
 		records[0].HandedToShoko = true
 		fm := &orchestrationFM{saved: records, configs: configs}
-		dropShokoPackFiles(configs, backend, fm, fm.saved, owned, remove)
+		dropShokoPackFiles(configs, backend, fm, nil, fm.saved, owned, remove)
 		for i, p := range paths {
 			if !exists(p) {
 				t.Errorf("file %d was handed to Shoko and must stay", i+1)
@@ -172,6 +172,25 @@ func TestDropShokoPackFiles(t *testing.T) {
 		}
 		if _, inClient := backend.Get(directHash); !inClient {
 			t.Error("nothing deleted: the torrent must stay")
+		}
+		if !slices.Contains(backend.SkippedCalls, directHash) {
+			t.Error("the skip still applies (qBittorrent never writes them)")
+		}
+	})
+
+	t.Run("in one of Shoko's import folders: skipped, never deleted", func(t *testing.T) {
+		lib := t.TempDir()
+		configs := directConfig(lib)
+		configs.ShokoEnabled = true
+		backend := torrents.NewFakeBackend()
+		backend.LibraryRoot = lib
+		records, paths := packInLibrary(t, configs, backend, true)
+		fm := &orchestrationFM{saved: records, configs: configs}
+		dropShokoPackFiles(configs, backend, fm, &countingImporter{roots: map[string]bool{lib: true}}, fm.saved, owned, remove)
+		for i, p := range paths {
+			if !exists(p) {
+				t.Errorf("file %d is in a Shoko folder and must stay, records marked or not", i+1)
+			}
 		}
 		if !slices.Contains(backend.SkippedCalls, directHash) {
 			t.Error("the skip still applies (qBittorrent never writes them)")

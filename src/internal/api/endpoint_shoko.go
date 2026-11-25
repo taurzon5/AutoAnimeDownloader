@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"AutoAnimeDownloader/src/internal/daemon"
+	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/shoko"
 )
@@ -39,31 +40,55 @@ type ShokoStatus struct {
 	Watching   bool       `json:"watching"`
 	LastEvent  *time.Time `json:"last_event,omitempty"`
 	WatchError string     `json:"watch_error,omitempty"`
-	// The library as a Shoko drop folder (shoko_drop_folder, decisions/152): the last request asking
-	// Shoko to import new files and why it failed, and Shoko's import folders as Shoko sees them (read
-	// with the sync), so the user can point the library at the drop source.
-	LastImportRequest  *time.Time          `json:"last_import_request,omitempty"`
-	ImportError        string              `json:"import_error,omitempty"`
-	ImportFolders      []ShokoImportFolder `json:"import_folders,omitempty"`
-	ImportFoldersError string              `json:"import_folders_error,omitempty"`
+	// Shoko's import folders (decisions/152), read with the sync and never managed by the app: the
+	// last request asking Shoko to import new files and why it failed, the folders as Shoko sees
+	// them and as the app does (shoko_path_map), so one can be added as a download folder, and
+	// whether each download folder is one of them (direct mode).
+	LastImportRequest  *time.Time            `json:"last_import_request,omitempty"`
+	ImportError        string                `json:"import_error,omitempty"`
+	ImportFolders      []ShokoImportFolder   `json:"import_folders,omitempty"`
+	ImportFoldersError string                `json:"import_folders_error,omitempty"`
+	DownloadRoots      []ShokoDownloadFolder `json:"download_roots,omitempty"`
 }
 
-// ShokoImportFolder is one of Shoko's import folders: DropSource when Shoko imports from it (its
-// drop type "Source" or "Both"), Watched when its folder watcher is on.
+// ShokoDownloadFolder is one download folder and the import folder of Shoko that holds it, if any.
+type ShokoDownloadFolder struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	InShoko bool   `json:"in_shoko"`
+	// FolderID and FolderName name Shoko's import folder, when InShoko.
+	FolderID   int    `json:"folder_id,omitempty"`
+	FolderName string `json:"folder_name,omitempty"`
+}
+
+// ShokoImportFolder is one of Shoko's import folders: Path as Shoko sees it, AppPath as the app
+// does (through shoko_path_map), DropSource when its drop type is "Source" or "Both", Watched when
+// its folder watcher is on.
 type ShokoImportFolder struct {
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
 	Path       string `json:"path"`
+	AppPath    string `json:"app_path"`
 	DropType   string `json:"drop_type"`
 	DropSource bool   `json:"drop_source"`
 	Watched    bool   `json:"watched"`
 }
 
-// setImport fills the drop folder's part of the status (decisions/152).
-func (st *ShokoStatus) setImport(imp daemon.ImportStatus) {
+// setImport fills the import folders' part of the status (decisions/152).
+func (st *ShokoStatus) setImport(configs *files.Config, svc *daemon.ShokoService, imp daemon.ImportStatus) {
 	st.LastImportRequest, st.ImportError, st.ImportFoldersError = timeOrNil(imp.LastRequest), imp.Error, imp.FoldersError
 	for _, f := range imp.Folders {
-		st.ImportFolders = append(st.ImportFolders, ShokoImportFolder{ID: f.ID, Name: f.Name, Path: f.Path, DropType: f.DropType, DropSource: f.IsDropSource(), Watched: f.Watched})
+		st.ImportFolders = append(st.ImportFolders, ShokoImportFolder{ID: f.ID, Name: f.Name, Path: f.Path, AppPath: configs.AppPathFromShoko(f.Path), DropType: f.DropType, DropSource: f.IsDropSource(), Watched: f.Watched})
+	}
+	if !configs.IsDirectMode() {
+		return
+	}
+	for _, r := range configs.Roots() {
+		row := ShokoDownloadFolder{Name: r.Name, Path: r.Path}
+		if f, ok := svc.ShokoFolder(configs, r.Path); ok {
+			row.InShoko, row.FolderID, row.FolderName = true, f.ID, f.Name
+		}
+		st.DownloadRoots = append(st.DownloadRoots, row)
 	}
 }
 
@@ -144,7 +169,7 @@ func handleShokoStatus(server *Server) http.HandlerFunc {
 			}
 			w := svc.WatchState()
 			out.Watching, out.LastEvent, out.WatchError = w.Connected, timeOrNil(w.LastEvent), w.Error
-			out.setImport(svc.ImportState())
+			out.setImport(configs, svc, svc.ImportState())
 		}
 		JSONSuccess(w, http.StatusOK, out)
 	}

@@ -39,7 +39,7 @@ Pinned by:
   (or alongside) has a record and files of its own. Dropping it from the list would take it out
   of watched pruning and the limit's deletions, and its files would stay forever. Shoko's files are
   never the app's to delete: the app never has a record of them, so no rule of the app can touch
-  them (the Shoko spec §3). **Amendment (see #152):** with the library as a Shoko drop folder, the
+  them (the Shoko spec §3). **Amendment (see #152):** with a download folder in one of Shoko's import folders, the
   app keeps records of files it handed to Shoko, which are Shoko's from then on. There the rule is
   held by `HandedToShoko`: no delete of such a record touches its files
   ([#152](152-a-library-that-is-a-shoko-drop-folder-releases.md)).

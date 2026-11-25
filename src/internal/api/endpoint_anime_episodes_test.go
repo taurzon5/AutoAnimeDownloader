@@ -209,7 +209,7 @@ func TestHandleAnimeEpisodes_BatchRange(t *testing.T) {
 	if _, present := ep2["batch_start"]; present {
 		t.Errorf("batch_start must be omitted for a standalone episode, got %v", ep2["batch_start"])
 	}
-	// A record released into Shoko's drop folder says so, for "Waiting for Shoko" (decisions/152).
+	// A record handed to Shoko says so, for "Waiting for Shoko" (decisions/152).
 	if ep1["handed_to_shoko"] != true || ep1["is_downloaded"] != true {
 		t.Errorf("a handed-off record must stay downloaded and say handed_to_shoko, got %v", ep1)
 	}

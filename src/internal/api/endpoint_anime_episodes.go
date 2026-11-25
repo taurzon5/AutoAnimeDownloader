@@ -45,7 +45,7 @@ type AnimeEpisodeInfo struct {
 	// counts as in Shoko, since downloading it again would make a duplicate (the Shoko spec's
 	// proposed default); the page warns instead.
 	ShokoFileUnavailable bool `json:"shoko_file_unavailable,omitempty"`
-	// HandedToShoko: the app downloaded this episode into Shoko's drop folder, for Shoko to import.
+	// HandedToShoko: the app downloaded this episode into one of Shoko's import folders, for Shoko to import.
 	// Without InShoko the page says "Waiting for Shoko" (decisions/152).
 	HandedToShoko bool `json:"handed_to_shoko,omitempty"`
 }

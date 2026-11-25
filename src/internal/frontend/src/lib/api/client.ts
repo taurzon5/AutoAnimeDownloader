@@ -285,13 +285,20 @@ export interface Config {
   shoko_full_resync_days?: number
   /** Download Full Megapacks: a pack chosen for the missing episodes keeps every episode it brings, the ones in Shoko too; off, those are removed. Each anime can override it. */
   shoko_full_packs?: boolean
-  /** The library is a Shoko drop folder: Shoko is asked to import each finished download, which keeps seeding. */
-  shoko_drop_folder?: boolean
+  /** The same folder as the app and as Shoko see it, to tell which download folders are Shoko's
+   *  import folders. Empty = identical paths (decisions/152). */
+  shoko_path_map?: ShokoPathMapping[]
 }
 
 export interface PathMapping {
   app: string
   qbittorrent: string
+}
+
+/** One folder as the app and as Shoko see it (shoko_path_map). */
+export interface ShokoPathMapping {
+  app: string
+  shoko: string
 }
 
 /** What GET /config shows in place of a saved secret (files.SecretPlaceholder). */
@@ -558,7 +565,7 @@ export interface AnimeEpisodeInfo {
   shoko_file?: string
   /** Shoko can't reach that file right now (an unplugged drive); it still counts as in Shoko. */
   shoko_file_unavailable?: boolean
-  /** Downloaded into Shoko's drop folder, for Shoko to import; without in_shoko, "Waiting for Shoko". */
+  /** Downloaded into one of Shoko's import folders, for Shoko to import; without in_shoko, "Waiting for Shoko". */
   handed_to_shoko?: boolean
 }
 
@@ -616,22 +623,35 @@ export interface ShokoStatus {
   watching?: boolean
   last_event?: string
   watch_error?: string
-  /** The drop folder: the last request asking Shoko to import new files, and why it failed. */
+  /** The last request asking Shoko to import new files, and why it failed. */
   last_import_request?: string
   import_error?: string
-  /** Shoko's import folders as Shoko sees them (inside its container, in Docker). */
+  /** Shoko's import folders, read from Shoko and never managed by the app (decisions/152). */
   import_folders?: ShokoImportFolder[]
   import_folders_error?: string
+  /** Each download folder as saved, and the import folder of Shoko that holds it (direct mode). */
+  download_roots?: ShokoDownloadFolder[]
 }
 
-/** One of Shoko's import folders; drop_source when Shoko imports from it ("Source" or "Both"). */
+/** One of Shoko's import folders: path as Shoko sees it (inside its container, in Docker),
+ *  app_path as the app does through shoko_path_map; drop_source for "Source" or "Both". */
 export interface ShokoImportFolder {
   id: number
   name: string
   path: string
+  app_path: string
   drop_type: string
   drop_source: boolean
   watched: boolean
+}
+
+/** A download folder and whether it is one of Shoko's import folders (which one, when it is). */
+export interface ShokoDownloadFolder {
+  name: string
+  path: string
+  in_shoko: boolean
+  folder_id?: number
+  folder_name?: string
 }
 
 /** An anime's pack choice: keep ("download") or remove the episodes in Shoko a pack brings. */

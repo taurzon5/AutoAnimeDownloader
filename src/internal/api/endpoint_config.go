@@ -1,6 +1,7 @@
 package api
 
 import (
+	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"encoding/json"
@@ -95,7 +96,7 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 			return
 		}
-		if msg := validateShoko(&config); msg != "" {
+		if msg := validateShoko(&config, server.State.Shoko()); msg != "" {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
 			return
 		}
@@ -237,13 +238,18 @@ func clientOf(c *files.Config) string {
 
 // validateShoko, while Shoko is on: signed in (the sign-in sets shoko_url and shoko_api_key; POST
 // /shoko/login) and a refresh of at least an hour. Off, nothing is checked, as for the other
-// features' fields. The drop folder needs direct mode, and Shoko must never see a half-written
-// file: Shoko imports only video extensions, so ".part" names, or rain's staging folder, which
-// copies under a temporary name. qBittorrent moves a staged torrent in under its final names, a
-// file partly there while it copies (decisions/145), so it gets ".part" names only (decisions/152).
-func validateShoko(c *files.Config) string {
+// features' fields. The Shoko path map is checked as qBittorrent's is. With a download folder in
+// one of Shoko's import folders as last read (direct mode only, as download folders are), Shoko
+// must never see a half-written file: Shoko imports only video extensions, so
+// ".part" names, or rain's staging folder, which copies under a temporary name. qBittorrent moves a
+// staged torrent in under its final names, a file partly there while it copies (decisions/145), so
+// it gets ".part" names only (decisions/152).
+func validateShoko(c *files.Config, svc *daemon.ShokoService) string {
 	if c.ShokoFullResyncDays < 0 {
 		return "Shoko's full resync must be 0 (never) or more days"
+	}
+	if msg := validateShokoPathMap(c.ShokoPathMap); msg != "" {
+		return msg
 	}
 	if !c.ShokoEnabled {
 		return ""
@@ -254,15 +260,33 @@ func validateShoko(c *files.Config) string {
 	if c.ShokoRefreshHours < 1 {
 		return "Shoko's refresh must be at least 1 hour"
 	}
-	if c.ShokoDropFolder {
-		if !c.IsDirectMode() {
-			return "Downloading into Shoko's drop folder needs direct library mode"
+	// A download folder that is one of Shoko's import folders, as last read from Shoko: Shoko must
+	// never see a half-written file there (decisions/152).
+	for _, r := range c.Roots() {
+		if _, ok := svc.ShokoFolder(c, r.Path); !ok {
+			continue
 		}
 		if c.UsesQBittorrent() && strings.TrimSpace(c.IncompletePath) != "" {
-			return "With qBittorrent, downloading into Shoko's drop folder can't use an incomplete download folder: qBittorrent moves the files in under their final names, so Shoko could see a half-copied file"
+			return fmt.Sprintf("Download folder %q is one of Shoko's folders: with qBittorrent it can't use an incomplete download folder, since qBittorrent moves the files in under their final names and Shoko could see a half-copied file", r.Name)
 		}
 		if c.IncompleteFiles == files.IncompleteFilesInPlace && strings.TrimSpace(c.IncompletePath) == "" {
-			return `Downloading into Shoko's drop folder needs incomplete files "part" or an incomplete download folder, so Shoko never sees a half-written file`
+			return fmt.Sprintf(`Download folder %q is one of Shoko's folders: it needs incomplete files "part" or an incomplete download folder, so Shoko never sees a half-written file`, r.Name)
+		}
+	}
+	return ""
+}
+
+// validateShokoPathMap: each entry has two absolute folders (Shoko's may be a Windows path), and
+// no folder is listed twice or inside another on the same side, as for qBittorrent's map.
+func validateShokoPathMap(maps []files.ShokoPathMapping) string {
+	for i, m := range maps {
+		if !filepath.IsAbs(m.App) || !isAbsAnyOS(m.Shoko) {
+			return "Every Shoko path map entry needs two absolute folders (app and shoko)"
+		}
+		for _, other := range maps[:i] {
+			if nestedOrSame(m.App, other.App) || nestedOrSame(m.Shoko, other.Shoko) {
+				return "The Shoko path map lists the same folder twice, or one inside another"
+			}
 		}
 	}
 	return ""

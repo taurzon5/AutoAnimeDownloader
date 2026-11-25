@@ -263,7 +263,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	releaseMovedByShoko(backend, fileManager, savedEpisodes, inShoko)
 	// The anime set to remove the episodes in Shoko a pack brings: their files are skipped, or
 	// deleted once downloaded (decisions/153).
-	dropShokoPackFiles(configs, backend, fileManager, savedEpisodes, inShoko, animeSettings)
+	dropShokoPackFiles(configs, backend, fileManager, state.Shoko(), savedEpisodes, inShoko, animeSettings)
 
 	// Absolute series axis of every anime in the pass AND of every anime_id with an episode on disk:
 	// it's what lets the pass recognize that a pack downloaded under another cour already covers the
