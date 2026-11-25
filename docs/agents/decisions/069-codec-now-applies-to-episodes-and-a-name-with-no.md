@@ -25,9 +25,10 @@ for missing data, and the same as `filterBySize` (`nyaa.go`): data that could no
 reason to punish the release.
 
 **Canonical tokens.** `ExtractCodec` only returns `HEVC`, `AV1`, `H.264` and `XviD`
-(`reCodecPatterns` maps `x265`→`HEVC`, and `x264` and `AVC`→`H.264`). The `"x265"` and `"x264"` entries of
-`priorities.codecs`'s default therefore **never match anything** — they are inert. Configuring a
-preference for H264 requires writing `h.264`, not `x264`.
+(`reCodecPatterns` maps `x265`→`HEVC`, and `x264` and `AVC`→`H.264`). The `"x265"` and `"x264"`
+entries an old `config.json` may still carry in `priorities.codecs` therefore **never match
+anything** — they are inert; the default no longer lists them. Configuring a preference for H264
+requires writing `h.264`, not `x264`.
 
 **Don't "fix" by:** taking the `codecCompare` guard off "because no tag is no tag"; putting
 `source` in `episodeCriteria` for weekly airing (finished series use the dedicated sort); moving
