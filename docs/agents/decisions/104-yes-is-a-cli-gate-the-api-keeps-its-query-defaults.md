@@ -15,5 +15,10 @@ false" contract too.
 torrents from rain keeping their data and adds them back to fetch files that are already gone. The
 web UI's dialog there is for unticking torrents, not a confirmation.
 
+**Amendment (see [#155](155-the-apps-blacklist-stops-checking-and-downloading.md)):** `animes remove`
+now calls `DELETE /animes/{id}`, so its flags map by meaning, not name: `--delete-episodes` →
+`delete_files`, and the new `--blacklist` → `blacklist`. Both still default to `false`, and the
+command still needs `--yes`. `blacklist add` / `remove` delete nothing and take no `--yes`.
+
 **Don't "fix" by:** prompting when stdin is not a TTY, defaulting `--yes` on in scripts, or adding
 `confirm=true` to the API.

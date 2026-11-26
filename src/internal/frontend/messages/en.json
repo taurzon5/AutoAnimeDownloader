@@ -766,12 +766,24 @@
   "block_standalone": "Already added",
   "block_library_not_configured": "Configure the library before adding animes.",
   "chip_standalone": "Standalone",
-  "detail_untrack_btn": "Stop tracking",
-  "detail_untrack_title": "Stop tracking this anime?",
-  "detail_untrack_msg": "It will no longer be checked for new episodes.",
-  "detail_untrack_delete_files": "Delete downloaded files",
-  "detail_untrack_confirm": "Stop tracking",
-  "detail_untrack_done": "No longer tracking this anime",
+  "detail_delete_btn": "Delete",
+  "detail_delete_title": "Delete {name}?",
+  "detail_delete_msg_standalone": "It's removed from the app and no longer checked for new episodes.",
+  "detail_delete_msg_list": "This anime comes from the list of {accounts}, so the app can't remove it: the list would bring it back. Take it off the list on AniList or MyAnimeList, or delete its files and blacklist it here.",
+  "detail_delete_msg_files_only": "This anime is on no list and wasn't added by hand: it shows because its files are still here. Delete them to remove it, or blacklist it.",
+  "detail_delete_files": "Delete downloaded files",
+  "detail_delete_files_list": "Delete downloaded files (they won't be downloaded again)",
+  "detail_delete_blacklist": "Blacklist it",
+  "detail_delete_blacklist_hint": "Stops checking and downloading it, and pauses its unfinished downloads. Its files stay unless you delete them.",
+  "detail_delete_confirm": "Delete",
+  "detail_delete_confirm_blacklist": "Blacklist",
+  "detail_delete_done_removed": "Removed from the app",
+  "detail_delete_done_removed_blacklisted": "Removed from the app and blacklisted",
+  "detail_delete_done_files": "Downloaded files deleted",
+  "detail_delete_done_files_blacklisted": "Files deleted and anime blacklisted",
+  "detail_delete_done_blacklisted": "Anime blacklisted: no more checks or downloads",
+  "detail_unblacklist_btn": "Remove from blacklist",
+  "detail_unblacklist_done": "Taken off the blacklist: it's checked again from the next check",
   "lastcheck_section_problems": "Problems ({count})",
   "lastcheck_section_limits": "Limits applied ({count})",
   "recent_title": "Recently downloaded",
@@ -1021,5 +1033,46 @@
   "config_qbittorrent_test_queue_off": "Its download queue is off: every download runs at once.",
   "config_qbittorrent_needs_direct": "Turn on \"Write Downloads Straight to the Library\" in Library first: qBittorrent writes there directly.",
   "config_val_qbittorrent_url": "qBittorrent's WebUI address is required",
-  "config_restart_required": "Saved. Restart the app to switch the torrent client."
+  "config_restart_required": "Saved. Restart the app to switch the torrent client.",
+  "nav_blacklist": "Blacklist",
+  "blacklist_title": "Blacklist",
+  "blacklist_intro": "Anime here are not checked or downloaded, and their unfinished downloads are paused. Their files stay. Anime in an Excluded List on AniList are not listed here: that list is changed on AniList.",
+  "blacklist_empty": "Nothing is blacklisted. To blacklist an anime, open it and use Delete.",
+  "blacklist_remove": "Remove from blacklist",
+  "blacklist_since": "Blacklisted {when}",
+  "blacklist_episodes": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "1 episode kept",
+        "count=*": "{count} episodes kept"
+      }
+    }
+  ],
+  "blacklist_paused": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "1 download paused",
+        "count=*": "{count} downloads paused"
+      }
+    }
+  ],
+  "blacklist_removed": "{name} taken off the blacklist",
+  "blacklist_unknown_name": "Anime {id}",
+  "blacklist_load_error": "Couldn't load the blacklist",
+  "add_blacklisted_chip": "Blacklisted",
+  "add_unblacklist_title": "{name} is on the blacklist",
+  "add_unblacklist_msg": "Adding it takes it off the blacklist: the app checks and downloads it again and resumes its paused downloads.",
+  "add_unblacklist_confirm": "Remove from blacklist and add"
 }

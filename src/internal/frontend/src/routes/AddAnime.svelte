@@ -18,6 +18,7 @@
     type TorrentCandidateMedia,
   } from "../lib/api/client.js";
   import Button from "../components/ui/Button.svelte";
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Cover from "../components/ui/Cover.svelte";
   import Loading from "../components/Loading.svelte";
   import Toggle from "../components/ui/Toggle.svelte";
@@ -106,12 +107,22 @@
   // non-empty list or NYAA_UNAVAILABLE opens the picker without saving; any other GET
   // error toasts and stays. `adding` is always cleared in finally so a return from the
   // picker is not stuck on the in-flight button.
-  async function add(result: AniListSearchResult): Promise<void> {
+  // A blacklisted anime asks first (decisions/155): the confirm runs add() again with unblacklist,
+  // which the add sends, here or from the picker (pickerCache).
+  let unblacklistFor: AniListSearchResult | null = null;
+  let unblacklistOpen = false;
+
+  async function add(result: AniListSearchResult, unblacklist = false): Promise<void> {
+    if (result.blacklisted && !unblacklist) {
+      unblacklistFor = result;
+      unblacklistOpen = true;
+      return;
+    }
     adding = new Set(adding).add(result.id);
     try {
       const { query, items } = await getTorrentCandidates(result.id);
       if (items.length === 0) {
-        const { added: count } = await addStandaloneAnime(result.id);
+        const { added: count } = await (unblacklist ? addStandaloneAnime(result.id, { unblacklist }) : addStandaloneAnime(result.id));
         added = new Set(added).add(result.id);
         if (count > 0) {
           toast.success(m.add_toast_added({ count }), undefined, {
@@ -125,7 +136,7 @@
         }
         return;
       }
-      pickerCache.set({ mediaId: result.id, query, items, error: null, media: pickerMediaFrom(result) });
+      pickerCache.set({ mediaId: result.id, query, items, error: null, media: pickerMediaFrom(result), ...(unblacklist ? { unblacklist } : {}) });
       await push("/add/" + result.id + "/torrents");
     } catch (error) {
       if (error instanceof ApiError && error.code === "NYAA_UNAVAILABLE") {
@@ -135,6 +146,7 @@
           items: [],
           error,
           media: pickerMediaFrom(result),
+          ...(unblacklist ? { unblacklist } : {}),
         });
         await push("/add/" + result.id + "/torrents");
         return;
@@ -198,7 +210,8 @@
   // EXISTS in the app, and an anime that exists has a page at #/status/{id}, because anime_id is
   // AniList's own media id. So a blocked card never ends in a dead button: the button becomes the
   // link there, and the reason, which used to live only in a tooltip (invisible on mobile),
-  // becomes a line on the card. A blacklisted anime is not blocked at all (decisions/049).
+  // becomes a line on the card. A blacklisted anime is not blocked: one in an excluded AniList list
+  // is simply added (decisions/049), one on the app's blacklist asks first (decisions/155).
   $: cards =
     $locale &&
     results.map((result) => {
@@ -208,13 +221,24 @@
       return {
         result,
         meta: metaLine(result),
-        note: isAdded ? m.block_standalone() : blockLabel(result.block_reason),
+        note: isAdded
+          ? m.block_standalone()
+          : blockLabel(result.block_reason) || (result.blacklisted ? m.add_blacklisted_chip() : ""),
         isAdding: adding.has(result.id),
         statusHref: hasStatusPage ? `#/status/${result.id}` : undefined,
         anilistHref: `${ANILIST_URL}${result.id}`,
       };
     });
 </script>
+
+<ConfirmDialog
+  bind:open={unblacklistOpen}
+  title={m.add_unblacklist_title({ name: unblacklistFor?.title ?? "" })}
+  message={m.add_unblacklist_msg()}
+  confirmLabel={m.add_unblacklist_confirm()}
+  cancelLabel={m.common_cancel()}
+  on:confirm={() => { if (unblacklistFor) add(unblacklistFor, true); }}
+/>
 
 <div class="space-y-4.5">
   <div>

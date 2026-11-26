@@ -56,6 +56,20 @@ func TestClientMethodsHitExpectedPaths(t *testing.T) {
 		{"RemoveStandaloneAnime", http.MethodDelete, "/api/v1/standalone-animes/21", map[string]string{"delete_episodes": "true"}, "", "null", func(c *Client) error {
 			return c.RemoveStandaloneAnime(21, true)
 		}},
+		{"DeleteAnime", http.MethodDelete, "/api/v1/animes/21", map[string]string{"delete_files": "true", "blacklist": "true"}, "", `{"removed":false,"deleted_episodes":2,"blacklisted":true}`, func(c *Client) error {
+			_, err := c.DeleteAnime(21, true, true)
+			return err
+		}},
+		{"GetBlacklist", http.MethodGet, "/api/v1/blacklist", nil, "", "[]", func(c *Client) error {
+			_, err := c.GetBlacklist()
+			return err
+		}},
+		{"BlacklistAnime", http.MethodPost, "/api/v1/blacklist", nil, `{"media_id":21}`, "null", func(c *Client) error {
+			return c.BlacklistAnime(21)
+		}},
+		{"UnblacklistAnime", http.MethodDelete, "/api/v1/blacklist/21", nil, "", "null", func(c *Client) error {
+			return c.UnblacklistAnime(21)
+		}},
 		{"GetAnimeSettings", http.MethodGet, "/api/v1/animes/21/settings", nil, "", "{}", func(c *Client) error {
 			_, err := c.GetAnimeSettings(21)
 			return err

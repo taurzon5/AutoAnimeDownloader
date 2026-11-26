@@ -870,12 +870,24 @@
   "block_standalone": "Já adicionado",
   "block_library_not_configured": "Configure a biblioteca antes de adicionar animes.",
   "chip_standalone": "Avulso",
-  "detail_untrack_btn": "Deixar de acompanhar",
-  "detail_untrack_title": "Deixar de acompanhar este anime?",
-  "detail_untrack_msg": "Ele não será mais verificado em busca de episódios novos.",
-  "detail_untrack_delete_files": "Apagar arquivos baixados",
-  "detail_untrack_confirm": "Deixar de acompanhar",
-  "detail_untrack_done": "Não está mais acompanhando este anime",
+  "detail_delete_btn": "Excluir",
+  "detail_delete_title": "Excluir {name}?",
+  "detail_delete_msg_standalone": "Ele sai do app e não é mais verificado em busca de episódios novos.",
+  "detail_delete_msg_list": "Este anime vem da lista de {accounts}, então o app não pode removê-lo: a lista o traria de volta. Tire-o da lista no AniList ou no MyAnimeList, ou apague os arquivos e coloque-o na lista negra aqui.",
+  "detail_delete_msg_files_only": "Este anime não está em nenhuma lista nem foi adicionado à mão: ele aparece porque os arquivos ainda estão aqui. Apague-os para removê-lo, ou coloque-o na lista negra.",
+  "detail_delete_files": "Apagar arquivos baixados",
+  "detail_delete_files_list": "Apagar arquivos baixados (não serão baixados de novo)",
+  "detail_delete_blacklist": "Colocar na lista negra",
+  "detail_delete_blacklist_hint": "Para de verificar e baixar, e pausa os downloads não terminados. Os arquivos ficam, a menos que você os apague.",
+  "detail_delete_confirm": "Excluir",
+  "detail_delete_confirm_blacklist": "Colocar na lista negra",
+  "detail_delete_done_removed": "Removido do app",
+  "detail_delete_done_removed_blacklisted": "Removido do app e colocado na lista negra",
+  "detail_delete_done_files": "Arquivos baixados apagados",
+  "detail_delete_done_files_blacklisted": "Arquivos apagados e anime na lista negra",
+  "detail_delete_done_blacklisted": "Anime na lista negra: sem verificações nem downloads",
+  "detail_unblacklist_btn": "Tirar da lista negra",
+  "detail_unblacklist_done": "Fora da lista negra: volta a ser verificado na próxima verificação",
   "lastcheck_section_problems": "Problemas ({count})",
   "lastcheck_section_limits": "Limites aplicados ({count})",
   "recent_title": "Baixados recentemente",
@@ -1138,5 +1150,46 @@
   "config_qbittorrent_test_queue_off": "A fila de downloads dele está desligada: todo download roda ao mesmo tempo.",
   "config_qbittorrent_needs_direct": "Ligue antes \"Gravar downloads direto na biblioteca\" em Biblioteca: o qBittorrent grava direto lá.",
   "config_val_qbittorrent_url": "O endereço da WebUI do qBittorrent é obrigatório",
-  "config_restart_required": "Salvo. Reinicie o app para trocar o cliente de torrent."
+  "config_restart_required": "Salvo. Reinicie o app para trocar o cliente de torrent.",
+  "nav_blacklist": "Lista negra",
+  "blacklist_title": "Lista negra",
+  "blacklist_intro": "Os animes aqui não são verificados nem baixados, e os downloads não terminados ficam pausados. Os arquivos ficam. Animes de uma Lista Excluída no AniList não aparecem aqui: essa lista é alterada no AniList.",
+  "blacklist_empty": "Nada na lista negra. Para colocar um anime, abra-o e use Excluir.",
+  "blacklist_remove": "Tirar da lista negra",
+  "blacklist_since": "Na lista negra {when}",
+  "blacklist_episodes": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "1 episódio mantido",
+        "count=*": "{count} episódios mantidos"
+      }
+    }
+  ],
+  "blacklist_paused": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "1 download pausado",
+        "count=*": "{count} downloads pausados"
+      }
+    }
+  ],
+  "blacklist_removed": "{name} saiu da lista negra",
+  "blacklist_unknown_name": "Anime {id}",
+  "blacklist_load_error": "Não foi possível carregar a lista negra",
+  "add_blacklisted_chip": "Na lista negra",
+  "add_unblacklist_title": "{name} está na lista negra",
+  "add_unblacklist_msg": "Adicionar tira o anime da lista negra: o app volta a verificar e baixar e retoma os downloads pausados.",
+  "add_unblacklist_confirm": "Tirar da lista negra e adicionar"
 }

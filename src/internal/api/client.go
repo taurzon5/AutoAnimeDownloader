@@ -255,6 +255,46 @@ func (c *Client) RemoveStandaloneAnime(id int, deleteEpisodes bool) error {
 	return c.send(http.MethodDelete, path, nil, nil)
 }
 
+// DeleteAnime is DELETE /api/v1/animes/{id}: removes an anime added by hand (its files with
+// deleteFiles), or deletes a list anime's files and/or blacklists it (decisions/155).
+func (c *Client) DeleteAnime(id int, deleteFiles, blacklist bool) (*AnimeDeleteResponse, error) {
+	q := url.Values{}
+	if deleteFiles {
+		q.Set("delete_files", "true")
+	}
+	if blacklist {
+		q.Set("blacklist", "true")
+	}
+	path := "/api/v1/animes/" + strconv.Itoa(id)
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out AnimeDeleteResponse
+	if err := c.send(http.MethodDelete, path, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetBlacklist lists the anime on the app's blacklist, newest first.
+func (c *Client) GetBlacklist() ([]BlacklistEntry, error) {
+	var out []BlacklistEntry
+	if err := c.get("/api/v1/blacklist", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// BlacklistAnime puts an anime on the app's blacklist; its unfinished torrents are paused.
+func (c *Client) BlacklistAnime(id int) error {
+	return c.send(http.MethodPost, "/api/v1/blacklist", BlacklistAddRequest{MediaID: id}, nil)
+}
+
+// UnblacklistAnime takes an anime off the app's blacklist; the torrents it paused resume.
+func (c *Client) UnblacklistAnime(id int) error {
+	return c.send(http.MethodDelete, "/api/v1/blacklist/"+strconv.Itoa(id), nil, nil)
+}
+
 func (c *Client) GetAnimeSettings(id int) (*files.AnimeSettings, error) {
 	var settings files.AnimeSettings
 	if err := c.get("/api/v1/animes/"+strconv.Itoa(id)+"/settings", &settings); err != nil {

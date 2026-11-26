@@ -8,6 +8,7 @@
   import {
     isMoreMenuActive,
     isNavItemActive,
+    libraryNavItems,
     moreTriggerIcon,
     moreTriggerLabel,
     primaryNavItems,
@@ -38,6 +39,7 @@
     wsDisconnected: m.ws_disconnected(),
     more: moreTriggerLabel(),
     primaryItems: primaryNavItems.map((item) => ({ ...item, label: item.label() })),
+    libraryItems: libraryNavItems.map((item) => ({ ...item, label: item.label() })),
     secondaryItems: secondaryNavItems.map((item) => ({ ...item, label: item.label() })),
   }
 
@@ -110,6 +112,19 @@
               </span>
             {/if}
           </span>
+          {item.label}
+        </a>
+      {/each}
+
+      <div class="my-1 w-6 border-t border-default" role="separator"></div>
+
+      {#each T.libraryItems as item (item.id)}
+        <a
+          href="#{item.path}"
+          class={navItemClass(isNavItemActive(item, currentPath))}
+          aria-current={isNavItemActive(item, currentPath) ? 'page' : undefined}
+        >
+          <svelte:component this={item.icon} size={18} strokeWidth={2} />
           {item.label}
         </a>
       {/each}

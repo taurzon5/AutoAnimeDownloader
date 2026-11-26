@@ -106,6 +106,7 @@ func newApp() *cli.App {
 			logsCommand(),
 			reportCommand(),
 			animesCommand(),
+			blacklistCommand(),
 			torrentsCommand(),
 			shokoCommand(),
 			notificationsCommand(),

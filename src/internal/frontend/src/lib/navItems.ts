@@ -12,7 +12,7 @@
  * then does a language switch trigger a new render. Whoever consumes this array should map
  * `item.label()` inside that reactive block, not straight in the template.
  */
-import { Activity, Bell, Bug, Download, Ellipsis, ListOrdered, Plus, ScrollText, Settings } from '@lucide/svelte'
+import { Activity, Ban, Bell, Bug, Download, Ellipsis, ListOrdered, Plus, ScrollText, Settings } from '@lucide/svelte'
 import * as m from './i18n/messages.js'
 
 /** Every Lucide icon used here has this same component signature. */
@@ -51,6 +51,16 @@ export const primaryNavItems: NavItem[] = [
   { id: 'add', path: '/add', icon: Plus, label: m.nav_add_anime, shortLabel: m.nav_add_anime_short },
 ]
 
+/**
+ * The rail's middle group, between the primary items and Configuration, each group behind a
+ * divider: the app's blacklist (decisions/155). The mobile tab bar has no room for a sixth column,
+ * so there it sits at the top of the MoreMenu instead (MoreMenu's `showFooterControls` marks that
+ * context).
+ */
+export const libraryNavItems: NavItem[] = [
+  { id: 'blacklist', path: '/blacklist', icon: Ban, label: m.nav_blacklist },
+]
+
 /** Bottom group of the rail (after the divider) / third column of the tab bar: Configuration. */
 export const secondaryNavItems: NavItem[] = [
   { id: 'config', path: '/config', icon: Settings, label: m.nav_config, shortLabel: m.nav_config_short },
@@ -81,7 +91,11 @@ export function isNavItemActive(
   return currentPath === item.path || (item.activePaths ?? []).includes(currentPath)
 }
 
-/** Is currentPath one of the routes hosted in the MoreMenu? Used to highlight the "More" trigger. */
-export function isMoreMenuActive(currentPath: string): boolean {
-  return moreMenuItems.some((item) => isNavItemActive(item, currentPath))
+/**
+ * Is currentPath one of the routes hosted in the MoreMenu? Used to highlight the "More" trigger.
+ * `withLibrary` on the mobile tab bar, whose MoreMenu also hosts `libraryNavItems`.
+ */
+export function isMoreMenuActive(currentPath: string, withLibrary = false): boolean {
+  const items = withLibrary ? [...libraryNavItems, ...moreMenuItems] : moreMenuItems
+  return items.some((item) => isNavItemActive(item, currentPath))
 }

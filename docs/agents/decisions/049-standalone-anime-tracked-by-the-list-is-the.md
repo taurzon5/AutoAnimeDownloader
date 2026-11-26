@@ -24,6 +24,11 @@
 
 **(h) The concept is called `standalone` in the code, "avulso" in the UI, and never `manual`.** `manual` already means something else here — `ManuallyManaged`, `ManualDownloadEpisode` mean "the user touched this episode by hand, the loop must not touch it". Reusing the word would make two different concepts read the same.
 
+**Amendment (see [#155](155-the-apps-blacklist-stops-checking-and-downloading.md)):** what (c) says
+about the blacklist is about `excluded_lists`, and still holds. The app's own blacklist, added later,
+is not a block reason either, but the add asks first: the search marks the anime `blacklisted` and
+the `POST` answers 409 `BLACKLISTED` until the body carries `unblacklist`, which lifts it.
+
 **Don't "fix" by:**
 - Appending standalones before `DedupeByMedia` "because the merge is one" (see (a)).
 - Swapping `tracked` for "an AniList entry exists" to avoid depending on `fetchAniListEntries` — that breaks the `PLANNING` case, which is the feature's use case.

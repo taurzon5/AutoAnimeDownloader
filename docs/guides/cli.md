@@ -95,8 +95,10 @@ autoanimedownloader animes candidate 154587 1790123
 autoanimedownloader animes add 154587
 autoanimedownloader animes add 154587 --magnet "magnet:?xt=…"
 autoanimedownloader animes add 154587 --magnet "magnet:?xt=…" --query "frieren s01"
+autoanimedownloader animes add 154587 --unblacklist   # it is on the blacklist: take it off and add it
 autoanimedownloader animes remove 154587 --yes
 autoanimedownloader animes remove 154587 --yes --delete-episodes
+autoanimedownloader animes remove 154587 --yes --blacklist   # a list anime: stop checking and downloading it
 autoanimedownloader animes settings 154587
 autoanimedownloader animes settings 154587 progress 12
 autoanimedownloader animes settings 154587 shoko 3 12   # Shoko series 3, its episode 13 is this anime's 1
@@ -144,8 +146,14 @@ progress and score (the anime page's panel). `add --magnet` skips auto-pick and 
 candidates (pass the same `--query` you used with `candidates`), so it sends the release name, Nyaa id
 and size the web picker sends — the daemon reads the episode range from them. A magnet that is not
 among them is added with the magnet alone. Flags may follow the id (`animes add 154587 --magnet "…"` is
-the same as flags-first). `add` / `remove` are standalone
-animes. `--delete-episodes` defaults to false (files stay, marked manually managed).
+the same as flags-first). `add` is a standalone anime; on a blacklisted one it fails with
+`BLACKLISTED` unless `--unblacklist` takes it off the blacklist first.
+
+`remove` removes an anime added by hand (standalone); `--delete-episodes` deletes its downloaded
+episodes too, otherwise the files stay, marked manually managed. An anime a list brings can't be
+removed (the list would bring it back): `remove` refuses with `ON_A_LIST` unless you pass
+`--delete-episodes` (its episodes are deleted and blocked, so they don't download again) and/or
+`--blacklist`. `--blacklist` works on either kind and puts the anime on the blacklist (below).
 
 `delete` and `redownload` take one or more episodes. Several go in one request: `delete` frees a
 pack they share and deletes nothing if any of them is not downloaded; `redownload` keeps going past
@@ -154,6 +162,19 @@ a failed episode, lists the failures and exits non-zero.
 `release` is not destructive and does not take `--yes`.
 
 Download a new anime: `animes search` then `animes add <media_id>`.
+
+## Blacklist
+
+```bash
+autoanimedownloader blacklist            # same as blacklist list
+autoanimedownloader blacklist add 154587
+autoanimedownloader blacklist remove 154587
+```
+
+The app's own blacklist: a blacklisted anime is no longer checked or downloaded, its unfinished
+torrents are paused, and its files stay; no automatic delete rule touches them. `remove` takes it
+off and resumes the torrents the blacklist paused (not one you had paused yourself). It is not
+`excluded_lists`, which names AniList custom lists. `animes --type blacklisted` shows both kinds.
 
 ## Torrents
 
@@ -259,11 +280,11 @@ autoanimedownloader notifications preview discord
 
 ## Destructive flags
 
-These require `--yes`. Optional flags map 1:1 onto API query params; absent means `false`:
+These require `--yes`. Optional flags map 1:1 onto API query params (the param named in parentheses when it differs); absent means `false`:
 
 | Command | Extra flags |
 |---|---|
-| `animes remove` | `--delete-episodes` |
+| `animes remove` | `--delete-episodes` (`delete_files`) `--blacklist` |
 | `animes redownload` | |
 | `animes delete` | |
 | `animes replace` | `--magnet` (required) |

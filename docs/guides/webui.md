@@ -32,6 +32,12 @@ Per-anime episode list, opened by clicking an anime on the Status page:
 - **On lists** — every configured account that has the anime on its list, in any status, with its own status, progress (`ep 7/12`) and score in that account's own format (`85/100`, `8.5/10`, `★ 4/5`, a face for AniList's 3-point scale; MAL is always `x/10`), avatar and a link to the account's list
 - Episode table (episode number, Anilist watch status, downloaded state)
 - Header **Replace torrent** opens the [torrent picker](#torrent-picker) (`/status/:id/torrents`)
+- Header **Delete**: an anime you added by hand is removed from the app, its downloaded files with
+  it unless you untick **Delete downloaded files**. An anime from a list can't be removed (the list
+  would bring it back): the dialog names the account and offers **Delete downloaded files** (they
+  won't download again) and **Blacklist it**, ticked by default. Blacklisting stops checking and
+  downloading the anime and pauses its unfinished downloads; its files stay. A blacklisted anime
+  shows **Blacklisted** here and on the Status page, with **Remove from blacklist** in the header
 - Per-episode actions: download, delete, re-download, replace with a manual magnet link (the
   per-episode modal stays here)
 - **Torrents** — below the episode table, one card per torrent that brought the anime's episodes:
@@ -54,6 +60,9 @@ list). An AniList account is optional; this is the entry point for an install wi
 Clicking Add on a card first searches ranked whole-title torrents. An empty first search adds
 without opening the picker (singles, or track-with-zero for an unreleased title). A non-empty
 list, or Nyaa being down, opens the [torrent picker](#torrent-picker).
+
+A blacklisted anime says **Blacklisted** on its card. Adding it asks first: confirming takes it off
+the blacklist and adds it.
 
 <a id="torrent-picker"></a>
 
@@ -81,6 +90,14 @@ torrent.
 Daemon configuration, grouped into sections: Library, Lists (Anilist and MyAnimeList usernames), Downloads and Torrent search (advanced). Covers paths, check interval, episode limits/retries, and download/delete rules. The **Completed Anime Path** is the only required setting: torrents download and seed in `<path>/.torrents` and completed episodes are hardlinked into the library — saving a path whose filesystem doesn't support hardlinks (exFAT/FAT32, some SMB shares) is rejected. The **Torrent client** group switches from the embedded client to your own qBittorrent 5.0+ (`torrent_client`): its WebUI address, login or API key, category and an optional folder mapping, with a **Test connection** button (`POST /torrent-client/test`) that tries the values before they are saved: it says whether the API key or the password signed in, checks that qBittorrent sees the library (and the incomplete folder, when set), and shows qBittorrent's own download queue. **Let the app manage this qBittorrent's settings** (off by default) sets qBittorrent's download queue from Max Concurrent Downloads, turns off its ".!qB" extension and moves memory-mapped disk I/O to "Simple pread/pwrite" (after a qBittorrent restart); leave it off for a qBittorrent you also use for other things. In direct mode, **Download Folders** spreads torrents over several folders: a new torrent goes to its anime's folder (picked on its page, **Download folder**), else the folder its series already lives in, else the first folder in the list with room: each folder fills until its drive would keep less than its **Keep Free (GiB)** (empty = Min Free Disk Space), then the next one takes over. Move a folder up to make it the highest priority. The order only decides where new torrents go: what is already downloaded stays in its folder, and a new episode of a series still goes next to the series. Each folder must already exist. The incomplete download folder works with qBittorrent too: it downloads there and moves the episode into the library itself. With qBittorrent, **Disable seeding** means almost no upload: each torrent is held to an upload limit (16 KiB/s by default, set under it in Downloads) until its episode is in the library. The **Shoko** group signs in to a Shoko Server: the password is sent once, and only the key Shoko returns is kept. It then turns on **Use Shoko**: episodes already in your Shoko library are never searched for or downloaded, the anime page marks them **In Shoko** with the file's path (with a warning when Shoko can't reach the file right now; their Download button moves to the ⋯ menu), and a **Shoko** panel there says which Shoko series the anime matched. A partial match, where the series shares the MAL id but the episodes don't line up, is confirmed by hand with the series id and offset; **Not in Shoko** overrides a wrong match. The group also sets how often Shoko is read again, has a **Full resync** button (and **Read All of Shoko Again Every**, 30 days by default, for the one change Shoko doesn't announce: a file unlinked from an episode), and **Follow Shoko's Changes as They Happen** (on by default): a file added to an episode or deleted in Shoko shows up within seconds, and the group says whether it is connected. A pack chosen for your missing episodes downloads whole, so it also brings the episodes you have in Shoko: **Download Full Megapacks** (on by default, for the whole list) records them as the app's own, so they show as downloaded and follow the usual rules; off, they are removed: never downloaded with qBittorrent, deleted once the pack finishes otherwise (the built-in client then stops seeding that pack). The anime page's Shoko panel chooses for one anime (Default, Download them, Remove them). The group also lists **Shoko's import folders** as Shoko reads them; the app never manages them. When Shoko or this app runs in Docker, the **Shoko Path Map** says where this app sees each folder. In direct mode, each download folder then says **In Shoko** (with Shoko's folder) or **Not in Shoko**, checked when you save, and Download Folders offers Shoko's folders this app doesn't download into yet: one click adds it, path translated and editable (with an empty list the Completed Anime Path stays a download folder after it); Save keeps it. Other folders take what you download outside Shoko. When a download finishes in a folder in Shoko, the app asks Shoko to import it at once and the torrent keeps seeding; a torrent whose files Shoko moved leaves the client. On the anime page such an episode says **Waiting for Shoko** until Shoko has it, then **In Shoko**; deleting it there removes only the app's record, never the file. qBittorrent needs direct mode, and the client is picked when the app starts: saving a change says to restart. The password and key are never shown again once saved. See [Config Reference](../agents/config.md) for the full field list and defaults.
 
 If required config is missing, the daemon opens this page automatically with a `?missingConfig=true` banner.
+
+### Blacklist (`/blacklist`)
+
+Its own entry in the sidebar (in **More** on a phone). Lists the anime on the app's blacklist,
+newest first, with when they were blacklisted, how many downloaded episodes the app still has and
+how many downloads the blacklist paused. **Remove from blacklist** takes one off: the app checks and
+downloads it again from the next check and resumes the downloads the blacklist paused. Anime in an
+AniList Excluded List are not listed here; that list is changed on AniList.
 
 ### Priorities (`/priorities`)
 

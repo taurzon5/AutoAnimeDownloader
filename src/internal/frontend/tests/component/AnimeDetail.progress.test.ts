@@ -21,6 +21,8 @@ vi.mock('../../src/lib/api/client.js', () => ({
   replaceAnimeWithMagnet: vi.fn(),
   updateAnimeSettings: vi.fn(),
   removeStandaloneAnime: vi.fn(),
+  deleteAnime: vi.fn(),
+  unblacklistAnime: vi.fn(),
   getLastCheck: vi.fn(),
 }))
 

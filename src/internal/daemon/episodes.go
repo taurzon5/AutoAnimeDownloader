@@ -21,6 +21,9 @@ type handleEpisodesData struct {
 	checkedEpisodes []files.EpisodeKey
 	newEpisodes     []files.EpisodeStruct
 	watching        map[int]bool
+	// blacklisted is the app's blacklist: those anime are off the pass, so their episodes read as
+	// "not in watching", and they must not be deleted for it (decisions/155).
+	blacklisted map[int]bool
 }
 
 // episodeSelection is the result of an anime's selection loop.
@@ -1296,7 +1299,7 @@ func deleteEpisodesByStatus(configs *files.Config, deletableMedia map[int]bool, 
 }
 
 func handleSavedEpisodes(fileManager FileManagerInterface, configs *files.Config, backend torrents.TorrentBackend, librarian files.Librarian, data handleEpisodesData) {
-	episodesNotInWatching := identifyEpisodesNotInWatching(data.savedEpisodes, data.checkedEpisodes)
+	episodesNotInWatching := withoutAnimes(identifyEpisodesNotInWatching(data.savedEpisodes, data.checkedEpisodes), data.blacklisted)
 
 	saveEpisodesToFile(fileManager, data.newEpisodes)
 

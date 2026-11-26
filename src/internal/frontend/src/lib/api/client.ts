@@ -363,7 +363,10 @@ export interface AnimeInfo {
   latest_episode_number: number
   last_download_date: string
   cover_image?: string
+  /** On either blacklist: an AniList custom list in excluded_lists, or the app's own. */
   is_blacklisted?: boolean
+  /** On the app's blacklist (decisions/155), which the app can lift; an excluded list is lifted on AniList. */
+  app_blacklisted?: boolean
   /** Tracked by the standalone file, not by an AniList or MyAnimeList list. Origin, not state. */
   is_standalone?: boolean
   /**
@@ -427,6 +430,8 @@ export interface AniListSearchResult {
   episodes: number
   cover?: string
   block_reason: BlockReason
+  /** On the app's blacklist: not a block, adding asks to take it off first. */
+  blacklisted?: boolean
 }
 
 export interface LogsResponse {
@@ -1018,14 +1023,60 @@ export async function getTorrentCandidateDetail(
  */
 export async function addStandaloneAnime(
   mediaId: number,
-  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number },
+  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number; unblacklist?: boolean },
 ): Promise<{ added: number }> {
   const body: Record<string, unknown> = { media_id: mediaId }
+  if (opts?.unblacklist) body.unblacklist = true
   if (opts?.magnet) body.magnet = opts.magnet
   if (opts?.name) body.name = opts.name
   if (opts?.nyaa_id !== undefined) body.nyaa_id = opts.nyaa_id
   if (opts?.size_bytes !== undefined) body.size_bytes = opts.size_bytes
   return apiRequest<{ added: number }>('POST', '/standalone-animes', body, { silent: true })
+}
+
+/** What DELETE /animes/{id} did. */
+export interface AnimeDeleteResult {
+  /** The anime was added by hand and is no longer tracked. */
+  removed: boolean
+  deleted_episodes: number
+  blacklisted: boolean
+}
+
+/**
+ * Removes an anime added by hand (its files too with deleteFiles), or deletes a list anime's files
+ * and/or blacklists it: a list would bring the anime back, so the app can't remove it (decisions/155).
+ */
+export async function deleteAnime(
+  mediaId: number,
+  opts: { deleteFiles: boolean; blacklist: boolean },
+): Promise<AnimeDeleteResult> {
+  const params = new URLSearchParams({ delete_files: String(opts.deleteFiles), blacklist: String(opts.blacklist) })
+  return apiRequest<AnimeDeleteResult>('DELETE', `/animes/${mediaId}?${params.toString()}`)
+}
+
+/** One anime on the app's blacklist. */
+export interface BlacklistEntry {
+  anime_id: number
+  name: string
+  cover?: string
+  format?: string
+  blacklisted_at: string
+  /** Unfinished torrents the blacklist paused; taking it off resumes them. */
+  paused: number
+  /** Downloaded episodes the app still has; their files stay. */
+  episodes: number
+}
+
+export async function getBlacklist(): Promise<BlacklistEntry[]> {
+  return (await apiRequest<BlacklistEntry[] | null>('GET', '/blacklist')) ?? []
+}
+
+export async function blacklistAnime(mediaId: number): Promise<void> {
+  return apiRequest<void>('POST', '/blacklist', { media_id: mediaId })
+}
+
+export async function unblacklistAnime(mediaId: number): Promise<void> {
+  return apiRequest<void>('DELETE', `/blacklist/${mediaId}`)
 }
 
 export async function removeStandaloneAnime(mediaId: number, deleteEpisodes: boolean): Promise<void> {

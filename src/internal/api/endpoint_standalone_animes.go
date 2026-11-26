@@ -19,6 +19,9 @@ type StandaloneAnimeRequest struct {
 	Name      string `json:"name,omitempty"`
 	NyaaID    int    `json:"nyaa_id,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
+	// Unblacklist takes the anime off the app's blacklist and adds it. Without it a blacklisted
+	// anime is refused with 409 BLACKLISTED, so the screen can ask first (decisions/155).
+	Unblacklist bool `json:"unblacklist,omitempty"`
 }
 
 type StandaloneAnimeAddResponse struct {
@@ -95,6 +98,23 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 			return
 		}
 
+		// The app's blacklist asks instead of blocking: adding is the later choice, but taking an
+		// anime off the blacklist is the user's to confirm (decisions/155). It is lifted only once
+		// the anime is tracked, so a refused add leaves it blacklisted, like the id (decisions/108).
+		blacklisted := loadAppBlacklist(server.FileManager)[body.MediaID]
+		if blacklisted && !body.Unblacklist {
+			JSONError(w, http.StatusConflict, "BLACKLISTED", "This anime is on the blacklist: confirm taking it off to add it")
+			return
+		}
+		liftBlacklist := func() {
+			if !blacklisted {
+				return
+			}
+			if _, err := daemon.LiftBlacklist(server.FileManager, server.Torrents, body.MediaID); err != nil {
+				logger.Logger.Warn().Err(err).Int("media_id", body.MediaID).Msg("Added the anime but failed to take it off the blacklist")
+			}
+		}
+
 		if body.Magnet != "" {
 			if !strings.HasPrefix(body.Magnet, "magnet:") {
 				JSONError(w, http.StatusBadRequest, "INVALID_MAGNET", "Invalid or missing magnet link")
@@ -111,6 +131,7 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 				JSONDownloadError(w, err, "STANDALONE_DOWNLOAD_FAILED")
 				return
 			}
+			liftBlacklist()
 			JSONSuccess(w, http.StatusOK, StandaloneAnimeAddResponse{Added: added})
 			return
 		}
@@ -120,6 +141,8 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 			JSONInternalError(w, err)
 			return
 		}
+		// Tracked from here, whatever the download below does: the add happened.
+		liftBlacklist()
 
 		// Synchronous, matching the episode-download POST: it is a single Nyaa search, and
 		// returning the real number of queued episodes is worth more than an empty 202.
@@ -165,53 +188,50 @@ func handleStandaloneAnimeRemove(server *Server) http.HandlerFunc {
 			return
 		}
 
-		if err := server.FileManager.RemoveStandaloneAnime(id); err != nil {
+		if _, err := removeStandaloneAnime(server, id, deleteEpisodes); err != nil {
 			logger.Logger.Error().Err(err).Int("media_id", id).Msg("Failed to remove the standalone anime")
-			JSONInternalError(w, err)
-			return
-		}
-		clearAnimeBlocks(server.FileManager, id)
-
-		saved, err := server.FileManager.LoadSavedEpisodes()
-		if err != nil {
-			logger.Logger.Error().Err(err).Msg("Failed to load saved episodes")
-			JSONInternalError(w, err)
-			return
-		}
-
-		var group []files.EpisodeStruct
-		var keys []files.EpisodeKey
-		for _, ep := range saved {
-			if ep.AnimeID == id {
-				group = append(group, ep)
-				keys = append(keys, ep.Key())
-			}
-		}
-
-		if deleteEpisodes {
-			if err := daemon.RemoveEpisodesWithLinks(server.FileManager, server.Torrents, server.Librarian, keys); err != nil {
-				logger.Logger.Error().Err(err).Int("media_id", id).Msg("Failed to delete the standalone anime episodes")
-				JSONInternalError(w, err)
-				return
-			}
-			JSONSuccess(w, http.StatusOK, nil)
-			return
-		}
-
-		// Without delete_episodes the files stay — and ManuallyManaged is what protects them.
-		// Without the standalone record the anime drops out of the pass, so its episodes would
-		// hit identifyEpisodesNotInWatching on the next cycle and vanish from disk unasked.
-		for i := range group {
-			group[i].ManuallyManaged = true
-		}
-		if err := server.FileManager.UpsertEpisodes(group); err != nil {
-			logger.Logger.Error().Err(err).Int("media_id", id).Msg("Failed to mark the episodes as manually managed")
 			JSONInternalError(w, err)
 			return
 		}
 
 		JSONSuccess(w, http.StatusOK, nil)
 	}
+}
+
+// removeStandaloneAnime stops tracking an anime added by hand and returns how many episodes it
+// deleted. With deleteEpisodes its downloaded episodes go with their files; without, the files stay
+// and ManuallyManaged is what protects them: without the standalone record the anime drops out of
+// the pass, so its episodes would hit identifyEpisodesNotInWatching on the next cycle and vanish
+// from disk unasked. Shared by DELETE /standalone-animes/{id} and DELETE /animes/{id}.
+func removeStandaloneAnime(server *Server, id int, deleteEpisodes bool) (int, error) {
+	if err := server.FileManager.RemoveStandaloneAnime(id); err != nil {
+		return 0, err
+	}
+	clearAnimeBlocks(server.FileManager, id)
+
+	saved, err := server.FileManager.LoadSavedEpisodes()
+	if err != nil {
+		return 0, err
+	}
+	var group []files.EpisodeStruct
+	var keys []files.EpisodeKey
+	for _, ep := range saved {
+		if ep.AnimeID == id {
+			group = append(group, ep)
+			keys = append(keys, ep.Key())
+		}
+	}
+
+	if deleteEpisodes {
+		if err := daemon.RemoveEpisodesWithLinks(server.FileManager, server.Torrents, server.Librarian, keys); err != nil {
+			return 0, err
+		}
+		return len(keys), nil
+	}
+	for i := range group {
+		group[i].ManuallyManaged = true
+	}
+	return 0, server.FileManager.UpsertEpisodes(group)
 }
 
 // clearAnimeBlocks drops every blocked episode of an anime the user stopped tracking. Deleting an

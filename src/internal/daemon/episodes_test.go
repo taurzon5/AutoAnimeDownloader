@@ -81,7 +81,7 @@ func (m *mockFileManagerForEpisodes) BlockEpisode(key files.EpisodeKey) error {
 func (m *mockFileManagerForEpisodes) UnblockEpisode(files.EpisodeKey) error  { return nil }
 func (m *mockFileManagerForEpisodes) UnmanageEpisode(files.EpisodeKey) error { return nil }
 func (m *mockFileManagerForEpisodes) LoadAllAnimeSettings() (map[int]files.AnimeSettings, error) {
-	return nil, nil
+	return m.settings, nil
 }
 func (m *mockFileManagerForEpisodes) LoadAnimeSettings(id int) (*files.AnimeSettings, error) {
 	if s, ok := m.settings[id]; ok {

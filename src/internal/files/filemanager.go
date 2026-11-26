@@ -545,6 +545,34 @@ type AnimeSettings struct {
 	// Root is the name of the download root this anime's new torrents go to, ahead of the fill
 	// order (decisions/154); nil = no override. A root with no space falls through to the others.
 	Root *string `json:"root,omitempty"`
+	// Blacklisted is set while the user has the anime on the app's blacklist (decisions/155); nil =
+	// not blacklisted. Separate from excluded_lists, which is an AniList custom list.
+	Blacklisted *Blacklisting `json:"blacklisted,omitempty"`
+}
+
+// Blacklisting is an anime on the app's blacklist: the pass skips it whole (no AniList lookup, no
+// search, no download, no automatic delete) and its files stay where they are (decisions/155).
+type Blacklisting struct {
+	At time.Time `json:"at"`
+	// Name, Cover and Format are kept for the Blacklist page: an anime deleted and blacklisted has
+	// no record left to read them from.
+	Name   string `json:"name,omitempty"`
+	Cover  string `json:"cover,omitempty"`
+	Format string `json:"format,omitempty"`
+	// Paused holds the unfinished torrents the blacklist paused, and only those: lifting it resumes
+	// them, and a torrent the user had paused before stays paused.
+	Paused []string `json:"paused,omitempty"`
+}
+
+// BlacklistedIDs is the set of anime on the app's blacklist, out of every anime's settings.
+func BlacklistedIDs(all map[int]AnimeSettings) map[int]bool {
+	ids := make(map[int]bool)
+	for id, s := range all {
+		if s.Blacklisted != nil {
+			ids[id] = true
+		}
+	}
+	return ids
 }
 
 // The values of AnimeSettings.ShokoPackEpisodes.

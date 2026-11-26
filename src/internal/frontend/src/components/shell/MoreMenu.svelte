@@ -8,7 +8,7 @@
   // Local and simple implementation (close on backdrop + Escape) because the generic menu
   // primitive is Phase 2 (`components/ui/ActionMenu`) — not this scope.
   import { getStatus } from '../../lib/api/client.js'
-  import { isNavItemActive, moreMenuItems } from '../../lib/navItems.js'
+  import { isNavItemActive, libraryNavItems, moreMenuItems } from '../../lib/navItems.js'
   import * as m from '../../lib/i18n/messages.js'
   import { locale } from '../../lib/stores/locale.js'
   import { theme, THEMES, type Theme } from '../../lib/stores/theme.js'
@@ -34,7 +34,8 @@
     wsConnecting: m.ws_connecting(),
     wsReconnecting: m.ws_reconnecting(),
     wsDisconnected: m.ws_disconnected(),
-    items: moreMenuItems.map((item) => ({ ...item, label: item.label() })),
+    // On the mobile tab bar the menu also hosts the rail's middle group (libraryNavItems).
+    items: [...(showFooterControls ? libraryNavItems : []), ...moreMenuItems].map((item) => ({ ...item, label: item.label() })),
   }
 
   // Close on navigate — equivalent to the old `$: if (currentPath) mobileMenuOpen = false` from

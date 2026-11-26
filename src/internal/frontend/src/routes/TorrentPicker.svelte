@@ -75,6 +75,8 @@
   };
 
   let query = "";
+  // Confirmed on the Add screen: this add also takes the anime off the blacklist (pickerCache).
+  let unblacklist = false;
   let items: TorrentCandidate[] = [];
   let listError: ApiError | null = null;
   let loading = false;
@@ -117,6 +119,7 @@
       items = cached.items;
       listError = cached.error;
       media = cached.media ?? null;
+      unblacklist = cached.unblacklist ?? false;
       listSettled = true;
       if (items.length > 0) {
         selectedIndex = 0;
@@ -236,6 +239,7 @@
         name: selected.name,
         nyaa_id: selected.nyaa_id,
         size_bytes: selected.size_bytes,
+        ...(unblacklist ? { unblacklist } : {}),
       });
       await afterSuccess(added);
     } catch (error) {
@@ -255,7 +259,7 @@
         await afterSuccess();
         return;
       }
-      const added = await addStandaloneAnime(mediaId, { magnet: pasted });
+      const added = await addStandaloneAnime(mediaId, { magnet: pasted, ...(unblacklist ? { unblacklist } : {}) });
       await afterSuccess(added);
     } catch (error) {
       toast.error(confirmErrorMessage(error));

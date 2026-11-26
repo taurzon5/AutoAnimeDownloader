@@ -163,7 +163,11 @@ func (m *mockFileManager) UnmanageEpisode(key files.EpisodeKey) error {
 }
 
 func (m *mockFileManager) LoadAllAnimeSettings() (map[int]files.AnimeSettings, error) {
-	return map[int]files.AnimeSettings{}, nil
+	all := make(map[int]files.AnimeSettings, len(m.animeSettings))
+	for id, s := range m.animeSettings {
+		all[id] = s
+	}
+	return all, nil
 }
 
 func (m *mockFileManager) LoadAnimeSettings(animeID int) (*files.AnimeSettings, error) {

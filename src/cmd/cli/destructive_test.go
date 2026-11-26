@@ -10,7 +10,7 @@ func TestDestructiveCommandsRequireYes(t *testing.T) {
 		args    []string
 		message string
 	}{
-		{[]string{"animes", "remove", "1"}, "pass --yes (optional: --delete-episodes)"},
+		{[]string{"animes", "remove", "1"}, "pass --yes (optional: --delete-episodes --blacklist)"},
 		{[]string{"animes", "redownload", "1", "2"}, "pass --yes"},
 		{[]string{"animes", "delete", "1", "2"}, "pass --yes"},
 		{[]string{"animes", "replace", "1", "--magnet", "magnet:?xt=urn:btih:abc"}, "pass --yes"},

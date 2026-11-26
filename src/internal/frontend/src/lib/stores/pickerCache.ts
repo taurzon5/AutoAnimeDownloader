@@ -12,6 +12,11 @@ export interface PickerCache {
   items: TorrentCandidate[]
   error: ApiError | null
   media?: TorrentCandidateMedia
+  /**
+   * The user confirmed taking the anime off the app's blacklist on the Add screen: the picker's add
+   * sends it, or the daemon refuses with BLACKLISTED (decisions/155).
+   */
+  unblacklist?: boolean
 }
 
 const store = writable<PickerCache | null>(null)

@@ -69,7 +69,7 @@
     <div class="relative flex-1">
       <button
         type="button"
-        class={`w-full h-full ${tabItemClass(isMoreMenuActive(currentPath))}`}
+        class={`w-full h-full ${tabItemClass(isMoreMenuActive(currentPath, true))}`}
         aria-haspopup="menu"
         aria-expanded={moreOpen}
         on:click={() => (moreOpen = !moreOpen)}

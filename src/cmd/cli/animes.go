@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -66,16 +67,25 @@ func animesCommand() *cli.Command {
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "magnet", Usage: "Magnet URI (skips auto-pick)"},
 					&cli.StringFlag{Name: "query", Usage: "With --magnet: the Nyaa query the magnet came from (same as candidates --query)"},
+					&cli.BoolFlag{Name: "unblacklist", Usage: "The anime is on the blacklist: take it off and add it"},
 				},
 				Action: handleAnimesAdd,
 			},
 			{
 				Name:      "remove",
-				Usage:     "Remove a standalone anime",
+				Usage:     "Remove an anime added by hand, or delete a list anime's files or blacklist it",
 				ArgsUsage: "<id>",
+				Description: "An anime added by hand (standalone) is removed; --delete-episodes deletes its\n" +
+					"downloaded episodes too, otherwise the files stay. An anime a list brings can't be\n" +
+					"removed here, the list would bring it back: take it off the list on AniList or\n" +
+					"MyAnimeList, or pass --delete-episodes (its episodes are deleted and won't download\n" +
+					"again) and/or --blacklist. --blacklist stops the app from checking and downloading\n" +
+					"the anime and pauses its unfinished torrents; its files stay. `blacklist remove`\n" +
+					"lifts it.",
 				Flags: []cli.Flag{
 					yesFlag(),
 					&cli.BoolFlag{Name: "delete-episodes", Usage: "Also delete downloaded episodes"},
+					&cli.BoolFlag{Name: "blacklist", Usage: "Put the anime on the blacklist: no more checks or downloads"},
 				},
 				Action: handleAnimesRemove,
 			},
@@ -293,7 +303,12 @@ func handleAnimesAdd(c *cli.Context) error {
 			req.Name, req.NyaaID, req.SizeBytes = cand.Name, cand.NyaaID, cand.SizeBytes
 		}
 	}
+	req.Unblacklist = c.Bool("unblacklist")
 	added, err := getClient().AddStandaloneAnime(req)
+	var apiErr *api.APIError
+	if errors.As(err, &apiErr) && apiErr.Code == "BLACKLISTED" {
+		return &cliError{exitCode: 1, code: apiErr.Code, message: "This anime is on the blacklist: pass --unblacklist to take it off and add it"}
+	}
 	if err != nil {
 		return mapClientError(err)
 	}
@@ -323,7 +338,7 @@ func candidateForMagnet(mediaID int, query, magnet string) *api.TorrentCandidate
 }
 
 func handleAnimesRemove(c *cli.Context) error {
-	if err := requireYes(c, "--delete-episodes"); err != nil {
+	if err := requireYes(c, "--delete-episodes", "--blacklist"); err != nil {
 		return err
 	}
 	if err := requireArgs(c, 1, "animes remove <id> --yes"); err != nil {
@@ -333,10 +348,30 @@ func handleAnimesRemove(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := mapClientError(getClient().RemoveStandaloneAnime(id, c.Bool("delete-episodes"))); err != nil {
-		return err
+	resp, err := getClient().DeleteAnime(id, c.Bool("delete-episodes"), c.Bool("blacklist"))
+	if err != nil {
+		return mapClientError(err)
 	}
-	return printMessage("Standalone anime removed", "Standalone anime removed")
+	msg := animeRemovedMessage(resp)
+	return printMessage(msg, msg)
+}
+
+// animeRemovedMessage says in one line what `animes remove` did.
+func animeRemovedMessage(r *api.AnimeDeleteResponse) string {
+	var parts []string
+	if r.Removed {
+		parts = append(parts, "Anime removed")
+	}
+	if r.DeletedEpisodes > 0 {
+		parts = append(parts, fmt.Sprintf("%d episode(s) deleted", r.DeletedEpisodes))
+	}
+	if r.Blacklisted {
+		parts = append(parts, "blacklisted")
+	}
+	if len(parts) == 0 {
+		return "Nothing to do"
+	}
+	return strings.Join(parts, ", ")
 }
 
 func handleAnimesSettings(c *cli.Context) error {

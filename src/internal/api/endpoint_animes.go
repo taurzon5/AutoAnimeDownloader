@@ -37,7 +37,12 @@ type AnimeInfo struct {
 	LatestEpisodeNumber int    `json:"latest_episode_number" example:"12"`
 	LastDownloadDate    string `json:"last_download_date" example:"2026-02-24T10:30:00Z"`
 	CoverImage          string `json:"cover_image,omitempty"`
-	IsBlacklisted       bool   `json:"is_blacklisted,omitempty"`
+	// IsBlacklisted: on either blacklist, an AniList custom list in excluded_lists or the app's own
+	// (AppBlacklisted), so the Status page's chip and filter cover both.
+	IsBlacklisted bool `json:"is_blacklisted,omitempty"`
+	// AppBlacklisted: on the app's blacklist (decisions/155), which the app can lift; an excluded
+	// AniList list is lifted on AniList.
+	AppBlacklisted bool `json:"app_blacklisted,omitempty"`
 	// IsStandalone marks the animes tracked by the standalone_animes file, not by an AniList or
 	// MyAnimeList list. It's ORIGIN, not download state — that's why the screen shows it in its own
 	// chip next to the derived chip, never inside it.
@@ -291,6 +296,7 @@ func handleAnimes(server *Server) http.HandlerFunc {
 
 		animes := make([]AnimeInfo, 0, len(animeMap))
 		now := time.Now()
+		appBlacklist := loadAppBlacklist(server.FileManager)
 		for key, animeInfo := range animeMap {
 			present := withShokoOwned(downloadedNums[key], server.State.Shoko(), animeInfo.AnimeID)
 			// After the merge: the watch progress is only known now (AniList, MAL or the standalone's
@@ -303,6 +309,9 @@ func handleAnimes(server *Server) http.HandlerFunc {
 				acc.Recent = recentShelf(savedByKey[key], acc.EpisodesWatched, config.RecentShelfDays, now)
 			}
 			animeInfo.IsStandalone = standaloneSet[animeInfo.AnimeID]
+			if appBlacklist[animeInfo.AnimeID] {
+				animeInfo.AppBlacklisted, animeInfo.IsBlacklisted = true, true
+			}
 			animes = append(animes, *animeInfo)
 		}
 

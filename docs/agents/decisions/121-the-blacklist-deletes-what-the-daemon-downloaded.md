@@ -45,6 +45,10 @@ deletes nothing of a torrent added in direct mode either: `withoutKeptForever` d
 before `removeEpisodesAndLinks`, whatever the current `library_mode`. Stopping still holds — the
 blacklisted anime downloads nothing new — and the files stay, like a hand download's.
 
+**Not the app's blacklist (see [#155](155-the-apps-blacklist-stops-checking-and-downloading.md)):**
+everything here is about `excluded_lists`. The blacklist set from an anime's Delete dialog takes the
+anime out of the pass and deletes nothing.
+
 **Don't "fix" by:** making the blacklist stop downloading without deleting, for every anime; letting
 the blacklist delete `manually_managed` records; keeping the standalone record of a blacklisted
 anime "to remember the intent", since the files already carry it; letting a standalone record survive

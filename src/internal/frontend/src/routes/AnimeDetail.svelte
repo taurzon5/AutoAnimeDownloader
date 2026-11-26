@@ -22,7 +22,8 @@
     redownloadEpisode,
     replaceEpisodeWithMagnet,
     updateAnimeSettings,
-    removeStandaloneAnime,
+    deleteAnime,
+    unblacklistAnime,
     deleteTorrent,
     getLastCheck,
     type AnimeDetailResponse,
@@ -84,13 +85,16 @@
   let confirmBulkOpen = false;
   let confirmBulkRedownloadOpen = false;
 
-  // Stop tracking (standalone only). Lives in the AnimeDetail header because that's where
-  // the user already is after clicking the anime in the Status list, and the header is
-  // already the place for anime actions — putting this on the Status row would cost an
-  // ActionMenu column the list doesn't have today.
-  let untrackOpen = false;
-  let untrackDeleteFiles = false;
-  let untrackLoading = false;
+  // Delete (decisions/155). Lives in the AnimeDetail header because that's where the user
+  // already is after clicking the anime in the Status list, and the header is already the place
+  // for anime actions. An anime added by hand is removed, its files ticked by default; one a list
+  // brings can't be removed (the list would bring it back), so the dialog says so and offers to
+  // delete its files and to blacklist it, blacklist ticked by default.
+  let animeDeleteOpen = false;
+  let animeDeleteFiles = false;
+  let animeDeleteBlacklist = false;
+  let animeDeleteLoading = false;
+  let unblacklistLoading = false;
 
   // Per-episode magnet replace. Whole-title replace is the picker at
   // `#/status/:id/torrents` — there is no magnet modal for the header button.
@@ -767,18 +771,65 @@
   // at `md` (768px) ~628px remain after the rail and the main padding, which threw the
   // whole page into horizontal scroll. Same criterion as the anime list (Status.svelte,
   // LIST_GRID) and the torrent rows (Downloads.svelte, ROW_GRID).
-  async function confirmUntrack(): Promise<void> {
+  function openAnimeDelete(): void {
+    const standalone = !!anime?.is_standalone;
+    animeDeleteFiles = standalone;
+    // Already on the blacklist: the box is hidden, and sending it again would change nothing.
+    animeDeleteBlacklist = !standalone && !anime?.app_blacklisted;
+    animeDeleteOpen = true;
+  }
+
+  // Who brings the anime back, for the dialog: "alice (AniList), bob (MyAnimeList)".
+  $: listAccounts = (anime?.accounts ?? [])
+    .map((a) => `${a.username} (${a.source === "mal" ? "MyAnimeList" : "AniList"})`)
+    .join(", ");
+  $: animeDeleteMessage = !anime
+    ? ""
+    : anime.is_standalone
+      ? m.detail_delete_msg_standalone()
+      : listAccounts
+        ? m.detail_delete_msg_list({ accounts: listAccounts })
+        : m.detail_delete_msg_files_only();
+  // A list anime with nothing ticked would be a no-op the server refuses; say it with the button.
+  $: animeDeleteNothing = !!anime && !anime.is_standalone && !animeDeleteFiles && !animeDeleteBlacklist;
+
+  function animeDeleteDoneMessage(r: { removed: boolean; deleted_episodes: number; blacklisted: boolean }): string {
+    if (r.removed) return r.blacklisted ? m.detail_delete_done_removed_blacklisted() : m.detail_delete_done_removed();
+    if (r.deleted_episodes > 0) return r.blacklisted ? m.detail_delete_done_files_blacklisted() : m.detail_delete_done_files();
+    return m.detail_delete_done_blacklisted();
+  }
+
+  async function confirmAnimeDelete(): Promise<void> {
     if (!anime) return;
-    untrackLoading = true;
+    animeDeleteLoading = true;
     try {
-      await removeStandaloneAnime(anime.anime_id, untrackDeleteFiles);
-      toast.success(m.detail_untrack_done());
-      window.location.hash = "#/status";
+      const result = await deleteAnime(anime.anime_id, { deleteFiles: animeDeleteFiles, blacklist: animeDeleteBlacklist });
+      toast.success(animeDeleteDoneMessage(result));
+      // Removed, the anime has no page to reload (an untracked anime's detail is refused, even with
+      // its files kept), so back to the list; a list anime stays and the page shows its new state.
+      if (result.removed) {
+        window.location.hash = "#/status";
+      } else {
+        await loadData(animeId);
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : m.detail_untrack_btn());
+      toast.error(error instanceof Error ? error.message : m.detail_delete_btn());
     } finally {
-      untrackLoading = false;
-      untrackDeleteFiles = false;
+      animeDeleteLoading = false;
+    }
+  }
+
+  async function liftBlacklist(): Promise<void> {
+    if (!anime) return;
+    unblacklistLoading = true;
+    try {
+      await unblacklistAnime(anime.anime_id);
+      toast.success(m.detail_unblacklist_done());
+      await loadData(animeId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : m.detail_unblacklist_btn());
+    } finally {
+      unblacklistLoading = false;
     }
   }
 
@@ -838,14 +889,26 @@
 <!-- ConfirmDialog + a Checkbox in the slot. TorrentDeleteDialog doesn't belong here: it is
      specific to keepData/block, which are torrent questions, not anime ones. -->
 <ConfirmDialog
-  bind:open={untrackOpen}
-  title={m.detail_untrack_title()}
-  message={m.detail_untrack_msg()}
-  confirmLabel={m.detail_untrack_confirm()}
+  bind:open={animeDeleteOpen}
+  title={m.detail_delete_title({ name: anime?.name ?? "" })}
+  message={animeDeleteMessage}
+  confirmLabel={!anime?.is_standalone && !animeDeleteFiles ? m.detail_delete_confirm_blacklist() : m.detail_delete_confirm()}
+  confirmDisabled={animeDeleteNothing}
   cancelLabel={m.common_cancel()}
-  on:confirm={confirmUntrack}
+  on:confirm={confirmAnimeDelete}
 >
-  <Checkbox bind:checked={untrackDeleteFiles} label={m.detail_untrack_delete_files()} />
+  <div class="space-y-3">
+    <Checkbox
+      bind:checked={animeDeleteFiles}
+      label={anime?.is_standalone ? m.detail_delete_files() : m.detail_delete_files_list()}
+    />
+    {#if !anime?.app_blacklisted}
+      <div>
+        <Checkbox bind:checked={animeDeleteBlacklist} label={m.detail_delete_blacklist()} />
+        <p class="mt-1 pl-6 text-caption text-subtle">{m.detail_delete_blacklist_hint()}</p>
+      </div>
+    {/if}
+  </div>
 </ConfirmDialog>
 
 <!-- Per-episode magnet dialog. Whole-title replace navigates to the picker. -->
@@ -946,9 +1009,14 @@
       </div>
 
       <div class="flex flex-wrap gap-2">
-        {#if anime?.is_standalone}
-          <Button variant="warn" disabled={untrackLoading} on:click={() => { untrackDeleteFiles = false; untrackOpen = true; }}>
-            {$locale && m.detail_untrack_btn()}
+        {#if anime?.app_blacklisted}
+          <Button variant="ghost" disabled={unblacklistLoading} on:click={liftBlacklist}>
+            {$locale && m.detail_unblacklist_btn()}
+          </Button>
+        {/if}
+        {#if anime}
+          <Button variant="warn" disabled={animeDeleteLoading} on:click={openAnimeDelete}>
+            {$locale && m.detail_delete_btn()}
           </Button>
         {/if}
         <Button variant="ghost" on:click={() => push("/status/" + animeId + "/torrents")}>

@@ -12,6 +12,8 @@
   export let message = "";
   export let confirmLabel = "Confirm";
   export let cancelLabel = "Cancel";
+  /** Disables the confirm button, for a dialog whose choices can add up to nothing to do. */
+  export let confirmDisabled = false;
 
   const dispatch = createEventDispatcher<{ confirm: void; cancel: void }>();
 
@@ -47,6 +49,6 @@
   {/if}
   <div class="mt-5 flex justify-end gap-2">
     <Button variant="ghost" on:click={cancel}>{cancelLabel}</Button>
-    <Button variant="warn" on:click={confirm}>{confirmLabel}</Button>
+    <Button variant="warn" disabled={confirmDisabled} on:click={confirm}>{confirmLabel}</Button>
   </div>
 </Modal>

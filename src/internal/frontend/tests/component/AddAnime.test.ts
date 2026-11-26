@@ -312,3 +312,39 @@ describe('AddAnime — AniList budget', () => {
     expect(button).toBeEnabled()
   })
 })
+
+describe('AddAnime — blacklisted anime (decisions/155)', () => {
+  it('asks before taking it off the blacklist, and the confirm adds with unblacklist', async () => {
+    searchAniList.mockResolvedValue([{ ...result(''), blacklisted: true }])
+    getTorrentCandidates.mockResolvedValue({ query: 'One Piece', media: { title: 'One Piece', format: 'TV' }, items: [] })
+    addStandaloneAnime.mockResolvedValue({ added: 1 })
+    render(AddAnime)
+    await search()
+    expect(screen.getByText(/^(blacklisted|na lista negra)$/i)).toBeTruthy()
+
+    await fireEvent.click(screen.getByRole('button', { name: /^add$|^adicionar$/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(getTorrentCandidates).not.toHaveBeenCalled()
+    expect(addStandaloneAnime).not.toHaveBeenCalled()
+
+    await fireEvent.click(
+      Array.from(dialog.querySelectorAll('button')).find((b) => /blacklist|lista negra/i.test(b.textContent ?? ''))!,
+    )
+    await waitFor(() => expect(addStandaloneAnime).toHaveBeenCalledWith(21, { unblacklist: true }))
+  })
+
+  it('carries the confirmation to the picker when there are packs to choose', async () => {
+    searchAniList.mockResolvedValue([{ ...result(''), blacklisted: true }])
+    getTorrentCandidates.mockResolvedValue({ query: 'One Piece', media: { title: 'One Piece', format: 'TV' }, items: [candidate()] })
+    render(AddAnime)
+    await search()
+    await fireEvent.click(screen.getByRole('button', { name: /^add$|^adicionar$/i }))
+    const dialog = await screen.findByRole('dialog')
+    await fireEvent.click(
+      Array.from(dialog.querySelectorAll('button')).find((b) => /blacklist|lista negra/i.test(b.textContent ?? ''))!,
+    )
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/add/21/torrents'))
+    expect(get(pickerCache)?.unblacklist).toBe(true)
+    expect(addStandaloneAnime).not.toHaveBeenCalled()
+  })
+})

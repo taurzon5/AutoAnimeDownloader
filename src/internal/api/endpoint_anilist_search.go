@@ -26,6 +26,9 @@ type AniListSearchResult struct {
 	// exclusive by precedence and the card needs a single label. Comes from the same
 	// blockReason the POST uses for the 409 — front and back agree by construction.
 	BlockReason string `json:"block_reason"`
+	// Blacklisted: the anime is on the app's blacklist. Not a block reason: adding asks to take it
+	// off the blacklist first (decisions/155).
+	Blacklisted bool `json:"blacklisted,omitempty"`
 }
 
 func handleAniListSearch(server *Server) http.HandlerFunc {
@@ -70,6 +73,7 @@ func handleAniListSearch(server *Server) http.HandlerFunc {
 			return
 		}
 
+		blacklist := loadAppBlacklist(server.FileManager)
 		out := make([]AniListSearchResult, 0, len(results))
 		for _, r := range results {
 			episodes := 0
@@ -89,6 +93,7 @@ func handleAniListSearch(server *Server) http.HandlerFunc {
 				Episodes:    episodes,
 				Cover:       cover,
 				BlockReason: guard.blockReason(r.Id, episodes),
+				Blacklisted: blacklist[r.Id],
 			})
 		}
 

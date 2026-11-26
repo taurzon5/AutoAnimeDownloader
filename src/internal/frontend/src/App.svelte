@@ -11,6 +11,7 @@
   import AddAnime from "./routes/AddAnime.svelte";
   import TorrentPicker from "./routes/TorrentPicker.svelte";
   import Report from "./routes/Report.svelte";
+  import Blacklist from "./routes/Blacklist.svelte";
   import { onDestroy } from "svelte";
   import { installUnsavedGuard } from "./lib/stores/unsavedChanges.js";
   import * as m from "./lib/i18n/messages.js";
@@ -33,6 +34,7 @@
     "/priorities": Priorities,
     "/logs": Logs,
     "/notifications": Notifications,
+    "/blacklist": Blacklist,
     "/report": Report,
   };
 </script>

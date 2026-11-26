@@ -182,7 +182,8 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		// listStatuses[account][mediaId] — each account's list status of the animes on disk; see
 		// fetchListStatuses.
 		listStatuses map[string]map[int]anilist.MediaListStatus
-		// onDisk is onDiskMediaIDs(savedEpisodes), computed once for the fetch and the vote.
+		// onDisk is onDiskMediaIDs(savedEpisodes) without the blacklisted, computed once for the fetch
+		// and the vote.
 		onDisk []int
 
 		errAnilist  error
@@ -196,6 +197,11 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		logger.Logger.Warn().Err(err).Msg("Failed to load standalone animes, continuing with the AniList lists only")
 		standaloneIDs = nil
 	}
+
+	// The app's blacklist: this pass doesn't look those anime up, search, download or delete them
+	// (decisions/155).
+	blacklisted := blacklistedAnimes(fileManager)
+	standaloneIDs = withoutBlacklistedIDs(standaloneIDs, blacklisted)
 
 	var fetchWg sync.WaitGroup
 
@@ -217,7 +223,8 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		}
 		// Chained here, not in its own goroutine: the question is asked only about the animes on disk,
 		// so it needs the file first. Still runs alongside searchAnilist.
-		onDisk = onDiskMediaIDs(savedEpisodes)
+		// Without the blacklisted: their list status is never asked, so no status rule deletes them.
+		onDisk = withoutBlacklistedIDs(onDiskMediaIDs(savedEpisodes), blacklisted)
 		listStatuses = fetchListStatuses(configs, onDisk)
 	}()
 
@@ -243,6 +250,10 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		return
 	}
 
+	// A blacklisted anime's torrent that runs again (one the app had stopped, or one a pass added
+	// right after the click) is paused here (decisions/155).
+	keepBlacklistedPaused(fileManager, backend, savedEpisodes, blacklisted)
+
 	// Reconciliation (durable safety net): enqueue JobOrganize for any completed torrent
 	// whose episodes are not yet in the library. Covers completions missed while the daemon
 	// was down and a save-path change. JobOrganize is idempotent, so re-runs are no-ops.
@@ -253,7 +264,7 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 		blockedMap[k] = true
 	}
 
-	animes := anilistResponse.Data.Page.MediaList
+	animes := withoutBlacklistedAnimes(anilistResponse.Data.Page.MediaList, blacklisted)
 
 	// What the user already has in Shoko, by anime: never searched nor downloaded (the Shoko spec).
 	animeSettings, _ := fileManager.LoadAllAnimeSettings()
@@ -363,6 +374,7 @@ outer:
 		checkedEpisodes: checkedEpisodes,
 		newEpisodes:     newEpisodes,
 		watching:        watching,
+		blacklisted:     blacklisted,
 	})
 
 	state.SetLastCheck(time.Now())
@@ -405,7 +417,7 @@ outer:
 	}
 
 	logger.Logger.Info().
-		Int("animes_checked", len(anilistResponse.Data.Page.MediaList)).
+		Int("animes_checked", len(animes)).
 		Int("episodes_checked", len(checkedEpisodes)).
 		Int("episodes_downloaded", len(newEpisodes)).
 		Dur("total_time", elapsed).
