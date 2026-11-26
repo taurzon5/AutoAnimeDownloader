@@ -16,4 +16,4 @@ first, so that drive is stat'ed too (`checkRootBudgetSpace`, `GET /status` `inco
 
 **Don't "fix" by:** trying to route disk stats through the torrent library — it has no such API, and `CompletedAnimePath` is on the same filesystem as the download directory the daemon writes to.
 
-**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** with several download roots, each root's volume is stat'ed for its own disk guard and its line in `GET /status`; the `disk_low` alert (`diskAlertVolume`) still watches the library's volume only.
+**Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** with several download roots, each root's volume is stat'ed for its own disk guard and its line in `GET /status`; the `disk_low` alert (`diskAlertVolume`) watches the root with the most room above its own floor (`roomiestRoot`, 2026-11-26), and the library's volume only when no download roots are listed.

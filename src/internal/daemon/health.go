@@ -243,8 +243,7 @@ func diskWarningItem(path string, minFreeGB int, free uint64) notifications.Epis
 // diskAlertVolume picks the volume the disk_low alert talks about: the library, or the incomplete
 // folder's drive when it is a separate one with less room left above its own floor.
 func diskAlertVolume(cfg *files.Config) (path string, minFreeGB int, total, free uint64, err error) {
-	path, minFreeGB = cfg.CompletedAnimePath, cfg.MinFreeDiskGB
-	total, free, err = diskSpace(path)
+	path, minFreeGB, total, free, err = roomiestRoot(cfg)
 	staging := cfg.StagingPath()
 	if staging == "" || sameFilesystem(staging, path) {
 		return path, minFreeGB, total, free, err
@@ -258,6 +257,32 @@ func diskAlertVolume(cfg *files.Config) (path string, minFreeGB int, total, free
 		return staging, cfg.IncompleteMinFreeDiskGB, sTotal, sFree, nil
 	}
 	return path, minFreeGB, total, free, nil
+}
+
+// roomiestRoot is the download folder the disk alert watches: the library, or with several
+// download folders the one with the most room above its own floor. They fill one after another by
+// design, so a full first folder is no news; the alert speaks when even the roomiest one runs low,
+// and names it (decisions/154). A folder that is gone, or whose space can't be read, is skipped.
+func roomiestRoot(cfg *files.Config) (path string, minFreeGB int, total, free uint64, err error) {
+	path, minFreeGB = cfg.CompletedAnimePath, cfg.MinFreeDiskGB
+	total, free, err = diskSpace(path)
+	if !cfg.IsDirectMode() || len(cfg.DownloadRoots) == 0 {
+		return path, minFreeGB, total, free, err
+	}
+	found := false
+	var best int64
+	for _, r := range availableRoots(cfg) {
+		t, f, e := diskSpace(r.Path)
+		if e != nil {
+			continue
+		}
+		floor := cfg.RootMinFreeGB(r.Path)
+		if room := int64(f) - int64(floor)*giB; !found || room > best {
+			found, best = true, room
+			path, minFreeGB, total, free, err = r.Path, floor, t, f, nil
+		}
+	}
+	return path, minFreeGB, total, free, err
 }
 
 func diskBlockedItem(path string, free uint64, waiting int) notifications.Episode {

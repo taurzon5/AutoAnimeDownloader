@@ -343,6 +343,8 @@ export interface TorrentClientTestResult {
   incomplete_checked?: boolean
   incomplete_visible?: boolean
   incomplete_path?: string
+  /** The same check for each download folder other than the library (direct mode). */
+  folders?: { name: string; path: string; visible: boolean; problem?: string }[]
   problem?: string
   /** qBittorrent's own download queue; max_active_downloads -1 = no limit. */
   queueing_enabled?: boolean
@@ -540,6 +542,8 @@ export async function testTorrentClient(config: Config): Promise<TorrentClientTe
     qbittorrent_password: config.qbittorrent_password ?? '',
     qbittorrent_api_key: config.qbittorrent_api_key ?? '',
     qbittorrent_path_map: config.qbittorrent_path_map ?? [],
+    library_mode: config.library_mode ?? '',
+    download_roots: config.download_roots ?? [],
   })
 }
 

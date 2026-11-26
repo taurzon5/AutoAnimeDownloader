@@ -1640,7 +1640,10 @@ type QBitTestResult struct {
 	IncompleteChecked bool   `json:"incomplete_checked"`
 	IncompleteVisible bool   `json:"incomplete_visible"`
 	IncompletePath    string `json:"incomplete_path,omitempty"`
-	Problem           string `json:"problem,omitempty"`
+	// Folders is the same check for each download folder other than the library (direct mode with
+	// download_roots): qBittorrent saves torrents there too (decisions/154).
+	Folders []QBitFolderCheck `json:"folders,omitempty"`
+	Problem string            `json:"problem,omitempty"`
 	// QueueingEnabled and MaxActiveDownloads are qBittorrent's own download queue (-1 = no limit):
 	// what applies instead of max_concurrent_downloads when the app doesn't manage its settings.
 	// Absent when qBittorrent didn't answer its preferences.
@@ -1651,11 +1654,24 @@ type QBitTestResult struct {
 	DiskIOType *int `json:"disk_io_type,omitempty"`
 }
 
-// TestQBittorrent signs in, reads the versions and checks that qBittorrent sees the library and the
-// incomplete folder (when set): the connection test behind POST /api/v1/torrent-client/test. An
-// error means it could not connect; a connected qBittorrent with a problem (too old, a folder not
-// visible) reports it in Problem.
-func TestQBittorrent(settings QBitSettings, libraryRoot, incompleteRoot string) (QBitTestResult, error) {
+// QBitFolder is a download folder for the connection test: its name and the path the app uses.
+type QBitFolder struct {
+	Name, Path string
+}
+
+// QBitFolderCheck is the connection test's answer for one download folder.
+type QBitFolderCheck struct {
+	Name    string `json:"name"`
+	Path    string `json:"path"` // the folder as qBittorrent sees it
+	Visible bool   `json:"visible"`
+	Problem string `json:"problem,omitempty"`
+}
+
+// TestQBittorrent signs in, reads the versions and checks that qBittorrent sees the library, the
+// incomplete folder (when set) and every other download folder: the connection test behind POST
+// /api/v1/torrent-client/test. An error means it could not connect; a connected qBittorrent with a
+// problem (too old, a folder not visible) reports it in Problem, the first one found.
+func TestQBittorrent(settings QBitSettings, libraryRoot, incompleteRoot string, folders []QBitFolder) (QBitTestResult, error) {
 	var out QBitTestResult
 	client, err := newQBitClient(settings.URL, settings.Username, settings.Password, settings.APIKey)
 	if err != nil {
@@ -1695,6 +1711,17 @@ func TestQBittorrent(settings QBitSettings, libraryRoot, incompleteRoot string) 
 		out.IncompleteChecked = true
 		out.IncompletePath = qbitMapPath(incompleteRoot, settings.PathMap, true)
 		out.IncompleteVisible, out.Problem = probeVisible(ctx, client, incompleteRoot, out.IncompletePath, "the incomplete folder")
+	}
+	for _, f := range folders {
+		if f.Path == "" || filepath.Clean(f.Path) == filepath.Clean(libraryRoot) {
+			continue
+		}
+		check := QBitFolderCheck{Name: f.Name, Path: qbitMapPath(f.Path, settings.PathMap, true)}
+		check.Visible, check.Problem = probeVisible(ctx, client, f.Path, check.Path, "the download folder "+strconv.Quote(f.Name))
+		out.Folders = append(out.Folders, check)
+		if check.Problem != "" && out.Problem == "" {
+			out.Problem = check.Problem
+		}
 	}
 	return out, nil
 }

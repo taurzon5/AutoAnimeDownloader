@@ -252,3 +252,27 @@ func TestDiskAlertVolume_FollowsTheTighterDrive(t *testing.T) {
 		t.Errorf("on one drive there is only the library to report, got %s", path)
 	}
 }
+
+// TestDiskAlertVolume_WatchesTheRoomiestDownloadFolder: download folders fill one after another by
+// design, so the alert watches the one with the most room above its own floor and names it; a
+// nearly full first folder is no news while another has room.
+func TestDiskAlertVolume_WatchesTheRoomiestDownloadFolder(t *testing.T) {
+	configs := directConfig(t.TempDir())
+	ssd, hdd := t.TempDir(), t.TempDir()
+	hddFloor := 50
+	configs.MinFreeDiskGB = 10
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "ssd", Path: ssd}, {Name: "hdd", Path: hdd, MinFreeGB: &hddFloor}}
+	prev := diskSpace
+	t.Cleanup(func() { diskSpace = prev })
+	free := map[string]uint64{configs.CompletedAnimePath: 1, ssd: 11 * uint64(giB), hdd: 400 * uint64(giB)}
+	diskSpace = func(path string) (uint64, uint64, error) { return 1000 * uint64(giB), free[path], nil }
+	stubSameFilesystem(t, true)
+
+	if path, floor, _, _, _ := diskAlertVolume(configs); path != hdd || floor != 50 {
+		t.Errorf("got %s (floor %d), want the hdd folder, the one with room", path, floor)
+	}
+	free[hdd] = 50*uint64(giB) + uint64(giB)/2
+	if path, floor, _, _, _ := diskAlertVolume(configs); path != ssd || floor != 10 {
+		t.Errorf("got %s (floor %d), want ssd: 1 GiB above its floor beats hdd's half GiB", path, floor)
+	}
+}

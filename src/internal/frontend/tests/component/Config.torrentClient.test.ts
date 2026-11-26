@@ -88,6 +88,17 @@ describe('Config — torrent client', () => {
     expect(result).toContain('/downloads')
   })
 
+  it('shows that qBittorrent sees each download folder the test checked', async () => {
+    vi.mocked(client.testTorrentClient).mockResolvedValueOnce({
+      app_version: 'v5.3.0', webapi_version: '2.16.2', library_checked: true, library_visible: true, library_path: '/downloads',
+      folders: [{ name: 'hdd', path: '/mnt/hdd/anime', visible: true }],
+    })
+    await openClientGroup()
+    await fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
+    await flush()
+    expect(screen.getByTestId('qbittorrent-test-result').textContent).toContain('download folder hdd at /mnt/hdd/anime')
+  })
+
   it('sends the incomplete folder to the test and shows that qBittorrent sees it', async () => {
     vi.mocked(client.getConfig).mockResolvedValue({ ...structuredClone(saved), incomplete_path: '/mnt/nvme/incomplete' } as never)
     vi.mocked(client.testTorrentClient).mockResolvedValueOnce({

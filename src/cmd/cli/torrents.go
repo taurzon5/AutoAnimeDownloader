@@ -119,6 +119,11 @@ func handleTorrentClientTest(c *cli.Context) error {
 		if result.IncompleteVisible {
 			fmt.Printf("qBittorrent sees the incomplete folder at %s\n", result.IncompletePath)
 		}
+		for _, f := range result.Folders {
+			if f.Visible {
+				fmt.Printf("qBittorrent sees the download folder %q at %s\n", f.Name, f.Path)
+			}
+		}
 	}
 	switch q := result.QueueingEnabled; {
 	case q == nil:

@@ -178,12 +178,17 @@
     const roots = [...(config.download_roots ?? [])];
     if (roots.length === 0 && config.completed_anime_path?.trim()) {
       roots.push({ name: "library", path: config.completed_anime_path.trim() });
+      libraryRow = 0;
     }
     roots.push({ name: "", path: "" });
     config.download_roots = roots;
   }
   function removeDownloadRoot(i: number) {
     config.download_roots = (config.download_roots ?? []).filter((_, k) => k !== i);
+    // Removing the library's row leaves completed_anime_path as it is (older downloads still live
+    // there), so its own field comes back.
+    if (i === libraryRow) libraryRow = -1;
+    else if (i < libraryRow) libraryRow -= 1;
   }
   /** Moves a folder up (-1) or down (+1) in the fill order: the first is the highest priority. */
   function moveDownloadRoot(i: number, by: number) {
@@ -192,6 +197,32 @@
     if (j < 0 || j >= roots.length) return;
     [roots[i], roots[j]] = [roots[j], roots[i]];
     config.download_roots = roots;
+    if (libraryRow === i) libraryRow = j;
+    else if (libraryRow === j) libraryRow = i;
+  }
+
+  // The library is the download folder whose path is completed_anime_path: a placement there records
+  // no path of its own, so editing that row's path moves the library (decisions/154). Once the list
+  // holds it, a separate Completed Anime Path field would be the same path twice, so the row carries
+  // it. The row is found when the config loads or the library mode changes, not on each keystroke,
+  // so typing a new path into it keeps it the library.
+  let libraryRow = -1;
+  function findLibraryRow(): void {
+    const lib = (config.completed_anime_path ?? "").trim().replace(/[\\/]+$/, "");
+    libraryRow =
+      config.library_mode === "direct" && lib
+        ? (config.download_roots ?? []).findIndex((r) => r.path.trim().replace(/[\\/]+$/, "") === lib)
+        : -1;
+  }
+  $: if (libraryRow >= 0) {
+    const p = config.download_roots?.[libraryRow]?.path;
+    if (p !== undefined && p !== config.completed_anime_path) config.completed_anime_path = p;
+  }
+  // Switching the library mode decides it again (download folders are direct mode only).
+  let libraryRowMode: string | undefined;
+  $: if (config.library_mode !== libraryRowMode) {
+    libraryRowMode = config.library_mode;
+    findLibraryRow();
   }
   $: rootNames = (config.download_roots ?? []).map((r) => r.name.trim());
 
@@ -313,7 +344,10 @@
     let name = folder.name.trim() || "shoko";
     for (let n = 2; roots.some((r) => r.name === name) || (keepLibrary && name === "library"); n++) name = `${folder.name.trim() || "shoko"} ${n}`;
     roots.push({ name, path: folder.app_path });
-    if (keepLibrary) roots.push({ name: "library", path: config.completed_anime_path.trim() });
+    if (keepLibrary) {
+      roots.push({ name: "library", path: config.completed_anime_path.trim() });
+      libraryRow = roots.length - 1;
+    }
     config.download_roots = roots;
   }
   $: anyRootInShoko = shokoRoots.some((r) => r.in_shoko);
@@ -510,6 +544,10 @@
       if (!Array.isArray(config.qbittorrent_path_map)) config.qbittorrent_path_map = [];
       if (!Array.isArray(config.shoko_path_map)) config.shoko_path_map = [];
       if (!Array.isArray(config.notifications.webhooks)) config.notifications.webhooks = [];
+      findLibraryRow();
+      // Before the snapshot: the row may carry the path with a trailing slash the field didn't have,
+      // and copying it later would read as an edit nobody made (decisions/129).
+      if (libraryRow >= 0) config.completed_anime_path = config.download_roots?.[libraryRow]?.path ?? config.completed_anime_path;
       baseline = configSnapshot(config);
     } catch (err) {
       loadFailed = true;
@@ -893,11 +931,19 @@
           {/if}
 
           {#if activeGroup === "library"}
+            {#if libraryRow >= 0}
+            <div class="space-y-2 p-4.5" data-testid="library-is-folder">
+              <p class="text-copy font-semibold text-heading">{T && T.labelCompletedPath}</p>
+              <p class="text-caption text-subtle">
+                {$locale && m.config_library_is_folder({ name: config.download_roots?.[libraryRow]?.name ?? "", path: config.download_roots?.[libraryRow]?.path ?? "" })}
+              </p>
+            </div>
+            {:else}
             <div class="p-4.5">
               <Input
                 id="completed_anime_path"
                 label={T && T.labelCompletedPath || ""}
-                subtitle={(T && (config.library_mode === "direct" ? T.hintCompletedPathDirect : T.hintCompletedPath)) || ""}
+                subtitle={(T && (config.library_mode !== "direct" ? T.hintCompletedPath : (config.download_roots ?? []).length ? m.config_hint_completed_path_unlisted() : T.hintCompletedPathDirect)) || ""}
                 type="text"
                 bind:value={config.completed_anime_path}
                 placeholder="/path/to/completed"
@@ -909,6 +955,7 @@
                 </p>
               {/if}
             </div>
+            {/if}
 
             <!-- The hint always shows: it's precisely what helps decide whether to turn the switch
                  on, so hiding it behind the on state hides the useful information. `Toggle` has no
@@ -995,6 +1042,9 @@
                   <div class="flex flex-col gap-2 sm:flex-row sm:items-end" data-testid="download-root">
                     <div class="sm:w-40">
                       <Input id={`download_root_name_${i}`} label={$locale && m.config_label_root_name()} bind:value={config.download_roots[i].name} />
+                      {#if i === libraryRow}
+                        <p class="mt-1 text-caption text-accent" data-testid="download-root-library">{$locale && m.config_root_library()}</p>
+                      {/if}
                     </div>
                     <div class="min-w-0 flex-1">
                       <Input id={`download_root_path_${i}`} label={$locale && m.config_label_root_path()} bind:value={config.download_roots[i].path} placeholder="/mnt/disk2/anime" />
@@ -1562,6 +1612,9 @@
                     {#if qbitTestResult.incomplete_visible && qbitTestResult.incomplete_path}
                       {$locale && m.config_qbittorrent_test_incomplete({ path: qbitTestResult.incomplete_path })}
                     {/if}
+                    {#each (qbitTestResult.folders ?? []).filter((f) => f.visible) as folder (folder.name)}
+                      {$locale && m.config_qbittorrent_test_folder({ name: folder.name, path: folder.path })}
+                    {/each}
                     {#if qbitTestResult.queueing_enabled === false}
                       {$locale && m.config_qbittorrent_test_queue_off()}
                     {:else if qbitTestResult.queueing_enabled && (qbitTestResult.max_active_downloads ?? -1) < 0}

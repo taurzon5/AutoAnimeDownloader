@@ -56,7 +56,7 @@ func TestQBitLive(t *testing.T) {
 		t.Fatalf("setting the strict global limits: %v", err)
 	}
 
-	res, err := TestQBittorrent(settings, library, incomplete)
+	res, err := TestQBittorrent(settings, library, incomplete, nil)
 	if err != nil {
 		t.Fatalf("connection test: %v", err)
 	}

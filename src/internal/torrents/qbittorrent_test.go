@@ -554,7 +554,7 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 	library := t.TempDir()
 	settings := QBitSettings{URL: fake.server.URL, Username: "admin", Password: "secret"}
 
-	res, err := TestQBittorrent(settings, library, "")
+	res, err := TestQBittorrent(settings, library, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,19 +572,19 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 
 	// The incomplete folder is probed too, once the library is seen.
 	incomplete := t.TempDir()
-	res, err = TestQBittorrent(settings, library, incomplete)
+	res, err = TestQBittorrent(settings, library, incomplete, nil)
 	if err != nil || !res.IncompleteChecked || !res.IncompleteVisible || res.IncompletePath != incomplete || res.Problem != "" {
 		t.Fatalf("incomplete folder on both sides: %+v, %v", res, err)
 	}
 	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: library}, {App: incomplete, QBittorrent: t.TempDir()}}
-	res, _ = TestQBittorrent(settings, library, incomplete)
+	res, _ = TestQBittorrent(settings, library, incomplete, nil)
 	if !res.LibraryVisible || res.IncompleteVisible || !strings.Contains(res.Problem, "incomplete folder") {
 		t.Fatalf("incomplete folder mapped elsewhere: %+v, want its problem reported", res)
 	}
 
 	// qBittorrent pointed at another folder through the path map.
 	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: t.TempDir()}}
-	res, err = TestQBittorrent(settings, library, "")
+	res, err = TestQBittorrent(settings, library, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +593,7 @@ func TestTestQBittorrent_ProbesTheLibrary(t *testing.T) {
 	}
 
 	settings.Password = "wrong"
-	if _, err := TestQBittorrent(settings, library, ""); err == nil {
+	if _, err := TestQBittorrent(settings, library, "", nil); err == nil {
 		t.Fatal("a wrong password passed the test")
 	}
 }
@@ -1237,5 +1237,28 @@ func TestQBit_TorrentWaitsForItsDownloadRootAndRestarts(t *testing.T) {
 	b.poll()
 	if got := q.callsSince(n); !reflect.DeepEqual(got, []string{"recheck " + qbHashA, "start " + qbHashA}) {
 		t.Fatalf("calls once the root is back = %v, want a recheck and a start", got)
+	}
+}
+
+// TestTestQBittorrent_ProbesEachDownloadFolder: with several download folders, qBittorrent saves
+// torrents in each, so the test checks each one; the library is not checked twice (decisions/154).
+func TestTestQBittorrent_ProbesEachDownloadFolder(t *testing.T) {
+	fake := newFakeQBit(t)
+	library, hdd := t.TempDir(), t.TempDir()
+	settings := QBitSettings{URL: fake.server.URL, Username: "admin", Password: "secret"}
+	folders := []QBitFolder{{Name: "library", Path: library}, {Name: "hdd", Path: hdd}}
+
+	res, err := TestQBittorrent(settings, library, "", folders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Folders) != 1 || res.Folders[0].Name != "hdd" || !res.Folders[0].Visible || res.Problem != "" {
+		t.Fatalf("both folders on both sides: %+v", res)
+	}
+
+	settings.PathMap = []QBitPathMapping{{App: library, QBittorrent: library}, {App: hdd, QBittorrent: t.TempDir()}}
+	res, _ = TestQBittorrent(settings, library, "", folders)
+	if !res.LibraryVisible || len(res.Folders) != 1 || res.Folders[0].Visible || !strings.Contains(res.Problem, `"hdd"`) {
+		t.Fatalf("hdd mapped elsewhere: %+v, want its problem reported", res)
 	}
 }

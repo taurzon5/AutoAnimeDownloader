@@ -23,6 +23,9 @@ type torrentClientTestRequest struct {
 	QBittorrentPassword string              `json:"qbittorrent_password"`
 	QBittorrentAPIKey   string              `json:"qbittorrent_api_key"`
 	QBittorrentPathMap  []files.PathMapping `json:"qbittorrent_path_map"`
+	// DownloadRoots and LibraryMode, as edited: the test also checks each download folder.
+	DownloadRoots []files.DownloadRoot `json:"download_roots"`
+	LibraryMode   string               `json:"library_mode"`
 }
 
 // handleTorrentClientTest is POST /api/v1/torrent-client/test: signs in to qBittorrent, reads its
@@ -53,6 +56,10 @@ func handleTorrentClientTest(server *Server) http.HandlerFunc {
 			config.QBittorrentPassword = req.QBittorrentPassword
 			config.QBittorrentAPIKey = req.QBittorrentAPIKey
 			config.QBittorrentPathMap = req.QBittorrentPathMap
+			if req.LibraryMode != "" {
+				config.LibraryMode = req.LibraryMode
+				config.DownloadRoots = req.DownloadRoots
+			}
 			if err := config.KeepSecrets(saved); err != nil {
 				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 				return
@@ -67,7 +74,7 @@ func handleTorrentClientTest(server *Server) http.HandlerFunc {
 			return
 		}
 
-		result, err := torrents.TestQBittorrent(daemon.QBitSettingsFrom(&config), config.CompletedAnimePath, config.StagingPath())
+		result, err := torrents.TestQBittorrent(daemon.QBitSettingsFrom(&config), config.CompletedAnimePath, config.StagingPath(), qbitTestFolders(&config))
 		if err != nil {
 			logger.Logger.Info().Err(err).Msg("qBittorrent connection test failed")
 			JSONError(w, http.StatusBadGateway, "TORRENT_CLIENT_UNREACHABLE", err.Error())
@@ -75,4 +82,17 @@ func handleTorrentClientTest(server *Server) http.HandlerFunc {
 		}
 		JSONSuccess(w, http.StatusOK, result)
 	}
+}
+
+// qbitTestFolders is every download folder the connection test checks besides the library: the
+// roots of direct mode, where qBittorrent saves torrents too (decisions/154).
+func qbitTestFolders(c *files.Config) []torrents.QBitFolder {
+	if !c.IsDirectMode() {
+		return nil
+	}
+	var out []torrents.QBitFolder
+	for _, r := range c.Roots() {
+		out = append(out, torrents.QBitFolder{Name: r.Name, Path: r.Path})
+	}
+	return out
 }

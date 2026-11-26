@@ -14,8 +14,10 @@
   `check` (any root), `checkOn` (one root), `onRootLocked` (every root on the same filesystem);
   `helpers.go`: `checkRootBudgetSpace`, `RootDisks`.
 - `internal/api`: `validateDownloadRoots`, `PUT /animes/{id}/settings` `root`, `GET /status`
-  `disks`; the CLI's `animes settings <id> root <name|none>`; the settings page's Download Folders,
-  `AnimeRootPicker.svelte`, the Status page's disk card.
+  `disks`, `qbitTestFolders` (the connection test checks each root); the CLI's
+  `animes settings <id> root <name|none>`; the settings page's Download Folders (the library's row,
+  `findLibraryRow`), `AnimeRootPicker.svelte`, the Status page's disk card.
+- `internal/daemon/health.go`: `roomiestRoot`, the root the `disk_low` alert watches.
 
 Pinned by:
 - `TestRootOrder`, `TestDiskBudgetFillsRootsInOrder`,
@@ -28,6 +30,9 @@ Pinned by:
 - `TestUpdateConfig_ValidatesDownloadRoots`, `TestUpdateConfig_DownloadRootsUnderThePathMap`,
   `TestPutAnimeSettings_Root`,
   `TestHandleStatus_DisksPerRoot` and `TestAnimesSettingsRoot` (CLI).
+- `TestDiskAlertVolume_WatchesTheRoomiestDownloadFolder`,
+  `TestTestQBittorrent_ProbesEachDownloadFolder` and the settings page's
+  `Config — the library among the download folders` tests.
 - The frontend's `Config.roots.test.ts` and `AnimeRootPicker.test.ts`.
 
 **What it looks like:**
@@ -101,9 +106,20 @@ Pinned by:
   every root must be under one of its app folders: it is the torrent's save path there.
 
 **Not done yet:** the folder-swap marker per root
-([#34](034-a-download-folder-swap-is-detected-by-a-dual.md)) still watches the library only; the
-`disk_low` alert watches the library's volume only; `series_drive_first` and `folder_rules` are PR 3;
-qBittorrent's connection test checks the library folder, not each root.
+([#34](034-a-download-folder-swap-is-detected-by-a-dual.md)) still watches the library only;
+`series_drive_first` and `folder_rules` are PR 3.
+
+**Done since (2026-11-26):** the `disk_low` alert watches the root with the most room above its own
+floor (`roomiestRoot`): roots fill one after another, so a full first root is not news. The
+qBittorrent connection test checks each root (`TestQBittorrent`'s `folders`). The settings page
+shows the library as the root whose path it is, and edits it there, instead of a second field with
+the same path.
+
+**Known limit of the alert:** it watches one root, the roomiest. A write tied to one root, a re-add
+or a redownload on its own root, or an older placement in the library, can be refused there while
+another root has room; the `blocked` alert then names the roomiest root, which has room. And a
+library that is not one of the listed roots is no longer watched by it. Naming the refused root
+needs the pass to say which root refused, which it doesn't today.
 
 **Don't "fix" by:**
 - Storing the library as a root path in new placements: a moved library would strand them.
