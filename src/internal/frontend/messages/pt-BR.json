@@ -1070,7 +1070,7 @@
   "config_section_client": "Cliente de torrent",
   "config_section_shoko": "Shoko",
   "config_label_shoko_enabled": "Usar o Shoko",
-  "config_hint_shoko_enabled": "Episódios que já estão na sua biblioteca do Shoko nunca são procurados nem baixados, e a página do anime os mostra como No Shoko. O app nunca apaga arquivos do Shoko.",
+  "config_hint_shoko_enabled": "Episódios que já estão na sua biblioteca do Shoko nunca são procurados nem baixados um a um, e a página do anime os mostra como No Shoko; um pack escolhido para outros episódios ainda pode trazê-los (veja Baixar megapacks completos). O app nunca apaga arquivos do Shoko.",
   "config_label_shoko_url": "Endereço do Shoko",
   "config_hint_shoko_url": "Onde o Shoko Server responde, ex. http://127.0.0.1:8111.",
   "config_label_shoko_username": "Usuário do Shoko",
@@ -1198,5 +1198,14 @@
   "add_blacklisted_chip": "Na lista negra",
   "add_unblacklist_title": "{name} está na lista negra",
   "add_unblacklist_msg": "Adicionar tira o anime da lista negra: o app volta a verificar e baixar e retoma os downloads pausados.",
-  "add_unblacklist_confirm": "Tirar da lista negra e adicionar"
+  "add_unblacklist_confirm": "Tirar da lista negra e adicionar",
+  "config_hint_rename_jellyfin_direct": "Nomeia cada episódio baixado como \"Série - S02E05.mkv\", nas pastas da série e da temporada. Packs e filmes mantêm os nomes com que vieram.",
+  "config_hint_part_files_staged": "Sem efeito enquanto houver uma Pasta de Downloads Incompletos: os arquivos não terminados esperam lá.",
+  "config_hint_shoko_full_sync_off": "Ligue Usar o Shoko e salve antes: desligado, o app não lê o Shoko.",
+  "config_btn_shoko_sign_out": "Sair",
+  "config_shoko_sign_out_pending": "Salve para sair do Shoko.",
+  "config_run_check_save_first": "Salve antes: uma verificação usa as configurações salvas.",
+  "config_hint_check_interval": "Minutos entre as verificações. Cada uma lê suas listas e busca no Nyaa o que falta.",
+  "config_hint_retry_limit": "Quantos links magnet um episódio tenta, do melhor para o pior, antes de esperar a próxima verificação.",
+  "config_hint_delete_watched": "Apaga os episódios que você já assistiu, mantendo os últimos definidos abaixo, e os episódios de animes que saíram das suas listas. Downloads mantidos para sempre (modo direto com Apagar Downloads Automaticamente desligado) nunca são apagados."
 }

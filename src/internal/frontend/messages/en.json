@@ -953,7 +953,7 @@
   "config_section_client": "Torrent client",
   "config_section_shoko": "Shoko",
   "config_label_shoko_enabled": "Use Shoko",
-  "config_hint_shoko_enabled": "Episodes already in your Shoko library are never searched for or downloaded, and the anime page shows them as In Shoko. The app never deletes Shoko's files.",
+  "config_hint_shoko_enabled": "Episodes already in your Shoko library are never searched for or downloaded one by one, and the anime page shows them as In Shoko; a pack picked for other episodes can still bring them (see Download Full Megapacks). The app never deletes Shoko's files.",
   "config_label_shoko_url": "Shoko Address",
   "config_hint_shoko_url": "Where Shoko Server answers, e.g. http://127.0.0.1:8111.",
   "config_label_shoko_username": "Shoko Username",
@@ -1081,5 +1081,14 @@
   "add_blacklisted_chip": "Blacklisted",
   "add_unblacklist_title": "{name} is on the blacklist",
   "add_unblacklist_msg": "Adding it takes it off the blacklist: the app checks and downloads it again and resumes its paused downloads.",
-  "add_unblacklist_confirm": "Remove from blacklist and add"
+  "add_unblacklist_confirm": "Remove from blacklist and add",
+  "config_hint_rename_jellyfin_direct": "Names each downloaded episode \"Series - S02E05.mkv\", inside its series and season folders. Packs and movies keep the names they came with.",
+  "config_hint_part_files_staged": "No effect while an Incomplete Downloads Folder is set: unfinished files wait there instead.",
+  "config_hint_shoko_full_sync_off": "Turn on Use Shoko and save first: while it's off, the app doesn't read Shoko.",
+  "config_btn_shoko_sign_out": "Sign out",
+  "config_shoko_sign_out_pending": "Save to sign out of Shoko.",
+  "config_run_check_save_first": "Save first: a check uses the saved settings.",
+  "config_hint_check_interval": "Minutes between checks. Each check reads your lists and searches Nyaa for what's missing.",
+  "config_hint_retry_limit": "How many magnet links an episode tries, best first, before it waits for the next check.",
+  "config_hint_delete_watched": "Deletes the episodes you've watched, keeping the last ones set below, and the episodes of anime that left your lists. Downloads kept forever (direct mode with Delete Downloads Automatically off) are never deleted."
 }

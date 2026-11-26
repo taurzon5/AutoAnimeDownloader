@@ -394,6 +394,14 @@
     }
   }
 
+  // Clearing the address is signing out (files: the key goes with it on save). Nothing is sent
+  // until Save, like every other field here.
+  function signOutOfShoko() {
+    config.shoko_url = "";
+    config.shoko_enabled = false;
+    toast.info(m.config_shoko_sign_out_pending());
+  }
+
   async function fullShokoSync() {
     try {
       await shokoSync(true);
@@ -487,7 +495,8 @@
   }
   const configSnapshot = (c: Config) => snapshot({ ...c, download_roots: savedRoots(c.download_roots) });
 
-  $: setUnsaved("config", baseline !== "" && configSnapshot(config) !== baseline);
+  $: unsaved = baseline !== "" && configSnapshot(config) !== baseline;
+  $: setUnsaved("config", unsaved);
   onDestroy(() => setUnsaved("config", false));
 
   /**
@@ -659,6 +668,12 @@
       message: m.config_val_incomplete_min_free_disk,
     },
     {
+      // The server refuses it too, naming the config key; this says it with the switch's label.
+      group: "library" as GroupId,
+      ok: config.torrent_client !== "qbittorrent" || config.library_mode === "direct",
+      message: m.config_qbittorrent_needs_direct,
+    },
+    {
       group: "client" as GroupId,
       ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
       message: m.config_val_qbittorrent_url,
@@ -676,12 +691,13 @@
     // A download folder that is one of Shoko's (decisions/152), as saved: Shoko never sees a
     // half-written file. The server checks the folders being saved.
     {
-      group: "downloads" as GroupId,
+      // Library: the fields they name (Hide Unfinished Files, the incomplete folder) live there.
+      group: "library" as GroupId,
       ok: !config.shoko_enabled || !anyRootInShoko || config.incomplete_files !== "in_place" || !!config.incomplete_path?.trim(),
       message: m.config_val_shoko_folder_in_place,
     },
     {
-      group: "downloads" as GroupId,
+      group: "library" as GroupId,
       // qBittorrent moves a staged torrent in under its final names (decisions/145).
       ok: !config.shoko_enabled || !anyRootInShoko || config.torrent_client !== "qbittorrent" || !config.incomplete_path?.trim(),
       message: m.config_val_shoko_folder_qbit_staging,
@@ -717,6 +733,8 @@
       baseline = configSnapshot(config);
       // Which download folders are Shoko's follows the saved folders and path map.
       if (shokoStatus) void loadShokoStatus();
+      // Saved and valid: the "missing configurations" banner from the first run has done its job.
+      showMissingConfigBanner = false;
       toast.success(result?.restart_required ? m.config_restart_required() : m.config_saved());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.config_error_save());
@@ -967,8 +985,21 @@
                 label={(T && T.labelRenameJellyfin) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintRenameJellyfin}</p>
+              <p class="text-caption text-subtle">{config.library_mode === "direct" ? ($locale && m.config_hint_rename_jellyfin_direct()) : (T && T.hintRenameJellyfin)}</p>
             </div>
+            <!-- Only with renaming on, the one case it changes a name (config.md). -->
+            {#if config.library_mode === "direct" && config.rename_files_for_jellyfin}
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="episode_numbering"
+                  checked={config.episode_numbering !== "entry"}
+                  on:change={(e) => (config.episode_numbering = isOn(e) ? "season" : "entry")}
+                  label={(T && T.labelSeasonNumbering) || ""}
+                  inline={true}
+                />
+                <p class="text-caption text-subtle">{T && T.hintSeasonNumbering}</p>
+              </div>
+            {/if}
 
             <!-- Direct library mode. The options are two-valued strings in config.json, drawn as
                  toggles (no select component exists here): `checked` is one-way and on:change writes
@@ -1017,6 +1048,9 @@
                   inline={true}
                 />
                 <p class="text-caption text-subtle">{T && T.hintPartFiles}</p>
+                {#if config.incomplete_path?.trim()}
+                  <p class="text-caption text-warn" data-testid="part-files-staged">{$locale && m.config_hint_part_files_staged()}</p>
+                {/if}
               </div>
 
               <!-- Staging (decisions/141): downloads on a fast drive, moved into the library
@@ -1032,6 +1066,20 @@
                   placeholder="/mnt/nvme/aad-incomplete"
                 />
               </div>
+              {#if config.incomplete_path}
+                <div class="p-4.5">
+                  <Input
+                    id="incomplete_min_free_disk_gb"
+                    label={(T && T.labelIncompleteMinFree) || ""}
+                    subtitle={(T && T.hintIncompleteMinFree) || ""}
+                    type="number"
+                    bind:value={config.incomplete_min_free_disk_gb}
+                    min="0"
+                    inline={true}
+                    suffix="GiB"
+                  />
+                </div>
+              {/if}
 
               <!-- Several download folders, filled in order (decisions/154). The library is a root
                    only while the list is empty, so the first add lists it too. -->
@@ -1093,31 +1141,7 @@
                 {/if}
               </div>
 
-              {#if config.incomplete_path}
-                <div class="p-4.5">
-                  <Input
-                    id="incomplete_min_free_disk_gb"
-                    label={(T && T.labelIncompleteMinFree) || ""}
-                    subtitle={(T && T.hintIncompleteMinFree) || ""}
-                    type="number"
-                    bind:value={config.incomplete_min_free_disk_gb}
-                    min="0"
-                    inline={true}
-                    suffix="GiB"
-                  />
-                </div>
-              {/if}
 
-              <div class="space-y-1.5 p-4.5">
-                <Toggle
-                  id="episode_numbering"
-                  checked={config.episode_numbering !== "entry"}
-                  on:change={(e) => (config.episode_numbering = isOn(e) ? "season" : "entry")}
-                  label={(T && T.labelSeasonNumbering) || ""}
-                  inline={true}
-                />
-                <p class="text-caption text-subtle">{T && T.hintSeasonNumbering}</p>
-              </div>
             {/if}
 
             <div class="p-4.5">
@@ -1171,6 +1195,7 @@
               <Input
                 id="check_interval"
                 label={T && T.labelCheckInterval || ""}
+                subtitle={($locale && m.config_hint_check_interval()) || ""}
                 type="number"
                 bind:value={config.check_interval}
                 min="1"
@@ -1255,6 +1280,7 @@
                 label={(T && T.labelDeleteWatched) || ""}
                 inline={true}
               />
+              <p class="text-caption text-subtle">{$locale && m.config_hint_delete_watched()}</p>
               {#if config.delete_watched_episodes}
                 <Input
                   id="watched_episodes_to_keep"
@@ -1311,6 +1337,7 @@
               <Input
                 id="episode_retry_limit"
                 label={T && T.labelRetryLimit || ""}
+                subtitle={($locale && m.config_hint_retry_limit()) || ""}
                 type="number"
                 bind:value={config.episode_retry_limit}
                 min="1"
@@ -1391,6 +1418,9 @@
                   {$locale && m.config_shoko_not_signed_in()}
                 {/if}
               </p>
+              {#if shokoStatus?.signed_in}
+                <Button variant="ghost" on:click={signOutOfShoko}>{$locale && m.config_btn_shoko_sign_out()}</Button>
+              {/if}
               {#if shokoStatus?.last_error}
                 <p class="text-caption text-danger">{$locale && m.config_shoko_last_error({ error: shokoStatus.last_error })}</p>
               {/if}
@@ -1438,7 +1468,11 @@
               />
             </div>
             <div class="space-y-1.5 p-4.5">
-              <Button variant="ghost" disabled={!shokoStatus?.signed_in} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+              <!-- The pass reads Shoko only while it is on in the saved config (shoko.go ForPass). -->
+              <Button variant="ghost" disabled={!shokoStatus?.signed_in || !shokoStatus?.enabled} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+              {#if shokoStatus?.signed_in && !shokoStatus?.enabled}
+                <p class="text-caption text-subtle" data-testid="shoko-full-sync-off">{$locale && m.config_hint_shoko_full_sync_off()}</p>
+              {/if}
               {#if shokoStatus?.last_full_sync && !shokoStatus.last_full_sync.startsWith("0001")}
                 <p class="text-caption text-body" data-testid="shoko-last-full">{$locale && m.config_shoko_last_full_sync({ when: new Date(shokoStatus.last_full_sync).toLocaleString() })}</p>
               {/if}
@@ -1640,13 +1674,22 @@
       </div>
 
       <!-- Actions. `solid` only on Save: it's the screen's only solid accent (§4.1). -->
-      <div class="flex flex-wrap justify-end gap-2.5">
+      <div class="flex flex-wrap items-center justify-end gap-2.5">
+        {#if unsaved}
+          <p class="text-caption text-subtle" data-testid="run-check-save-first">{$locale && m.config_run_check_save_first()}</p>
+        {/if}
+        <!-- A check reads the saved settings: with edits pending it would run on the old ones, and the
+             leave guard would then ask to discard them. -->
         <Button
           variant="ghost"
-          disabled={saving}
+          disabled={saving || unsaved}
           on:click={async () => {
-            await triggerCheck();
-            window.location.hash = "#/status";
+            try {
+              await triggerCheck();
+              window.location.hash = "#/status";
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : String(err));
+            }
           }}
         >
           {T && T.btnRunCheck}
