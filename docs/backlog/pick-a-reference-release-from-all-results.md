@@ -24,6 +24,15 @@ Bilibili WEB-DL, H.264 and HEVC, Japanese, dual audio and English dub. No pack e
 screen shows "0 packs" and "No packs, try another query" with nothing to choose. For an airing
 anime that is the normal case until its season ends.
 
+## How it is done today
+
+The only way to steer which release an anime downloads is the global Priorities page, set before
+adding the anime. In the test instance on 2026-11-25 the anime came from Add anime (not an AniList
+list). With the default priorities, episodes 1–8 came from SubsPlease (H.264). Then Judas was
+moved to the top of the fansubs and AV1 and HEVC above H.264, and the anime was added again:
+episodes 1–8 came from Judas (HEVC 10-bit), and the SubsPlease files are gone. That works, but it
+changes the ranking for every anime, and each anime has to be removed and added again.
+
 ## Overlap with the release-filters spec
 
 [Release filters](../superpowers/specs/2026-11-23-release-filters-design.md) §6 "Following a
