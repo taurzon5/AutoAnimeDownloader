@@ -1,37 +1,28 @@
 import { writable } from 'svelte/store'
 import { setLocale, locales } from '../i18n/runtime.js'
 
-export type Locale = 'en' | 'pt-BR'
+// The web UI is English only (decisions/156). The store stays because every screen reads text as
+// `$locale && m.x()`, the pattern that re-rendered on a language change; it never changes now.
+export type Locale = 'en'
 
-const LOCALE_KEY = 'PARAGLIDE_LOCALE'
 const isBrowser = typeof window !== 'undefined'
 
-function detectBrowserLocale(): Locale {
-  if (!isBrowser) return 'en'
-  const lang = navigator.language || ''
-  if (lang.startsWith('pt')) return 'pt-BR'
-  return 'en'
+// A browser that used the Portuguese UI keeps PARAGLIDE_LOCALE in localStorage, and paraglide may
+// have left its cookie: setting English here overwrites both.
+if (isBrowser) {
+  try {
+    localStorage.removeItem('PARAGLIDE_LOCALE')
+  } catch {
+    // storage blocked: nothing to clean
+  }
 }
+setLocale('en', { reload: false })
 
-function getInitialLocale(): Locale {
-  if (!isBrowser) return 'en'
-  const stored = localStorage.getItem(LOCALE_KEY) as Locale | null
-  if (stored && (locales as readonly string[]).includes(stored)) return stored
-  return detectBrowserLocale()
-}
-
-const initial = getInitialLocale()
-setLocale(initial, { reload: false })
-
-const { subscribe, set } = writable<Locale>(initial)
+const { subscribe, set } = writable<Locale>('en')
 
 export const locale = {
   subscribe,
-  set: (newLocale: Locale) => {
-    if (isBrowser) localStorage.setItem(LOCALE_KEY, newLocale)
-    setLocale(newLocale, { reload: false })
-    set(newLocale)
-  }
+  set: (newLocale: Locale) => set(newLocale),
 }
 
 export { locales }

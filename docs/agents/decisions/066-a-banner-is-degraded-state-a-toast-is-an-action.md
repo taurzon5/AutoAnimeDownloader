@@ -35,5 +35,5 @@ The cause travels **inside** the error (sentinels wrapped with `%w`), not in a n
 - Making the banner vanish by timer — the state either ended (a 200 arrived) or it did not.
 - Putting a report button on every banner "for symmetry" — reporting a rate limit is reporting normal behaviour.
 - Swapping the outage banner for a toast "because it's an error" — a toast goes away, the outage does not; the screen stays wrong after it vanished.
-- Sending a ready-made phrase from Go instead of a code, "because it's just one string" — the daemon does not know the browser's locale, and that is how the raw JSON reached the screen.
+- Sending a ready-made phrase from Go instead of a code, "because it's just one string" — the frontend owns the wording (its message file, decisions/156), and that is how the raw JSON reached the screen.
 - Removing the `<details>` of the raw text "because the user doesn't understand it" — whoever opens an issue needs it, and collapsed it does not get in the way of whoever does not.

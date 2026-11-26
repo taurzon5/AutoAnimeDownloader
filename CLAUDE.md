@@ -23,8 +23,9 @@ AutoAnimeDownloader = Go daemon. Auto-downloads anime episodes. Integrates Anili
 ## Important — Everything in English
 
 Since 2026-10-12, everything in the repo is in **English**: code (identifiers, comments, log and
-error messages), file and directory names, documentation, specs, TODO and commit messages. The only
-exception is the Portuguese **i18n translation** of the web UI, which stays.
+error messages), file and directory names, documentation, specs, TODO and commit messages. The web
+UI is English only too: its Portuguese translation was dropped on 2026-11-26
+([decisions/156](docs/agents/decisions/156-the-web-ui-is-english-only-and-its-message-layer.md)).
 
 Found something in Portuguese while working — in a file you're touching or one next to it? **Translate
 it to English right away, without asking**, and tell the user what you changed (`file:line` or file

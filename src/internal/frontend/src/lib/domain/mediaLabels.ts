@@ -1,6 +1,6 @@
 /**
  * AniList's media format and status codes as the user reads them (review finding 33): the codes
- * ("TV_SHORT", "NOT_YET_RELEASED") stayed English in pt-BR. Statuses reuse the labels Settings
+ * ("TV_SHORT", "NOT_YET_RELEASED") were shown raw. Statuses reuse the labels Settings
  * already shows for the airing statuses to download. An unknown code falls back to the code with
  * spaces, as before.
  */

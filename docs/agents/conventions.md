@@ -138,7 +138,7 @@ that is what `grep` finds and what `ls docs/agents/decisions/NNN-*` opens.
 ## Messages With a Count (i18n)
 
 A message that prints a count whose noun changes with it ("1 episode" / "2 episodes") is written
-as variants in `messages/{en,pt-BR}.json`, never as `episode(s)`:
+as variants in `messages/en.json`, never as `episode(s)`:
 
 ```json
 "add_toast_added": [{
@@ -148,10 +148,10 @@ as variants in `messages/{en,pt-BR}.json`, never as `episode(s)`:
 }]
 ```
 
-Exact match on `1`, **not** `local countPlural = count: plural`: CLDR puts 0 in "one" for
-Portuguese, so the plural rule prints "0 visto". With two counts, one selector each
-(`"candidates=1, seeders=*"`). A locale whose text doesn't change keeps a plain string — `en`
-"{count} watched" next to pt-BR's variants is fine. Pinned by `tests/unit/plurals.test.ts`.
+Exact match on `1`, **not** `local countPlural = count: plural`: it reads the same in English and
+doesn't depend on a locale's plural rules. With two counts, one selector each
+(`"candidates=1, seeders=*"`). A count whose text doesn't change keeps a plain string ("{count}
+watched"). The UI is English only (decisions/156). Pinned by `tests/unit/plurals.test.ts`.
 
 ## Dual FileManagerInterface
 

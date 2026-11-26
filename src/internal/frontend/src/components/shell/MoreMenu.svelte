@@ -2,7 +2,7 @@
   // MoreMenu — "More" item of NavRail (desktop) and NavTabBar (mobile). One component, with
   // two usage contexts (spec §5 + ambiguity #3 of the Phase 1 brief): always lists
   // Notifications/Priorities/Logs (`moreMenuItems` from lib/navItems.ts, single source); on
-  // mobile it also hosts theme/locale/WS/version, which on desktop already sit fixed in the
+  // mobile it also hosts theme/WS/version, which on desktop already sit fixed in the
   // NavRail footer (that's why `showFooterControls`).
   //
   // Local and simple implementation (close on backdrop + Escape) because the generic menu
@@ -19,7 +19,7 @@
   export let currentPath = ''
   /** Panel positioning classes — each caller (rail vs tab bar) anchors differently. */
   export let anchorClass = ''
-  /** Only true on the mobile tab bar: there the menu also hosts theme/locale/WS/version. */
+  /** Only true on the mobile tab bar: there the menu also hosts theme/WS/version. */
   export let showFooterControls = false
 
   let appVersion = ''
@@ -65,9 +65,6 @@
       })
   }
 
-  function toggleLocale() {
-    locale.set($locale === 'en' ? 'pt-BR' : 'en')
-  }
 
   function close() {
     open = false
@@ -129,15 +126,6 @@
           <span class="text-[11px] text-subtle">v{appVersion}</span>
           <UpdateBadge version={latestVersion} url={latestVersionURL} />
         {/if}
-
-        <button
-          type="button"
-          on:click={toggleLocale}
-          class="min-h-[44px] rounded-control border border-default px-2 py-1 text-caption font-semibold text-body hover:bg-control transition-colors"
-          title={$locale === 'en' ? 'Switch to Português' : 'Mudar para English'}
-        >
-          {$locale === 'en' ? 'EN' : 'PT'}
-        </button>
       </div>
 
       <div class="px-3 pt-2">

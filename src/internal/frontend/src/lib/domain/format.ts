@@ -1,7 +1,6 @@
 /**
  * `format.ts` (spec §7, Fase 2) — locale-sensitive formatting for speed, bytes, percent, ETA
- * and date. pt-BR uses a comma decimal separator and a dot thousands separator ("4,2 MB/s",
- * "1.023,9 KB"); en uses the reverse. Every function takes `locale` explicitly instead of
+ * and date, in English (decisions/156: the UI dropped Portuguese). Every function takes `locale` explicitly instead of
  * reading `lib/stores/locale.ts` — that store is a Svelte `writable`, and pulling it in here
  * would be exactly the dependency `lib/domain/` is not allowed to have. Screens read
  * `$locale` and pass it through.
@@ -23,7 +22,7 @@
  * Status, Fase 4 AnimeDetail, Fase 5 Downloads).
  */
 
-export type FormatLocale = 'en' | 'pt-BR'
+export type FormatLocale = 'en'
 
 const IDLE = '—'
 const SPEED_UNITS = ['KB/s', 'MB/s', 'GB/s']
@@ -145,7 +144,7 @@ export function formatEta(seconds: number | null, locale: FormatLocale): string 
 
 /**
  * Formats an ISO date string (or any `Date`-constructor-accepted value) in the runtime's local
- * timezone, locale-ordered (dd/mm/yyyy for pt-BR, m/d/yy for en). Falsy input, or a value that
+ * timezone, locale-ordered (m/d/yy). Falsy input, or a value that
  * doesn't parse to a valid date, renders as a dash.
  */
 export function formatDate(value: string | number | Date | null | undefined, locale: FormatLocale): string {

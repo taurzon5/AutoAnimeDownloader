@@ -761,8 +761,8 @@
       </div>
 
       <!-- `flex-wrap` and NO `shrink-0`: the row was `flex shrink-0 gap-2`, i.e. it could neither
-           shrink nor wrap, and its width stayed the sum of the three buttons forever (358px in
-           `en`, 438px in pt-BR). On a narrow screen "Stop Daemon" went off the right edge. The
+           shrink nor wrap, and its width stayed the sum of the three buttons forever (358px).
+           On a narrow screen "Stop Daemon" went off the right edge. The
            `shrink-0` was the problem, not the solution: as an item of the `flex-wrap` header, it
            locked the row at a single line's max-content, so the inner wrap never had a narrow line
            to work with. Without it, the floor becomes the min-content (the widest button) and the
@@ -1171,8 +1171,9 @@
       <!-- Toolbar. `shrink-0` on the container is what keeps the filter strip from collapsing when
            the list below grows (spec §9.1, mobile note). Type segments share the row with search
            from `lg` (same cut as the table); below that the ActionMenu sits next to Unwatched.
-           `flex-wrap` is what stops the five Portuguese labels from painting past the card edge
-           at 1024px — `overflow-x-auto` clipped them with no hint they were there. -->
+           `flex-wrap` is what stops the five type labels from painting past the card edge at
+           1024px — `overflow-x-auto` clipped them with no hint they were there (they were the
+           longer Portuguese ones then, decisions/156). -->
       <div class="flex shrink-0 flex-col gap-3 border-b border-divider p-4 sm:flex-row sm:flex-wrap sm:items-center">
         <h2 class="text-card-title text-heading">{T && T.animesHeader}</h2>
 

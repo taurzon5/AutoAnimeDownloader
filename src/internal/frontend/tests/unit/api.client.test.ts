@@ -92,22 +92,6 @@ describe('api client', () => {
     expect(list[list.length - 1].message).toBe('Failed to reach AniList')
   })
 
-  it('getAnimeDetail 500 toasts in Portuguese when the locale is pt-BR', async () => {
-    locale.set('pt-BR')
-    try {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        json: async () => ({ success: false, error: { code: 'ERR', message: 'Internal error' } }),
-      })
-      await expect(getAnimeDetail(1)).rejects.toThrow()
-      const list = get(toasts)
-      expect(list[list.length - 1].message).toBe('Falha na comunicação com o AniList')
-    } finally {
-      locale.set('en')
-    }
-  })
-
   it('non-Error rejection toasts the unknown-error i18n message', async () => {
     locale.set('en')
     mockFetch.mockRejectedValueOnce('boom')

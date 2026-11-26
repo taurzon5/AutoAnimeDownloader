@@ -38,6 +38,6 @@ the user can turn off, and it should be **off by default**. Not tied to a releas
 - **What else reads it:** the `episode_limit_reached` notification (never fires when off),
   [decisions/048](../agents/decisions/048-max-episodes-per-anime-never-limited-batches-the.md) and
   [decisions/137](../agents/decisions/137-direct-mode-deletes-through-the-torrent-and-keep.md),
-  the hint in `en.json` and `pt-BR.json`, and the `MaxEpisodesPerAnime` row of `config.md`.
+  the hint in `en.json`, and the `MaxEpisodesPerAnime` row of `config.md`.
 - **Together with** [direct-mode-by-default.md](direct-mode-by-default.md): direct mode with keep
   forever already ignores the limit, so if both land, a fresh install has no limit either way.

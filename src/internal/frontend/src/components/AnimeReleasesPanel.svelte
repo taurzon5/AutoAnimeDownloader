@@ -113,7 +113,7 @@
       {#each cards as card (card.hash)}
         <li class="rounded-field bg-control px-3 py-2.5 {card.state === 'removed' ? 'opacity-70' : ''}" data-testid="release-card">
           <!-- The state chip doesn't wrap: on a phone it goes above the name, which then gets the whole
-               width (beside it, pt-BR's "Na biblioteca, sem semear" left the name a third). -->
+               width (beside it, a long state label left the name a third). -->
           <div class="flex flex-col-reverse items-start gap-1.5 sm:flex-row sm:justify-between sm:gap-2">
             <div class="min-w-0 w-full sm:w-auto sm:flex-1">
               <p class="break-words text-copy font-semibold text-heading">

@@ -134,7 +134,6 @@ test.describe('type filter hybrid control', () => {
     })
 
     test('keeps every type radio inside the animes card', async ({ page }) => {
-      await page.addInitScript(() => localStorage.setItem('PARAGLIDE_LOCALE', 'pt-BR'))
       await setupStatusPageMocks(page, 'running', makeAnimesResponse())
       await page.goto('/')
       const card = page.locator('section').filter({ has: page.getByRole('heading', { name: /^animes$/i }) })
@@ -151,13 +150,12 @@ test.describe('type filter hybrid control', () => {
     })
   })
 
-  // Tightest width where the table (and the segmented type control) is on: Portuguese
-  // labels are the long ones, and this is the screenshot that was clipping Blacklist.
+  // Tightest width where the table (and the segmented type control) is on: this is the
+  // screenshot that was clipping Blacklist.
   test.describe('desktop tight', () => {
     test.use({ viewport: { width: 1024, height: 720 } })
 
-    test('keeps every type radio inside the animes card in pt-BR', async ({ page }) => {
-      await page.addInitScript(() => localStorage.setItem('PARAGLIDE_LOCALE', 'pt-BR'))
+    test('keeps every type radio inside the animes card at the tightest desktop width', async ({ page }) => {
       await setupStatusPageMocks(page, 'running', makeAnimesResponse())
       await page.goto('/')
       const card = page.locator('section').filter({ has: page.getByRole('heading', { name: /^animes$/i }) })

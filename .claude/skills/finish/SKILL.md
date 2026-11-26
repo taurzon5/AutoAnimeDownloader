@@ -71,7 +71,7 @@ files → the matching doc in `docs/agents/`. A new API endpoint or web-app acti
   only, no body, no trailer, the behavior rather than the file.
 - Do not push.
 
-## 7. Report (in Portuguese, short)
+## 7. Report (in English, short)
 
 - the commit hash and subject;
 - what simplify and code-review changed, one line each;

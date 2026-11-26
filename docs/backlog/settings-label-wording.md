@@ -14,6 +14,6 @@ when it is fixed or dropped.
 ## What to check
 
 - One casing rule; "List Statuses to Download / Airing Statuses to Download / List Statuses to
-  Delete", "Excluded Lists", "Library Folder", in en and pt-BR.
+  Delete", "Excluded Lists", "Library Folder".
 - Hints and docs that quote the labels (webui.md, other hints) change with them; tests that find
   fields by label too.

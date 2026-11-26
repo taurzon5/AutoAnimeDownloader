@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # PostToolUse(Edit|Write): flag Portuguese in the text that was just written. Advisory, never blocks.
-# CLAUDE.md "Everything in English" — the pt-BR UI translation is the only exception.
+# CLAUDE.md "Everything in English": no exception since the web UI dropped Portuguese (decisions/156).
 set -euo pipefail
 
 input=$(cat)
 file=$(jq -r '.tool_input.file_path // ""' <<<"$input")
 
 case "$file" in
-  */messages/pt-BR.json | */i18n/*) exit 0 ;; # the translation itself
+  */i18n/*) exit 0 ;; # paraglide's generated output
 esac
 
 # Only the new text: Edit → new_string, Write → content. Pre-existing lines are not re-flagged.
@@ -23,6 +23,6 @@ hits=$(LC_ALL=C.UTF-8 grep -inP "$pattern" <<<"$text" | head -n 8 || true)
 jq -n --arg file "$file" --arg hits "$hits" '{
   hookSpecificOutput: {
     hookEventName: "PostToolUse",
-    additionalContext: ("Possible Portuguese in what you just wrote to \($file) (CLAUDE.md: everything in English except the pt-BR UI translation):\n\($hits)\nTranslate it unless it is a pt-BR UI string a test asserts on, or a user phrase a skill must match.")
+    additionalContext: ("Possible Portuguese in what you just wrote to \($file) (CLAUDE.md: everything in English):\n\($hits)\nTranslate it unless it is a user phrase a skill must match.")
   }
 }'

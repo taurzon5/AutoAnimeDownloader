@@ -48,9 +48,8 @@ agent-browser console; agent-browser errors      # JS errors are findings too
 
 Routes are hash-based (table in `src/internal/frontend/src/App.svelte`): `#/status`, `#/add`,
 `#/downloads`, `#/config`, `#/priorities`, `#/notifications`, `#/logs`, `#/report`, and
-`#/status/<id>` for an anime's detail page. The UI follows the browser language (pt-BR here); for width/layout checks look at
-pt-BR **and** en — pt-BR labels are longer (see [testing.md](../../../docs/agents/testing.md#layout-regressions-testssmokelayoutspects)).
-Set it before navigating: `agent-browser eval "localStorage.setItem('PARAGLIDE_LOCALE','en')"` and reload.
+`#/status/<id>` for an anime's detail page. The UI is English only; for width/layout checks look at
+the narrowest widths, 320px included (see [testing.md](../../../docs/agents/testing.md#layout-regressions-testssmokelayoutspects)).
 
 The API and CLI hit the same daemon: `curl -s localhost:8092/api/v1/status`,
 `AAD_API_ENDPOINT=http://localhost:8092 go run ./src/cmd/cli <command>`.

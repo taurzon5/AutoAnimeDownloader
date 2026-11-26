@@ -65,9 +65,6 @@
           : T.wsDisconnected
     : ''
 
-  function toggleLocale() {
-    locale.set($locale === 'en' ? 'pt-BR' : 'en')
-  }
 
   // The width (82px, inside a 92px rail) is dictated by the longest label: "Settings" in
   // Manrope 700/10.5px measures 75px. At the previous size (9.5px in a 56px item) that label
@@ -177,15 +174,6 @@
       <span class="text-[11px] text-subtle">v{appVersion}</span>
       <UpdateBadge version={latestVersion} url={latestVersionURL} />
     {/if}
-
-    <button
-      type="button"
-      on:click={toggleLocale}
-      class="rounded-control border border-default px-1.5 py-0.5 text-[11px] font-semibold text-body hover:bg-control transition-colors"
-      title={$locale === 'en' ? 'Switch to Português' : 'Mudar para English'}
-    >
-      {$locale === 'en' ? 'EN' : 'PT'}
-    </button>
 
     {#if T}
       <label for="theme-select" class="sr-only">{T.themeLabel}</label>

@@ -167,3 +167,4 @@ do not edit by hand.
 - [**#153** — A pack's episodes already in Shoko are removed for an anime that doesn't keep them: skipped with qBittorrent, deleted once downloaded otherwise, and a rain pack stops seeding](153-a-packs-episodes-already-in-shoko-are-removed-for.md)
 - [**#154** — Several download roots: each placement records its root, the disk budget picks the first root with space after the anime's override and its series' root, and roots on one drive share its space](154-several-download-roots-each-placement-records-its.md)
 - [**#155** — The app's blacklist stops checking and downloading an anime and keeps its files](155-the-apps-blacklist-stops-checking-and-downloading.md)
+- [**#156** — The web UI is English only, and its message layer stays with one locale](156-the-web-ui-is-english-only-and-its-message-layer.md)

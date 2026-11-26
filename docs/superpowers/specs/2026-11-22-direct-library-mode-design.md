@@ -253,7 +253,7 @@ warning), the roots list, the rules list (one row per rule, root picker plus mat
 pack-folder rename, and keep-forever vs auto-delete (saying that keep forever also turns off the
 episode limit). Everything except the mode switch is hidden in
 hardlink mode. The anime detail screen gets a root picker for the override. Status shows one disk
-card per root. All strings in `en.json` and `pt-BR.json`.
+card per root. All strings in `en.json`.
 
 ---
 

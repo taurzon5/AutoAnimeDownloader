@@ -27,24 +27,23 @@ describe('recentShelf', () => {
 })
 
 describe('recentCaption', () => {
-  // The spec's four rows, in both locales.
-  const rows: { r: AnimeRecent; en: string; pt: string }[] = [
-    { r: recent(0, [{ from: 5, to: 5 }]), en: 'Episode 5', pt: 'Episódio 5' },
-    { r: recent(0, [{ from: 1, to: 3 }]), en: 'Episodes 1–3', pt: 'Episódios 1–3' },
-    { r: recent(0, [{ from: 1, to: 12 }], true), en: '1–12 · pack', pt: '1–12 · lote' },
-    { r: recent(0, [{ from: 1, to: 3 }, { from: 5, to: 5 }], true), en: 'Episodes 1–3, 5', pt: 'Episódios 1–3, 5' },
+  // The spec's four rows.
+  const rows: { r: AnimeRecent; en: string }[] = [
+    { r: recent(0, [{ from: 5, to: 5 }]), en: 'Episode 5' },
+    { r: recent(0, [{ from: 1, to: 3 }]), en: 'Episodes 1–3' },
+    { r: recent(0, [{ from: 1, to: 12 }], true), en: '1–12 · pack' },
+    { r: recent(0, [{ from: 1, to: 3 }, { from: 5, to: 5 }], true), en: 'Episodes 1–3, 5' },
   ]
-  for (const { r, en, pt } of rows) {
+  for (const { r, en } of rows) {
     it(en, () => {
       const c = recentCaption(r)
-      const text = (locale: 'en' | 'pt-BR') =>
+      const text =
         c.kind === 'episode'
-          ? m.recent_caption_episode({ n: String(c.n) }, { locale })
+          ? m.recent_caption_episode({ n: String(c.n) })
           : c.kind === 'pack'
-            ? m.recent_caption_pack({ span: c.span }, { locale })
-            : m.recent_caption_episodes({ span: c.span }, { locale })
-      expect(text('en')).toBe(en)
-      expect(text('pt-BR')).toBe(pt)
+            ? m.recent_caption_pack({ span: c.span })
+            : m.recent_caption_episodes({ span: c.span })
+      expect(text).toBe(en)
     })
   }
 

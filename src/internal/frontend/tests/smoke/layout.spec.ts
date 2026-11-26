@@ -381,60 +381,52 @@ for (const width of [375, 390, 414]) {
 
 /**
  * Daemon actions in the Status header. The row was `flex shrink-0 gap-2`: it could neither shrink
- * NOR wrap, so its width was the sum of the three buttons forever — 358px in English, 438px in
- * pt-BR — and on a narrow screen "Stop Daemon" went off the right edge.
- *
- * Parametrized by LOCALE on purpose. The rest of the suite runs only in `en`, the default, and
- * that's exactly what let the bug through: in English the labels are ~80px shorter and the row only
- * overflowed below 375px, outside the tested widths. pt-BR is the longer of the two languages; a
- * width test that only runs in `en` measures the easy case.
+ * NOR wrap, so its width was the sum of the three buttons forever (358px), and on a narrow screen
+ * "Stop Daemon" went off the right edge. The UI is English only now (decisions/156); the 320px case
+ * is the one that overflowed in English.
  */
-for (const locale of ['en', 'pt-BR'] as const) {
-  for (const width of [320, 375, 390, 414] as const) {
-    test(`status header daemon actions stay on screen at ${width}px in ${locale}`, async ({
-      page,
-    }) => {
-      await page.addInitScript(l => localStorage.setItem('PARAGLIDE_LOCALE', l), locale)
-      await setupStatusPageMocks(page, 'running')
-      await page.setViewportSize({ width, height: 844 })
-      await page.goto('/#/status')
+for (const width of [320, 375, 390, 414] as const) {
+  test(`status header daemon actions stay on screen at ${width}px`, async ({
+    page,
+  }) => {
+    await setupStatusPageMocks(page, 'running')
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/#/status')
 
-      // Scoped to the header row: "+ Add anime" also exists in the list's empty state and in the
-      // mobile NavTabBar, so the accessible name alone matches three elements. "Force check"
-      // ("Forçar verificação") only exists here, and serves as the anchor to reach the row.
-      const row = page
-        .getByRole('button', { name: /forçar verificação|force check/i })
-        .locator('..')
+    // Scoped to the header row: "+ Add anime" also exists in the list's empty state and in the
+    // mobile NavTabBar, so the accessible name alone matches three elements. "Force check"
+    // ("Forçar verificação") only exists here, and serves as the anchor to reach the row.
+    const row = page
+      .getByRole('button', { name: /forçar verificação|force check/i })
+      .locator('..')
 
-      const actions = [
-        row.getByRole('link', { name: /adicionar anime|add anime/i }),
-        row.getByRole('button', { name: /forçar verificação|force check/i }),
-        row.getByRole('button', { name: /parar daemon|stop daemon/i }),
-      ]
-      for (const action of actions) {
-        // ratio 1: the WHOLE button in the viewport, not an edge of it.
-        await expect(action).toBeInViewport({ ratio: 1 })
-      }
+    const actions = [
+      row.getByRole('link', { name: /adicionar anime|add anime/i }),
+      row.getByRole('button', { name: /forçar verificação|force check/i }),
+      row.getByRole('button', { name: /parar daemon|stop daemon/i }),
+    ]
+    for (const action of actions) {
+      // ratio 1: the WHOLE button in the viewport, not an edge of it.
+      await expect(action).toBeInViewport({ ratio: 1 })
+    }
 
-      // And the page didn't gain a horizontal scroll — it's the symptom the user sees.
-      const over = await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      )
-      expect(over, 'the page scrolls horizontally').toBe(false)
-    })
-  }
+    // And the page didn't gain a horizontal scroll — it's the symptom the user sees.
+    const over = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    )
+    expect(over, 'the page scrolls horizontally').toBe(false)
+  })
 }
+
 
 /**
  * Logs level pills — the third screen with the same regression: the row was `overflow-x-auto`,
- * so at 375px "Info" was cut in half and "Debug" sat behind a sideways drag. pt-BR because its
- * labels are the longer ones (see the note on width tests in testing.md).
+ * so at 375px "Info" was cut in half and "Debug" sat behind a sideways drag.
  */
 for (const width of [320, 375, 414]) {
-  test(`every logs level pill is visible without horizontal scroll at ${width}px in pt-BR`, async ({
+  test(`every logs level pill is visible without horizontal scroll at ${width}px`, async ({
     page,
   }) => {
-    await page.addInitScript(() => localStorage.setItem('PARAGLIDE_LOCALE', 'pt-BR'))
     await page.route('**/api/v1/logs**', route =>
       route.fulfill({ json: { success: true, data: { lines: [], total: 0 } } }),
     )
@@ -456,28 +448,26 @@ for (const width of [320, 375, 414]) {
 
 /**
  * Bottom tab bar labels. Each column is `flex-1` with a `truncate` label, so a label wider than
- * ~70px silently became an ellipsis: "Configuration" read "Configurati…" at 390px in en, and
- * "Adicionar anime"/"Configurações" were cut in pt-BR. Those items now carry a `shortLabel`
- * (navItems.ts); this checks that every label renders whole at the common phone widths.
+ * ~70px silently became an ellipsis: "Configuration" read "Configurati…" at 390px. Those items now
+ * carry a `shortLabel` (navItems.ts); this checks that every label renders whole at the common phone
+ * widths.
  */
-for (const locale of ['en', 'pt-BR'] as const) {
-  for (const width of [375, 390, 414] as const) {
-    test(`no tab bar label is cut at ${width}px in ${locale}`, async ({ page }) => {
-      await page.addInitScript(l => localStorage.setItem('PARAGLIDE_LOCALE', l), locale)
-      await setupStatusPageMocks(page, 'running')
-      await page.setViewportSize({ width, height: 844 })
-      await page.goto('/#/status')
+for (const width of [375, 390, 414] as const) {
+  test(`no tab bar label is cut at ${width}px`, async ({ page }) => {
+    await setupStatusPageMocks(page, 'running')
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/#/status')
 
-      const labels = page.getByRole('navigation', { name: 'Main' }).locator('span.truncate')
-      await expect(labels).toHaveCount(5)
-      for (const label of await labels.all()) {
-        const { scrollWidth, clientWidth, text } = await label.evaluate(el => ({
-          scrollWidth: el.scrollWidth,
-          clientWidth: el.clientWidth,
-          text: el.textContent,
-        }))
-        expect(scrollWidth, `"${text}" is cut`).toBeLessThanOrEqual(clientWidth)
-      }
-    })
-  }
+    const labels = page.getByRole('navigation', { name: 'Main' }).locator('span.truncate')
+    await expect(labels).toHaveCount(5)
+    for (const label of await labels.all()) {
+      const { scrollWidth, clientWidth, text } = await label.evaluate(el => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        text: el.textContent,
+      }))
+      expect(scrollWidth, `"${text}" is cut`).toBeLessThanOrEqual(clientWidth)
+    }
+  })
 }
+

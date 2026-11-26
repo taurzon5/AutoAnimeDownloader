@@ -492,8 +492,8 @@ compile until someone decides the criticality. The budget gate (`health.go`) ref
 `PriorityDisposable` with `ErrBudgetLow` when AniList quota is low — nothing goes out, and the
 package health does not change (decisions/072). The limit is 30 req/min per IP.
 
-**Health is exposed as a code, never a ready-made phrase** — the daemon does not know the browser
-locale (same reason as `daemon/passerror.go`). It is written by **every** response that goes through
+**Health is exposed as a code, never a ready-made phrase** — the frontend owns the wording, in its
+message file (decisions/066, decisions/156; same reason as `daemon/passerror.go`). It is written by **every** response that goes through
 `sendAnilistRequest`, and AniList returns 200 with an error in the body, so the envelope is read
 too (decisions/065 and decisions/066).
 
