@@ -333,7 +333,7 @@ describe('Status — review fixes (20, 21, 22)', () => {
       disk_total: 100, disk_free: 90, disk_low: false,
       disks: [
         { name: 'shoko', path: '/shoko', total: 100, free: 90, low: false, drive: 0 },
-        { name: 'library', path: '/library', total: 100, free: 90, low: false, drive: 0 },
+        { name: 'library', path: '/library', total: 100, free: 90, low: true, drive: 0 },
         { name: 'hdd', path: '/hdd', total: 500, free: 400, low: false, drive: 2 },
       ],
     } as StatusResponse)
@@ -342,5 +342,9 @@ describe('Status — review fixes (20, 21, 22)', () => {
     const lines = (await view.findByTestId('status-disks')).querySelectorAll('li')
     expect(lines).toHaveLength(2)
     expect(lines[0].textContent).toContain('shoko, library')
+    // Each folder keeps its own low: library is at its floor, shoko still takes torrents.
+    const names = lines[0].querySelectorAll('span.font-semibold')
+    expect(names[0].className).not.toContain('text-danger')
+    expect(names[1].className).toContain('text-danger')
   })
 })

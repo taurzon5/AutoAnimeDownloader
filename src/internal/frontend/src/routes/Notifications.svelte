@@ -102,7 +102,9 @@
   let savedWebhookJSON = new Map<string, string>();
   const rememberSaved = (hooks: { name: string }[]) => {
     savedWebhookNames = new Set(hooks.map(h => h.name));
-    savedWebhookJSON = new Map(hooks.map(h => [h.name, JSON.stringify(h)]));
+    // snapshot, not JSON.stringify: a webhook opened and confirmed unchanged gains
+    // `anime_sources: []`, which must not read as an edit (decisions/129).
+    savedWebhookJSON = new Map(hooks.map(h => [h.name, snapshot(h)]));
   };
   let loading = true;
   let saving = false;
@@ -297,7 +299,7 @@
                     <span class="text-xs text-subtle ml-2 truncate">{hook.url.length > 50 ? hook.url.slice(0, 50) + '…' : hook.url}</span>
                   </div>
                   <div class="flex gap-2 shrink-0">
-                    {#if savedWebhookJSON.get(hook.name) === JSON.stringify(hook)}
+                    {#if savedWebhookJSON.get(hook.name) === snapshot(hook)}
                       <button
                         type="button"
                         on:click={() => testWebhookHandler(hook.name)}

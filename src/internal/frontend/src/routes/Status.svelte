@@ -303,14 +303,18 @@
     replace(`/status${qs ? `?${qs}` : ""}`);
   }
 
-  /** The disks grouped by drive: one entry per drive, its folders' names joined, low if any is. */
-  function diskDrives(disks: StatusDisk[]): StatusDisk[] {
-    const byDrive = new Map<number | string, StatusDisk>();
+  /**
+   * The disks grouped by drive: one line per drive with its folders. Each folder keeps its own
+   * `low`: two folders on one drive can have different floors, so one can be full while the other
+   * still takes torrents (decisions/154).
+   */
+  function diskDrives(disks: StatusDisk[]): (StatusDisk & { folders: StatusDisk[] })[] {
+    const byDrive = new Map<number | string, StatusDisk & { folders: StatusDisk[] }>();
     disks.forEach((d, i) => {
       const key = d.drive ?? i;
       const seen = byDrive.get(key);
-      if (seen) byDrive.set(key, { ...seen, name: `${seen.name}, ${d.name}`, low: seen.low || d.low });
-      else byDrive.set(key, { ...d });
+      if (seen) seen.folders.push(d);
+      else byDrive.set(key, { ...d, folders: [d] });
     });
     return [...byDrive.values()];
   }
@@ -1095,7 +1099,7 @@
               <ul class="mt-1.5 space-y-1" data-testid="status-disks">
                 {#each diskDrives(status.disks ?? []) as disk (disk.path)}
                   <li class="text-caption">
-                    <span class="font-semibold {disk.low ? 'text-danger' : 'text-heading'}">{disk.name}</span>
+                    {#each disk.folders as folder, k (folder.path)}<span class="font-semibold {folder.low ? 'text-danger' : 'text-heading'}">{folder.name}</span>{#if k < disk.folders.length - 1}<span class="text-subtle">{", "}</span>{/if}{/each}
                     <span class="text-subtle">{$locale && m.status_disk_root_free({ free: formatBytes(disk.free, fmtLocale), total: formatBytes(disk.total, fmtLocale) })}</span>
                   </li>
                 {/each}

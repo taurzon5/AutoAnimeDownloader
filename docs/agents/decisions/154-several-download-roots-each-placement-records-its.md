@@ -17,7 +17,9 @@
   `disks`, `qbitTestFolders` (the connection test checks each root); the CLI's
   `animes settings <id> root <name|none>`; the settings page's Download Folders (the library's row,
   `findLibraryRow`), `AnimeRootPicker.svelte`, the Status page's disk card.
-- `internal/daemon/health.go`: `roomiestRoot`, the root the `disk_low` alert watches.
+- `internal/daemon/health.go`: `roomiestRoot`, the root the `disk_low` alert watches;
+  `helpers.go`'s `RootDisk.Drive` (the first root on the same filesystem), which `GET /status`
+  `disks` carries as `drive`.
 
 Pinned by:
 - `TestRootOrder`, `TestDiskBudgetFillsRootsInOrder`,
@@ -30,6 +32,8 @@ Pinned by:
 - `TestUpdateConfig_ValidatesDownloadRoots`, `TestUpdateConfig_DownloadRootsUnderThePathMap`,
   `TestPutAnimeSettings_Root`,
   `TestHandleStatus_DisksPerRoot` and `TestAnimesSettingsRoot` (CLI).
+- `TestRootDisksMarksFoldersOnOneDrive` and the Status page's "download folders on one drive show
+  as one line" test.
 - `TestDiskAlertVolume_WatchesTheRoomiestDownloadFolder`,
   `TestTestQBittorrent_ProbesEachDownloadFolder` and the settings page's
   `Config — the library among the download folders` tests.
@@ -114,6 +118,11 @@ floor (`roomiestRoot`): roots fill one after another, so a full first root is no
 qBittorrent connection test checks each root (`TestQBittorrent`'s `folders`). The settings page
 shows the library as the root whose path it is, and edits it there, instead of a second field with
 the same path.
+
+**One line per drive on the Status page (2026-11-26).** Roots on one filesystem share its free
+space, so the disk card shows them on one line, grouped by `drive`. Each root's name keeps its own
+`low`: roots on one drive can have different floors, and one can be full while the other still takes
+torrents, as the gate places them.
 
 **Known limit of the alert:** it watches one root, the roomiest. A write tied to one root, a re-add
 or a redownload on its own root, or an older placement in the library, can be refused there while

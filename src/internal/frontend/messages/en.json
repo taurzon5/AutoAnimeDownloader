@@ -220,7 +220,7 @@
   "detail_btn_download": "Download",
   "detail_btn_delete": "Delete",
   "detail_confirm_title": "Delete episode?",
-  "detail_confirm_msg": "Episode {number} is deleted with its file, and it won't be downloaded again. Back to automatic undoes that.",
+  "detail_confirm_msg": "Episode {number} is removed and won't be downloaded again. Its file is deleted too, unless it was handed to Shoko or belongs to a pack other episodes still use. Back to automatic undoes that.",
   "detail_confirm_btn": "Delete",
   "detail_toast_queued": "Episode {number} queued for download",
   "detail_toast_dl_error": "Failed to download episode",
@@ -243,8 +243,8 @@
         "count"
       ],
       "match": {
-        "count=1": "{count} episode is deleted with its file and won't be downloaded again. Back to automatic undoes that.",
-        "count=*": "{count} episodes are deleted with their files and won't be downloaded again. Back to automatic undoes that."
+        "count=1": "{count} episode is removed and won't be downloaded again. Its file is deleted too, unless it was handed to Shoko or belongs to a pack other episodes still use. Back to automatic undoes that.",
+        "count=*": "{count} episodes are removed and won't be downloaded again. Their files are deleted too, unless handed to Shoko or part of a pack other episodes still use. Back to automatic undoes that."
       }
     }
   ],

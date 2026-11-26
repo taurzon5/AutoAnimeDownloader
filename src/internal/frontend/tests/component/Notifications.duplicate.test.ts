@@ -141,4 +141,12 @@ describe('Notifications — review fixes (36, 37)', () => {
     expect(screen.getByTestId('webhook-needs-event')).toBeTruthy()
     expect((btn(CONFIRM) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('36: opening a webhook and confirming it unchanged keeps Test (a missing anime_sources is not an edit)', async () => {
+    const { anime_sources: _, ...noSources } = ntfy
+    await renderWith([noSources as WebhookPreset])
+    await fireEvent.click(btn(/^(Editar|Edit)$/))
+    await fireEvent.click(btn(CONFIRM))
+    expect(btn(/^(Testar|Test)$/)).toBeTruthy()
+  })
 })
