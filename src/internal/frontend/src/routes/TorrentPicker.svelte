@@ -25,6 +25,7 @@
   import Loading from "../components/Loading.svelte";
   import { toast } from "../lib/stores/toast.js";
   import * as m from "../lib/i18n/messages.js";
+  import { mediaFormatLabel } from "../lib/domain/mediaLabels.js";
   import { locale } from "../lib/stores/locale.js";
   import { formatBytes, type FormatLocale } from "../lib/domain/format.js";
   import { isValidMagnet } from "../lib/domain/magnet.js";
@@ -109,7 +110,7 @@
       : m.picker_back_replace({ title: media?.title || m.picker_title() });
   $: mediaMeta = !$locale || !media
     ? ""
-    : [media.format.replace(/_/g, " "), media.episodes != null ? m.status_episodes_count({ count: media.episodes }) : ""]
+    : [mediaFormatLabel(media.format), media.episodes != null ? m.status_episodes_count({ count: media.episodes }) : ""]
         .filter(Boolean)
         .join(" · ");
 
@@ -385,7 +386,7 @@
   <div class="grid min-w-0 grid-cols-1 gap-4 md:items-start {hasCandidates ? 'md:grid-cols-[1.15fr_0.85fr]' : ''}">
     <div class="min-w-0 overflow-hidden rounded-card border border-default bg-card">
       {#if loading}
-        <Loading message={T && T.queryPlaceholder} />
+        <Loading message={$locale && m.picker_searching()} />
       {:else if listError}
         <p role="alert" class="p-4 text-copy text-danger">{T && T.nyaaError}</p>
       {:else if items.length === 0}
@@ -440,7 +441,7 @@
           <p class="text-copy text-subtle">{T && T.empty}</p>
         {:else}
           {#if detailLoading}
-            <Loading message={T && T.openNyaa} />
+            <Loading message={$locale && m.picker_loading_detail()} />
           {:else if detailError}
             <p role="alert" class="text-copy text-danger">{T && T.detailError}</p>
           {:else if detail}

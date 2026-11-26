@@ -252,7 +252,7 @@
   "detail_btn_delete": "Deletar",
   "detail_btn_deleting": "Deletando...",
   "detail_confirm_title": "Deletar episódio?",
-  "detail_confirm_msg": "O episódio {number} será removido do rastreamento. Esta ação não pode ser desfeita.",
+  "detail_confirm_msg": "O episódio {number} é apagado com o arquivo e não será baixado de novo. Voltar ao automático desfaz isso.",
   "detail_confirm_btn": "Deletar",
   "detail_toast_queued": "Episódio {number} adicionado para download",
   "detail_toast_dl_error": "Falha ao baixar episódio",
@@ -276,7 +276,7 @@
   ],
   "detail_bulk_download": "Baixar Selecionados",
   "detail_bulk_delete": "Deletar Selecionados",
-  "detail_bulk_release": "Soltar Selecionados",
+  "detail_bulk_release": "Voltar ao automático",
   "detail_bulk_deselect_all": "Desmarcar Tudo",
   "detail_bulk_confirm_title": "Deletar episódios selecionados?",
   "detail_bulk_confirm_msg": [
@@ -288,8 +288,8 @@
         "count"
       ],
       "match": {
-        "count=1": "{count} episódio será removido. Esta ação não pode ser desfeita.",
-        "count=*": "{count} episódios serão removidos. Esta ação não pode ser desfeita."
+        "count=1": "{count} episódio é apagado com o arquivo e não será baixado de novo. Voltar ao automático desfaz isso.",
+        "count=*": "{count} episódios são apagados com os arquivos e não serão baixados de novo. Voltar ao automático desfaz isso."
       }
     }
   ],
@@ -601,7 +601,7 @@
   "status_sort_asc": "ordenado crescente",
   "status_sort_desc": "ordenado decrescente",
   "common_save": "Salvar",
-  "detail_btn_release": "Soltar episódio",
+  "detail_btn_release": "Voltar ao automático",
   "detail_actions_menu": "Mais ações do episódio {number}",
   "detail_counts": [
     {
@@ -618,7 +618,7 @@
     }
   ],
   "detail_progress_label": "Episódios assistidos",
-  "detail_progress_hint": "Progresso manual do anime avulso. Aumentar apaga o que ficou para trás (respeitando \"quantos assistidos manter\" fora de pack, e o pack inteiro dentro dele). Com \"apagar episódios assistidos\" desligado nada é apagado e nenhum pack novo vem.",
+  "detail_progress_hint": "Progresso manual do anime avulso. Aumentar apaga o que ficou para trás (mantendo \"Episódios assistidos a manter\" fora de pack, e o pack inteiro dentro dele), a não ser que o modo direto mantenha os downloads para sempre (Apagar downloads automaticamente desligado). Com \"Deletar episódios assistidos automaticamente\" desligado nada é apagado e nenhum pack novo é buscado.",
   "detail_btn_watched_here": "Assisti até aqui",
   "detail_toast_progress_saved": "Progresso salvo",
   "detail_toast_progress_error": "Falha ao salvar o progresso",
@@ -1209,5 +1209,15 @@
   "config_hint_retry_limit": "Quantos links magnet um episódio tenta, do melhor para o pior, antes de esperar a próxima verificação.",
   "config_hint_delete_watched": "Apaga os episódios que você já assistiu, mantendo os últimos definidos abaixo, e os episódios de animes que saíram das suas listas. Downloads mantidos para sempre (modo direto com Apagar Downloads Automaticamente desligado) nunca são apagados.",
   "status_no_results_filters": "Nenhum anime corresponde aos filtros",
-  "status_connect_list": "Conectar uma lista"
+  "status_connect_list": "Conectar uma lista",
+  "detail_toast_released": "O episódio {number} voltou ao automático",
+  "detail_choose_btn_anime": "Escolher torrent",
+  "picker_searching": "Buscando no Nyaa…",
+  "picker_loading_detail": "Carregando a página do torrent…",
+  "add_searching": "Buscando no AniList…",
+  "media_format_tv_short": "TV curto",
+  "media_format_movie": "Filme",
+  "media_format_special": "Especial",
+  "media_format_music": "Música",
+  "media_status_not_yet_released": "Ainda não lançado"
 }

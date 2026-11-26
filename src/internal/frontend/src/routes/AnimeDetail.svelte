@@ -529,9 +529,10 @@
     actionLoading = { ...actionLoading, [ep.episode_number]: true };
     try {
       await releaseEpisode(animeId, ep.episode_number);
+      toast.success(m.detail_toast_released({ number: ep.episode_number }));
       await loadData(animeId);
     } catch (err) {
-      console.error("Failed to release episode:", err);
+      toast.error(err instanceof Error ? err.message : m.detail_btn_release());
     } finally {
       actionLoading = { ...actionLoading, [ep.episode_number]: false };
     }
@@ -1020,7 +1021,9 @@
           </Button>
         {/if}
         <Button variant="ghost" on:click={() => push("/status/" + animeId + "/torrents")}>
-          {$locale && m.detail_replace_btn_anime()}
+          <!-- Nothing downloaded yet: it only chooses. Something downloaded: it replaces it, and the
+               picker asks before deleting (review findings 28 and 31). -->
+          {$locale && (anime && anime.episodes_downloaded > 0 ? m.detail_replace_btn_anime() : m.detail_choose_btn_anime())}
         </Button>
       </div>
     </div>

@@ -239,7 +239,7 @@
   "detail_btn_delete": "Delete",
   "detail_btn_deleting": "Deleting...",
   "detail_confirm_title": "Delete episode?",
-  "detail_confirm_msg": "Episode {number} will be removed from tracking. This action cannot be undone.",
+  "detail_confirm_msg": "Episode {number} is deleted with its file, and it won't be downloaded again. Back to automatic undoes that.",
   "detail_confirm_btn": "Delete",
   "detail_toast_queued": "Episode {number} queued for download",
   "detail_toast_dl_error": "Failed to download episode",
@@ -250,7 +250,7 @@
   "detail_bulk_selected": "{count} selected",
   "detail_bulk_download": "Download Selected",
   "detail_bulk_delete": "Delete Selected",
-  "detail_bulk_release": "Release Selected",
+  "detail_bulk_release": "Back to automatic",
   "detail_bulk_deselect_all": "Deselect All",
   "detail_bulk_confirm_title": "Delete selected episodes?",
   "detail_bulk_confirm_msg": [
@@ -262,8 +262,8 @@
         "count"
       ],
       "match": {
-        "count=1": "{count} episode will be removed. This action cannot be undone.",
-        "count=*": "{count} episodes will be removed. This action cannot be undone."
+        "count=1": "{count} episode is deleted with its file and won't be downloaded again. Back to automatic undoes that.",
+        "count=*": "{count} episodes are deleted with their files and won't be downloaded again. Back to automatic undoes that."
       }
     }
   ],
@@ -523,11 +523,11 @@
   "status_sort_asc": "sorted ascending",
   "status_sort_desc": "sorted descending",
   "common_save": "Save",
-  "detail_btn_release": "Release episode",
+  "detail_btn_release": "Back to automatic",
   "detail_actions_menu": "More actions for episode {number}",
   "detail_counts": "{downloaded} / {total} · {watched} watched",
   "detail_progress_label": "Watched episodes",
-  "detail_progress_hint": "Manual progress for a standalone anime. Raising it deletes what is behind it (respecting \"watched episodes to keep\" outside a pack, and the whole pack inside one). With \"delete watched episodes\" off nothing is deleted and no new pack is fetched.",
+  "detail_progress_hint": "Manual progress for a standalone anime. Raising it deletes what is behind it (keeping \"Watched Episodes to Keep\" outside a pack, and the whole pack inside one), unless direct mode keeps downloads forever (Delete Downloads Automatically off). With \"Delete watched episodes automatically\" off nothing is deleted and no new pack is fetched.",
   "detail_btn_watched_here": "Watched up to here",
   "detail_toast_progress_saved": "Progress saved",
   "detail_toast_progress_error": "Failed to save progress",
@@ -1092,5 +1092,15 @@
   "config_hint_retry_limit": "How many magnet links an episode tries, best first, before it waits for the next check.",
   "config_hint_delete_watched": "Deletes the episodes you've watched, keeping the last ones set below, and the episodes of anime that left your lists. Downloads kept forever (direct mode with Delete Downloads Automatically off) are never deleted.",
   "status_no_results_filters": "No animes match the filters",
-  "status_connect_list": "Connect a list"
+  "status_connect_list": "Connect a list",
+  "detail_toast_released": "Episode {number} is back to automatic",
+  "detail_choose_btn_anime": "Choose torrent",
+  "picker_searching": "Searching Nyaa…",
+  "picker_loading_detail": "Loading the torrent page…",
+  "add_searching": "Searching AniList…",
+  "media_format_tv_short": "TV short",
+  "media_format_movie": "Movie",
+  "media_format_special": "Special",
+  "media_format_music": "Music",
+  "media_status_not_yet_released": "Not yet released"
 }

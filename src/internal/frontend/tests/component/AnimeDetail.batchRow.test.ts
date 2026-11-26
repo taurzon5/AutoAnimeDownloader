@@ -346,7 +346,7 @@ describe('AnimeDetail — header replace', () => {
     }))
     const detail: AnimeDetailResponse = { anime_id: 42, total_episodes: 2, progress: 0, status: 'CURRENT', episodes }
     vi.mocked(client.getAnimeDetail).mockResolvedValue(detail)
-    vi.mocked(client.getAnimes).mockResolvedValue([animeInfo({})])
+    vi.mocked(client.getAnimes).mockResolvedValue([animeInfo({ episodes_downloaded: 2 })])
     vi.mocked(client.getTorrents).mockResolvedValue([])
     push.mockClear()
 
@@ -359,5 +359,15 @@ describe('AnimeDetail — header replace', () => {
     expect(client.replaceAnimeWithMagnet).not.toHaveBeenCalled()
     expect(screen.queryByText(/replace anime with magnet|substituir anime com magnet/i)).toBeNull()
     expect(screen.queryByPlaceholderText(/magnet/i)).toBeNull()
+  })
+
+  it('says Choose torrent while nothing is downloaded (review finding 28)', async () => {
+    vi.mocked(client.getAnimeDetail).mockResolvedValue({ anime_id: 42, total_episodes: 2, progress: 0, status: 'CURRENT', episodes: [] })
+    vi.mocked(client.getAnimes).mockResolvedValue([animeInfo({ episodes_downloaded: 0 })])
+    vi.mocked(client.getTorrents).mockResolvedValue([])
+    render(AnimeDetail, { props: { params: { id: '42' } } })
+    await tick(); await tick()
+    expect(screen.getByRole('button', { name: /choose torrent|escolher torrent/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /replace torrent|substituir torrent/i })).toBeNull()
   })
 })

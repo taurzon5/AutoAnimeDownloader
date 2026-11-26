@@ -25,6 +25,7 @@
   import { toast } from "../lib/stores/toast.js";
   import { pickerCache } from "../lib/stores/pickerCache.js";
   import * as m from "../lib/i18n/messages.js";
+  import { mediaFormatLabel, mediaStatusLabel } from "../lib/domain/mediaLabels.js";
   import { locale } from "../lib/stores/locale.js";
 
   // Search fires on submit (button or Enter), NOT on every keystroke: AniList's limit is 30
@@ -199,10 +200,10 @@
 
   function metaLine(result: AniListSearchResult): string {
     const parts: string[] = [];
-    if (result.format) parts.push(result.format.replace(/_/g, " "));
+    if (result.format) parts.push(mediaFormatLabel(result.format));
     if (result.year) parts.push(String(result.year));
     if (result.episodes) parts.push(m.add_meta_episodes({ count: result.episodes }));
-    if (result.status) parts.push(result.status.replace(/_/g, " "));
+    if (result.status) parts.push(mediaStatusLabel(result.status));
     return parts.join(" · ");
   }
 
@@ -284,7 +285,7 @@
   />
 
   {#if searching}
-    <Loading message={$locale && m.add_search_placeholder()} />
+    <Loading message={$locale && m.add_searching()} />
   {:else if searchFailed}
     <p role="alert" class="text-copy text-danger">{$locale && m.add_search_error()}</p>
   {:else if !searched}
