@@ -8,6 +8,10 @@ started. Delete this file when it is fixed or dropped.
 A browser reached from the app's web UI, to browse sites such as nyaa.si without leaving the app.
 Preferably Firefox with uBlock Origin. Not tied to a release yet.
 
+Added later the same day: the app **gathers every title and link on the pages the user opens in
+that browser**, so what was browsed can be sent to the app: to an anime, or to the manga and novel
+section ([manga-and-novel-downloads.md](manga-and-novel-downloads.md)).
+
 ## What to check
 
 - **Where it runs.** A web page can't host a real Firefox. The usual way is a container that runs
@@ -26,6 +30,12 @@ Preferably Firefox with uBlock Origin. Not tied to a release yet.
   app. Today the picker has "Or paste a magnet". Options: copy and paste, a magnet handler set up
   in that Firefox that sends to the app's API, or the reference pick in
   [pick-a-reference-release-from-all-results.md](pick-a-reference-release-from-all-results.md).
+- **Gathering titles and links.** A page served over HTTPS can't be read on the way, so the browser
+  itself has to hand the page over: a WebExtension installed by the same `policies.json` as uBlock
+  Origin, whose content script reads each page's release titles and magnet or `.torrent` links and
+  posts them to the app's API. Decide which sites it reads (an allowlist starting with nyaa.si, or
+  every page), where the gathered list shows in the app, and how long it is kept. The receiving
+  endpoint ships with its CLI command.
 - **Security.** That browser runs code from any site and keeps its own cookies. Keep its port on
   127.0.0.1 like the app's, and give it no app credentials. Measure its RAM while open.
 - **CLI parity.** A page that only opens the browser has no API action. If it gets an endpoint
