@@ -128,6 +128,7 @@
       {placeholder}
       {disabled}
       aria-required={required ? 'true' : undefined}
+      aria-describedby={hint ? `${id}-hint` : undefined}
       type="text"
       class="min-w-[8rem] flex-1 bg-transparent text-copy text-heading outline-none placeholder:font-normal placeholder:text-subtle disabled:cursor-not-allowed"
       on:keydown={handleKeydown}
@@ -137,6 +138,6 @@
   </div>
 
   {#if hint}
-    <p class="text-caption text-subtle">{hint}</p>
+    <p id={`${id}-hint`} class="text-caption text-subtle">{hint}</p>
   {/if}
 </div>

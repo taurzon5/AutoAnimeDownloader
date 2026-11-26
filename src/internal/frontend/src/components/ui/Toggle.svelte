@@ -13,6 +13,8 @@
    * stay the same.
    */
   export let inline = false
+  /** Id of the hint the row shows next to the switch, for screen readers (review finding 39). */
+  export let describedBy: string | undefined = undefined
 </script>
 
 <label
@@ -33,6 +35,7 @@
       {id}
       type="checkbox"
       role="switch"
+      aria-describedby={describedBy}
       bind:checked
       {disabled}
       on:change

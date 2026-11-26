@@ -265,12 +265,14 @@
                 type="text"
                 bind:value={newItem[key]}
                 placeholder={T.addPlaceholder}
+                aria-label={T.addPlaceholder}
                 class="flex-1 block rounded-md border-default bg-control text-heading shadow-sm focus:border-accent sm:text-sm px-3 py-2"
                 on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(key); } }}
               />
               <button
                 type="button"
                 on:click={() => add(key)}
+                aria-label={T.addPlaceholder}
                 class="inline-flex items-center px-3 py-2 rounded-md border border-default text-body hover:bg-control text-sm font-medium transition-colors"
               >
                 +

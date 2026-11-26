@@ -1202,6 +1202,7 @@
             <input
               type="text"
               placeholder={(T && T.searchPlaceholder) || ""}
+              aria-label={(T && T.searchPlaceholder) || ""}
               bind:value={search}
               class="w-full min-w-0 bg-transparent text-copy text-heading outline-none placeholder:font-normal placeholder:text-tertiary"
             />

@@ -981,23 +981,25 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="rename_files_for_jellyfin"
+                describedBy="rename_files_for_jellyfin-hint"
                 bind:checked={config.rename_files_for_jellyfin}
                 label={(T && T.labelRenameJellyfin) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{config.library_mode === "direct" ? ($locale && m.config_hint_rename_jellyfin_direct()) : (T && T.hintRenameJellyfin)}</p>
+              <p id="rename_files_for_jellyfin-hint" class="text-caption text-subtle">{config.library_mode === "direct" ? ($locale && m.config_hint_rename_jellyfin_direct()) : (T && T.hintRenameJellyfin)}</p>
             </div>
             <!-- Only with renaming on, the one case it changes a name (config.md). -->
             {#if config.library_mode === "direct" && config.rename_files_for_jellyfin}
               <div class="space-y-1.5 p-4.5">
                 <Toggle
                   id="episode_numbering"
+                  describedBy="episode_numbering-hint"
                   checked={config.episode_numbering !== "entry"}
                   on:change={(e) => (config.episode_numbering = isOn(e) ? "season" : "entry")}
                   label={(T && T.labelSeasonNumbering) || ""}
                   inline={true}
                 />
-                <p class="text-caption text-subtle">{T && T.hintSeasonNumbering}</p>
+                <p id="episode_numbering-hint" class="text-caption text-subtle">{T && T.hintSeasonNumbering}</p>
               </div>
             {/if}
 
@@ -1009,32 +1011,35 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="library_mode"
+                describedBy="library_mode-hint"
                 checked={config.library_mode === "direct"}
                 on:change={(e) => (config.library_mode = isOn(e) ? "direct" : "hardlink")}
                 label={(T && T.labelDirectMode) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintDirectMode}</p>
+              <p id="library_mode-hint" class="text-caption text-subtle">{T && T.hintDirectMode}</p>
             </div>
 
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="auto_delete_downloads"
+                describedBy="auto_delete_downloads-hint"
                 bind:checked={config.auto_delete_downloads}
                 label={(T && T.labelAutoDeleteDownloads) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintAutoDeleteDownloads}</p>
+              <p id="auto_delete_downloads-hint" class="text-caption text-subtle">{T && T.hintAutoDeleteDownloads}</p>
             </div>
 
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="keep_removed_release_cards"
+                describedBy="keep_removed_release_cards-hint"
                 bind:checked={config.keep_removed_release_cards}
                 label={$locale && m.config_label_keep_removed_release_cards()}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{$locale && m.config_hint_keep_removed_release_cards()}</p>
+              <p id="keep_removed_release_cards-hint" class="text-caption text-subtle">{$locale && m.config_hint_keep_removed_release_cards()}</p>
             </div>
 
             {#if config.library_mode === "direct"}
@@ -1042,12 +1047,13 @@
               <div class="space-y-1.5 p-4.5">
                 <Toggle
                   id="incomplete_files"
+                  describedBy="incomplete_files-hint"
                   checked={config.incomplete_files !== "in_place"}
                   on:change={(e) => (config.incomplete_files = isOn(e) ? "part" : "in_place")}
                   label={(T && T.labelPartFiles) || ""}
                   inline={true}
                 />
-                <p class="text-caption text-subtle">{T && T.hintPartFiles}</p>
+                <p id="incomplete_files-hint" class="text-caption text-subtle">{T && T.hintPartFiles}</p>
                 {#if config.incomplete_path?.trim()}
                   <p class="text-caption text-warn" data-testid="part-files-staged">{$locale && m.config_hint_part_files_staged()}</p>
                 {/if}
@@ -1160,11 +1166,12 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="check_for_updates"
+                describedBy="check_for_updates-hint"
                 bind:checked={config.check_for_updates}
                 label={(T && T.labelCheckForUpdates) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintCheckForUpdates}</p>
+              <p id="check_for_updates-hint" class="text-caption text-subtle">{T && T.hintCheckForUpdates}</p>
             </div>
 
             <!-- The way back to the first-steps card. It's NOT a config field: it doesn't go into
@@ -1237,11 +1244,12 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="disable_seeding"
+                describedBy="disable_seeding-hint"
                 bind:checked={config.disable_seeding}
                 label={(T && T.labelDisableSeeding) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintDisableSeeding}</p>
+              <p id="disable_seeding-hint" class="text-caption text-subtle">{T && T.hintDisableSeeding}</p>
               {#if config.torrent_client === "qbittorrent"}
                 <p class="text-caption text-subtle" data-testid="disable-seeding-qbittorrent">{T && T.hintDisableSeedingQBit}</p>
                 {#if config.disable_seeding}
@@ -1276,11 +1284,12 @@
             <div class="space-y-3 p-4.5">
               <Toggle
                 id="delete_watched_episodes"
+                describedBy="delete_watched_episodes-hint"
                 bind:checked={config.delete_watched_episodes}
                 label={(T && T.labelDeleteWatched) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{$locale && m.config_hint_delete_watched()}</p>
+              <p id="delete_watched_episodes-hint" class="text-caption text-subtle">{$locale && m.config_hint_delete_watched()}</p>
               {#if config.delete_watched_episodes}
                 <Input
                   id="watched_episodes_to_keep"
@@ -1379,11 +1388,12 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="shoko_enabled"
+                describedBy="shoko_enabled-hint"
                 bind:checked={config.shoko_enabled}
                 label={$locale && m.config_label_shoko_enabled()}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
+              <p id="shoko_enabled-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
             </div>
             <div class="p-4.5">
               <Input
@@ -1428,11 +1438,12 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="shoko_watch"
+                describedBy="shoko_watch-hint"
                 bind:checked={config.shoko_watch}
                 label={$locale && m.config_label_shoko_watch()}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
+              <p id="shoko_watch-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
               {#if config.shoko_enabled && config.shoko_watch && shokoStatus?.signed_in}
                 <p class="text-caption {shokoStatus.watching ? 'text-body' : 'text-danger'}" data-testid="shoko-watch-status">
                   {#if shokoStatus.watching}
@@ -1481,11 +1492,12 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="shoko_full_packs"
+                describedBy="shoko_full_packs-hint"
                 bind:checked={config.shoko_full_packs}
                 label={$locale && m.config_label_shoko_full_packs()}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_packs()}</p>
+              <p id="shoko_full_packs-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_packs()}</p>
             </div>
             <div class="space-y-1.5 p-4.5" data-testid="shoko-folders">
               <p class="text-copy font-semibold text-heading">{$locale && m.config_label_shoko_folders()}</p>
@@ -1544,12 +1556,13 @@
             <div class="space-y-1.5 p-4.5">
               <Toggle
                 id="use_qbittorrent"
+                describedBy="use_qbittorrent-hint"
                 checked={config.torrent_client === "qbittorrent"}
                 on:change={(e) => (config.torrent_client = isOn(e) ? "qbittorrent" : "builtin")}
                 label={(T && T.labelUseQBittorrent) || ""}
                 inline={true}
               />
-              <p class="text-caption text-subtle">{T && T.hintUseQBittorrent}</p>
+              <p id="use_qbittorrent-hint" class="text-caption text-subtle">{T && T.hintUseQBittorrent}</p>
               {#if config.torrent_client === "qbittorrent" && config.library_mode !== "direct"}
                 <p class="text-caption text-danger">{T && T.qbittorrentNeedsDirect}</p>
               {/if}
@@ -1602,11 +1615,12 @@
               <div class="space-y-1.5 p-4.5">
                 <Toggle
                   id="qbittorrent_manage_settings"
+                  describedBy="qbittorrent_manage_settings-hint"
                   bind:checked={config.qbittorrent_manage_settings}
                   label={(T && T.labelQBittorrentManage) || ""}
                   inline={true}
                 />
-                <p class="text-caption text-subtle">{T && T.hintQBittorrentManage}</p>
+                <p id="qbittorrent_manage_settings-hint" class="text-caption text-subtle">{T && T.hintQBittorrentManage}</p>
               </div>
 
               <div class="space-y-3 p-4.5">

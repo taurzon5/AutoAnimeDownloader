@@ -100,4 +100,12 @@ describe('Config — review fixes', () => {
     expect(client.updateConfig).toHaveBeenCalled()
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('39: a switch names its hint for screen readers', async () => {
+    render(Config)
+    await flush()
+    const toggle = document.getElementById('rename_files_for_jellyfin') as HTMLInputElement
+    expect(toggle.getAttribute('aria-describedby')).toBe('rename_files_for_jellyfin-hint')
+    expect(document.getElementById('rename_files_for_jellyfin-hint')?.textContent).toBeTruthy()
+  })
 })

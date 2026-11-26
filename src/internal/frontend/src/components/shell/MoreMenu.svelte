@@ -27,6 +27,7 @@
   let latestVersionURL = ''
 
   $: T = $locale && {
+    themeLabel: m.theme_label(),
     themeLight: m.theme_light(),
     themeDark: m.theme_dark(),
     themeSystem: m.theme_system(),
@@ -140,7 +141,7 @@
       </div>
 
       <div class="px-3 pt-2">
-        <label for="theme-select-mobile" class="sr-only">{T.themeLight}</label>
+        <label for="theme-select-mobile" class="sr-only">{T.themeLabel}</label>
         <select
           id="theme-select-mobile"
           value={$theme}

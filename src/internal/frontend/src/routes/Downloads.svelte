@@ -590,7 +590,7 @@
   {/if}
 
   {#if loading}
-    <Loading message="Loading torrents..." />
+    <Loading message={$locale && m.downloads_loading()} />
   {:else if torrents.length === 0}
     <div class="rounded-card border border-default bg-card py-12 text-center">
       <h2 class="text-card-title text-body">{T && T.emptyTitle}</h2>

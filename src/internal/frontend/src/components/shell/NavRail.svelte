@@ -30,6 +30,7 @@
   let latestVersionURL = ''
 
   $: T = $locale && {
+    themeLabel: m.theme_label(),
     themeLight: m.theme_light(),
     themeDark: m.theme_dark(),
     themeSystem: m.theme_system(),
@@ -187,7 +188,7 @@
     </button>
 
     {#if T}
-      <label for="theme-select" class="sr-only">{T.themeLight}</label>
+      <label for="theme-select" class="sr-only">{T.themeLabel}</label>
       <select
         id="theme-select"
         value={$theme}

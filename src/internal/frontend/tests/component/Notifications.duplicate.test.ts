@@ -123,3 +123,22 @@ describe('Notifications — unsaved changes', () => {
     await waitFor(async () => expect(await dirty()).toBe(false))
   })
 })
+
+describe('Notifications — review fixes (36, 37)', () => {
+  it('36: Test shows only while the row is what was saved; an edited row says to save first', async () => {
+    await renderWith([ntfy])
+    expect(btn(/^(Testar|Test)$/)).toBeTruthy()
+    await fireEvent.click(btn(/^(Editar|Edit)$/))
+    await fireEvent.input(screen.getByPlaceholderText('Value'), { target: { value: 'Bearer other' } })
+    await fireEvent.click(btn(CONFIRM))
+    expect(screen.queryByRole('button', { name: /^(Testar|Test)$/ })).toBeNull()
+    expect(screen.getByTestId('webhook-test-after-save')).toBeTruthy()
+  })
+
+  it('37: a webhook with no event can\'t be confirmed, and says why', async () => {
+    await renderWith([{ ...ntfy, events: [] }])
+    await fireEvent.click(btn(/^(Editar|Edit)$/))
+    expect(screen.getByTestId('webhook-needs-event')).toBeTruthy()
+    expect((btn(CONFIRM) as HTMLButtonElement).disabled).toBe(true)
+  })
+})

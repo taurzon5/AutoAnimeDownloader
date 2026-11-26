@@ -92,11 +92,18 @@
   };
 
   const bodyPlaceholder = '{"message":"{{message}}"}';
-  const varsHint = 'Variables: {{title}}, {{message}}, {{anime_name}}, {{episode}}, {{reason}}, {{anime_id}}, {{torrent_hash}}, {{count}}, {{timestamp}}, {{version}}, {{url}}';
+  const templateVars = '{{title}}, {{message}}, {{anime_name}}, {{episode}}, {{reason}}, {{anime_id}}, {{torrent_hash}}, {{count}}, {{timestamp}}, {{version}}, {{url}}';
 
   let fullConfig: Config | null = null;
   let notifications: { webhooks: WebhookPreset[]; batch_window_seconds: number } = { webhooks: [], batch_window_seconds: 0 };
   let savedWebhookNames = new Set<string>();
+  // Test fires the SAVED webhook by name: a row edited since the save would hit the old version,
+  // so Test shows only while the row is what was saved (review finding 36).
+  let savedWebhookJSON = new Map<string, string>();
+  const rememberSaved = (hooks: { name: string }[]) => {
+    savedWebhookNames = new Set(hooks.map(h => h.name));
+    savedWebhookJSON = new Map(hooks.map(h => [h.name, JSON.stringify(h)]));
+  };
   let loading = true;
   let saving = false;
 
@@ -225,7 +232,7 @@
     try {
       fullConfig = await getConfig();
       notifications = fullConfig.notifications ?? { webhooks: [], batch_window_seconds: 0 };
-      savedWebhookNames = new Set(notifications.webhooks.map(h => h.name));
+      rememberSaved(notifications.webhooks);
       baseline = snapshot(notifications);
     } finally {
       loading = false;
@@ -239,7 +246,7 @@
       await updateConfig({ ...fullConfig, notifications });
       fullConfig = await getConfig();
       notifications = fullConfig.notifications ?? { webhooks: [], batch_window_seconds: 0 };
-      savedWebhookNames = new Set(notifications.webhooks.map(h => h.name));
+      rememberSaved(notifications.webhooks);
       baseline = snapshot(notifications);
       toast.success(m.notifications_toast_saved());
     } catch (e) {
@@ -290,7 +297,7 @@
                     <span class="text-xs text-subtle ml-2 truncate">{hook.url.length > 50 ? hook.url.slice(0, 50) + '…' : hook.url}</span>
                   </div>
                   <div class="flex gap-2 shrink-0">
-                    {#if savedWebhookNames.has(hook.name)}
+                    {#if savedWebhookJSON.get(hook.name) === JSON.stringify(hook)}
                       <button
                         type="button"
                         on:click={() => testWebhookHandler(hook.name)}
@@ -298,6 +305,8 @@
                       >
                         {T && T.btnTest}
                       </button>
+                    {:else if savedWebhookNames.has(hook.name)}
+                      <span class="self-center text-xs text-subtle" data-testid="webhook-test-after-save">{$locale && m.notifications_test_after_save()}</span>
                     {/if}
                     <button
                       type="button"
@@ -358,7 +367,7 @@
                     id="webhook-name"
                     type="text"
                     bind:value={newWebhook.name}
-                    placeholder="e.g. ntfy"
+                    placeholder={$locale && m.notifications_name_placeholder()}
                     aria-invalid={nameTaken}
                     aria-describedby={nameTaken ? 'webhook-name-error' : undefined}
                     class="block rounded-md border-default bg-control text-heading shadow-sm focus:border-accent text-sm px-3 py-2"
@@ -399,15 +408,15 @@
                     <input
                       type="text"
                       bind:value={row.key}
-                      placeholder="Header"
-                      aria-label="Header {i + 1}"
+                      placeholder={$locale && m.notifications_header_placeholder()}
+                      aria-label={$locale && m.notifications_header_aria({ n: i + 1 })}
                       class="flex-1 rounded-md border-default bg-control text-heading text-xs px-2 py-1.5"
                     />
                     <input
                       type="text"
                       bind:value={row.value}
-                      placeholder="Value"
-                      aria-label="Value {i + 1}"
+                      placeholder={$locale && m.notifications_value_placeholder()}
+                      aria-label={$locale && m.notifications_value_aria({ n: i + 1 })}
                       class="flex-1 rounded-md border-default bg-control text-heading text-xs px-2 py-1.5"
                     />
                     <button
@@ -421,6 +430,7 @@
                 <button
                   type="button"
                   on:click={addHeaderRow}
+                  aria-label={$locale && m.notifications_add_header()}
                   class="self-start px-2 py-1 rounded border border-default text-xs text-body hover:bg-control"
                 >+</button>
               </div>
@@ -434,7 +444,7 @@
                   placeholder={bodyPlaceholder}
                   class="block w-full rounded-md border-default bg-control text-heading shadow-sm focus:border-accent text-sm px-3 py-2 font-mono"
                 ></textarea>
-                <p class="text-xs text-subtle">{varsHint}</p>
+                <p class="text-xs text-subtle">{$locale && m.notifications_vars_hint({ vars: templateVars })}</p>
               </div>
 
               <div class="flex flex-col gap-2">
@@ -486,11 +496,14 @@
                 <p class="text-xs text-subtle">{T && T.hintSources}</p>
               </div>
 
+              {#if !newWebhook.events?.length}
+                <p class="text-xs text-warn" data-testid="webhook-needs-event">{$locale && m.notifications_needs_event()}</p>
+              {/if}
               <div class="flex gap-2">
                 <button
                   type="button"
                   on:click={confirmWebhook}
-                  disabled={!newWebhook.name || !newWebhook.url || nameTaken}
+                  disabled={!newWebhook.name || !newWebhook.url || nameTaken || !newWebhook.events?.length}
                   class="inline-flex items-center px-3 py-2 rounded-md bg-accent text-on-accent hover:opacity-90 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {T && T.btnConfirm}
