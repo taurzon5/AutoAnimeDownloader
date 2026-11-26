@@ -4,7 +4,7 @@ Grouped by release: each section is **one** release, and its bump is the largest
 inside it — a task that doesn't touch the binary (docs, things outside the repo) rides along without
 changing the number. Only what is still to ship lives here: a section is deleted when its release
 ships (the GitHub Release and git history are the record), never kept struck through.
-Current version: `v2.11.3`. Stamp a version (tag, GitHub Release, AUR):
+Current version: `v2.11.3`. Stamp a version (tag, GitHub Release):
 the [release skill](../.claude/skills/release/SKILL.md).
 Anything not tied to a specific release — problems and features alike — lives in
 [backlog/](backlog/), one file per item.
@@ -27,7 +27,7 @@ anime. Independent of the picker; does not wait for the `v3.0.0` UI overhaul.
   whole-title picker in `v2.7.0`, singles search instead of packs. Own spec; do not start
   it in the same change as the dashboard recents.
 
-## `v3.0.0` — Serval
+## `v3.0.0` — Nyaanchiver
 
 Working checklist (one box per change, for coordinating chats): [v3.0.0.md](v3.0.0.md).
 
@@ -35,7 +35,7 @@ Everything that stamps the project's name and look, in a single release. The maj
 rename, and the Nyaa descriptor comes along so whoever upgrades goes through **one** migration, not
 two.
 
-- Rename the project to **Serval** — Go module name, binaries (`daemon`/`cli`), GitHub repo,
+- Rename the project to **Nyaanchiver** — Go module name, binaries (`daemon`/`cli`), GitHub repo,
   `config.json` and the user data directory, ghcr image, webApp titles. Breaks the data
   path for existing users → needs a migration or an explicit release note
 - **Take Nyaa out of the repository (source as an external descriptor)** — spec designed on

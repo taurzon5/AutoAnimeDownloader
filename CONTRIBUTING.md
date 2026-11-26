@@ -6,7 +6,7 @@ Contributions are welcome. Setup, project layout and how to run the daemon local
 ## Reporting bugs
 
 The fastest way is from the app itself: **More → Report a problem** in the web UI, or **Report a
-problem** in the tray menu. It opens the [bug report form](https://github.com/icarosuper/AutoAnimeDownloader/issues/new?template=bug_report.yml)
+problem** in the tray menu. It opens the [bug report form](https://github.com/taurzon5/Nyaanchiver/issues/new?template=bug_report.yml)
 with your environment already filled in and gives you a report file to attach.
 
 If the app won't open, file the form by hand and include the steps to reproduce, what you expected
@@ -15,7 +15,7 @@ versus what happened, the relevant log lines (`autoanimedownloader logs` or
 
 ## Suggesting features
 
-Use the [feature request form](https://github.com/icarosuper/AutoAnimeDownloader/issues/new?template=feature_request.yml). Start from the
+Use the [feature request form](https://github.com/taurzon5/Nyaanchiver/issues/new?template=feature_request.yml). Start from the
 problem you hit, not the solution — it's easier to find the right fix when the situation is clear.
 
 ## Pull requests

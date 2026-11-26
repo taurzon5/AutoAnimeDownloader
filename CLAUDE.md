@@ -83,7 +83,7 @@ request already covers isn't "in passing", it's the job. (Portuguese text is the
   or dropped.`, then the sections that fit (a bug: Symptom / Cause / What to check). Done or dropped →
   the file is deleted in that same change; scheduled for a release → it moves to TODO.md and the file
   is deleted
-- [v3.0.0 Serval](docs/v3.0.0.md) — working checklist for the rename release; coordinate slices across chats here; lock Open decisions before any rename diff
+- [v3.0.0 Nyaanchiver](docs/v3.0.0.md) — working checklist for the rename release; coordinate slices across chats here; lock Open decisions before any rename diff
 - [Dependency upgrades](docs/dependency-upgrades.md) — working checklist for the toolchain/library bumps: what shipped in v2.9.0, what waits for its own cycle, what is not worth doing
 - [Specs](docs/superpowers/specs/README.md) — unimplemented design docs only; executed specs were deleted (git history still has them)
 - [Architecture](docs/agents/architecture.md) — read when navigating code or adding features; update when a package, endpoint or invariant appears or disappears. Flow, negative facts, disambiguation and the API table — not a symbol list
@@ -93,7 +93,7 @@ request already covers isn't "in passing", it's the job. (Portuguese text is the
 - [Testing](docs/agents/testing.md) — read when writing or running tests; mock patterns
 - [Commands](docs/agents/commands.md) — read when building or running the daemon/frontend
 - [Finish](.claude/skills/finish/SKILL.md) — skill, user-invoked only (`/finish [level]`); closes out the uncommitted change: simplify, code-review (asks when a finding needs a decision), decision-checker, tests, docs, commit to the current branch
-- [Release](.claude/skills/release/SKILL.md) — skill; stamping a version (tag, GitHub Release, AUR), only when the user asks for a release
+- [Release](.claude/skills/release/SKILL.md) — skill; stamping a version (tag, GitHub Release), only when the user asks for a release
 - [Decisions](docs/agents/decisions/index.md) — read before "fixing" unusual patterns; one self-contained file per decision. **Read the index (`index.md`) and open only the entries that matter**; for a keyword, `grep -ril "<word>" docs/agents/decisions/`. Never edit the index by hand — it is generated
 - [Debug Anime](.claude/skills/debug-anime/SKILL.md) — skill; follow when animes fail to download (`make debug-anime`, `make debug-batch`, search/filter diagnosis step by step)
 - [Sources](docs/agents/sources.md) — read before adding a torrent source; measured limits of Nyaa, the AnimeTosho JSON API, and why the alternatives were rejected

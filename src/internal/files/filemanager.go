@@ -169,8 +169,8 @@ type Config struct {
 	// With qBittorrent it is "almost no upload": QBittorrentDisableSeedingUploadKiB (decisions/144).
 	DisableSeeding bool `json:"disable_seeding"`
 	// CheckForUpdates lets the daemon ask GitHub once a day for the latest release (the update badge
-	// and update_available). false = no request ever leaves; whoever installs from the AUR or a
-	// container image already hears about updates from there.
+	// and update_available). false = no request ever leaves; whoever installs from a container image
+	// already hears about updates from there.
 	CheckForUpdates        bool     `json:"check_for_updates"`
 	DeleteWatchedEpisodes  bool     `json:"delete_watched_episodes"`
 	WatchedEpisodesToKeep  int      `json:"watched_episodes_to_keep"`

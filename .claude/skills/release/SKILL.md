@@ -1,6 +1,6 @@
 ---
 name: release
-description: Ship an AutoAnimeDownloader version end to end — check nothing done is left in TODO.md or docs/backlog, stamp TODO.md, tag and push, wait for the GitHub Release workflow, then bump the AUR package autoanimedownloader-bin. Use ONLY when the user explicitly asks to release, publish, tag or stamp a version (e.g. "faz a release da 2.9.0", "release v2.9.0", "/release 2.9.0"). Never use it on your own initiative, to "prepare" or "check" a release, or because a TODO section looks finished.
+description: Ship an AutoAnimeDownloader version end to end — check nothing done is left in TODO.md or docs/backlog, stamp TODO.md, tag and push, wait for the GitHub Release workflow and check its assets. Use ONLY when the user explicitly asks to release, publish, tag or stamp a version (e.g. "release 2.9.0", "release v2.9.0", "/release 2.9.0"). Never use it on your own initiative, to "prepare" or "check" a release, or because a TODO section looks finished.
 ---
 
 # Release a version
@@ -9,9 +9,9 @@ Takes the version as argument: `$ARGUMENTS` (e.g. `2.9.0` or `v2.9.0`). Below, `
 number without `v`, `vX.Y.Z` the tag. No version given → read `docs/TODO.md`, propose the number
 (rule below) and ask; never pick one silently.
 
-This skill pushes to `origin` and to the AUR — things that can't be quietly undone. Being invoked
-is **not** the permission: there are two confirmations below (before the GitHub push, before the
-AUR push), and each one waits for an explicit yes in that message. Anything unexpected along the
+This skill pushes a tag to `origin`, which publishes a GitHub Release — something that can't be
+quietly undone. Being invoked is **not** the permission: the confirmation before the push waits for
+an explicit yes in that message. Anything unexpected along the
 way — dirty tree, failed workflow, missing checksum — stop and report; don't work around it.
 
 ## 0. Pre-flight (read-only)
@@ -51,7 +51,7 @@ Commit, subject line only (CLAUDE.md commit style):
 docs: stamp vX.Y.Z and drop what it shipped from the todo
 ```
 
-## 2. Confirmation #1 — then tag and push
+## 2. Confirmation — then tag and push
 
 Show the user: the stamp commit (`git show --stat HEAD`), the commits going out
 (`git log --oneline origin/master..HEAD`) and the tag name. Ask: *"Push master and tag vX.Y.Z?"*
@@ -79,54 +79,23 @@ The workflow builds Linux amd64, Linux arm64 and Windows; commits
 the Release with the zips, the Windows exe, their `.sha256` files and generated notes. Failed →
 stop, show the failing job's log (`gh run view <run-id> --log-failed | tail -50`), and ask.
 
-Then `git pull --ff-only origin master` (the workflow may have committed) and check the checksums
-the AUR step reads:
+Then `git pull --ff-only origin master` (the workflow may have committed) and check that the
+Linux checksums were published:
 
 ```bash
 for a in Linux_x86 Linux_Arm64; do
   curl -sfIL -o /dev/null -w "%{http_code} $a\n" \
-    "https://github.com/icarosuper/AutoAnimeDownloader/releases/download/vX.Y.Z/AutoAnimeDownloader_${a}_vX.Y.Z.zip.sha256"
+    "https://github.com/taurzon5/Nyaanchiver/releases/download/vX.Y.Z/AutoAnimeDownloader_${a}_vX.Y.Z.zip.sha256"
 done
 ```
 
-Both must be `200` before step 4.
-
-## 4. Bump AUR `autoanimedownloader-bin`
-
-The `-bin` package repackages the GitHub zips and doesn't update itself. Its clone and helper live
-**outside this repo**, in the directory that contains the main checkout:
-
-```bash
-AAD_PARENT="$(dirname "$(dirname "$(realpath "$(git rev-parse --git-common-dir)")")")"
-ls "$AAD_PARENT/update-bin.sh" "$AAD_PARENT/aad-bin/PKGBUILD"
-```
-
-Either missing → this machine can't do the AUR step: stop here and tell the user the GitHub part is
-done. Otherwise:
-
-```bash
-"$AAD_PARENT/update-bin.sh" X.Y.Z      # always pass the version; no arg = releases/latest
-git -C "$AAD_PARENT/aad-bin" diff
-```
-
-The helper sets `pkgver`, resets `pkgrel=1`, writes `sha256sums_x86_64`/`sha256sums_aarch64` from
-the `.sha256` assets and regenerates `.SRCINFO` (needs `makepkg`). The source URLs already
-interpolate `pkgver`. The diff must touch only those lines.
-
-**Confirmation #2:** show the diff, ask *"Push the AUR bump to vX.Y.Z?"*, wait for an explicit yes.
-On yes:
-
-```bash
-cd "$AAD_PARENT/aad-bin"
-git add PKGBUILD .SRCINFO
-git commit -m "update to vX.Y.Z"
-git push
-```
-
-`autoanimedownloader-git` (`$AAD_PARENT/aad-git`) computes `pkgver()` from `git describe` at build
-time — don't touch it unless the package recipe itself changes.
+Both must be `200`. Anything else → the Release is missing assets: stop and report.
 
 ## Out of this flow
+
+There is **no AUR step**. The AUR packages `autoanimedownloader-bin` and `autoanimedownloader-git`
+belong to the original project, not to this repo; its own packages come with the rename
+(`docs/v3.0.0.md`, D7 and R24).
 
 Tracked elsewhere, not part of a stamp: the ghcr image (`v3.0.0` in TODO.md; the Dockerfile is
 built in CI and never pushed — see `docs/distribution.md`), the Windows installer/service
@@ -134,5 +103,5 @@ built in CI and never pushed — see `docs/distribution.md`), the Windows instal
 
 ## Report
 
-The tag, the Release URL (`gh release view vX.Y.Z --json url -q .url`), whether the workflow
-committed the README links, and whether the AUR bump was pushed (or why not).
+The tag, the Release URL (`gh release view vX.Y.Z --json url -q .url`), and whether the workflow
+committed the README links.

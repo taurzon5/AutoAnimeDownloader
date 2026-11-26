@@ -8,11 +8,15 @@
 >
 > This is a fork of [icarosuper/AutoAnimeDownloader](https://github.com/icarosuper/AutoAnimeDownloader).
 
+<!-- Kept on purpose: the only reference to the original repo left. The license is GPLv3, which asks
+a modified version to say it was modified, and this line does. Every other link points at this
+repo (taurzon5/Nyaanchiver). -->
+
 **Automatically downloads your anime from your Anilist or MyAnimeList watching list.**
 
 Syncs with [Anilist](https://anilist.co) and [MyAnimeList](https://myanimelist.net) (one or more accounts — or none at all), scrapes [Nyaa](https://nyaa.si) for matching torrents, and downloads them with a built-in BitTorrent client — all unattended, from a single self-contained binary (no external torrent client to install or configure). Includes an embedded Svelte web UI for monitoring, torrent management and configuration.
 
-[![CI](https://github.com/icarosuper/AutoAnimeDownloader/actions/workflows/build.yml/badge.svg)](https://github.com/icarosuper/AutoAnimeDownloader/actions/workflows/build.yml)
+[![CI](https://github.com/taurzon5/Nyaanchiver/actions/workflows/build.yml/badge.svg)](https://github.com/taurzon5/Nyaanchiver/actions/workflows/build.yml)
 
 <p align="center">
   <img src="docs/images/readme/main-flow.gif" alt="Dashboard synced with an AniList list, opening an anime and the live downloads">
@@ -101,28 +105,16 @@ That's it — the BitTorrent client is built in, so there is no qBittorrent (or 
 
 ## Installation
 
-### Arch Linux (AUR)
-
-```bash
-# using yay
-yay -S autoanimedownloader-bin
-
-# using paru
-paru -S autoanimedownloader-bin
-```
-
-After install, the systemd user service starts automatically. Access the web UI at **http://localhost:8091**.
-
-### Linux (other distros)
+### Linux
 
 One-liner — downloads the latest release for your architecture, verifies its checksum and runs
 `make install-user` (`~/.local/bin`, no sudo). Run it again to update:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/icarosuper/AutoAnimeDownloader/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | bash
 ```
 
-Or by hand: grab the zip for your architecture from the [latest release](https://github.com/icarosuper/AutoAnimeDownloader/releases/latest) — `AutoAnimeDownloader_Linux_x86_v*.zip` (x86_64) or `AutoAnimeDownloader_Linux_Arm64_v*.zip` (ARM64).
+Or by hand: grab the zip for your architecture from the [latest release](https://github.com/taurzon5/Nyaanchiver/releases/latest) — `AutoAnimeDownloader_Linux_x86_v*.zip` (x86_64) or `AutoAnimeDownloader_Linux_Arm64_v*.zip` (ARM64).
 
 ```bash
 unzip AutoAnimeDownloader_Linux_x86_v*.zip
@@ -148,12 +140,12 @@ sudo make uninstall-global
 
 ### Windows
 
-Download `AutoAnimeDownloader_Windows_v*.exe` from the [latest release](https://github.com/icarosuper/AutoAnimeDownloader/releases/latest) and run it — no installation needed.
+Download `AutoAnimeDownloader_Windows_v*.exe` from the [latest release](https://github.com/taurzon5/Nyaanchiver/releases/latest) and run it — no installation needed.
 
 Access the web UI at **http://localhost:8091**. It runs in the foreground — there is no
 Windows installer or background service yet.
 
-See [all releases](https://github.com/icarosuper/AutoAnimeDownloader/releases) for older versions.
+See [all releases](https://github.com/taurzon5/Nyaanchiver/releases) for older versions.
 
 ## Usage
 
@@ -190,7 +182,7 @@ See the [CLI Guide](docs/guides/cli.md) for the full reference.
 The frontend must be built before the Go binaries, as it's embedded into the daemon.
 
 ```bash
-git clone https://github.com/icarosuper/AutoAnimeDownloader.git
+git clone https://github.com/taurzon5/Nyaanchiver.git
 cd AutoAnimeDownloader
 
 # Linux/macOS/WSL (cross-builds all platforms via Docker)

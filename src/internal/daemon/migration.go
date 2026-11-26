@@ -33,7 +33,7 @@ var migrateAnimeIDsThrottle = 250 * time.Millisecond
 // third line. Deleting it before that boundary is ancient history is not a light degradation:
 // without the conversion, NOTHING on disk matches AniList, every anime looks not-downloaded and
 // the first pass re-downloads the whole library, silently — to the daemon that is indistinguishable
-// from a legitimate empty library. The project is distributed (AUR + releases), so the question
+// from a legitimate empty library. The project is distributed (GitHub releases), so the question
 // is not "has mine already migrated".
 //
 // Cost of keeping it until then: a LoadConfigs and an if, per boot and per pass. Negligible.

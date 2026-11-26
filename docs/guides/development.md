@@ -46,7 +46,7 @@ See [Architecture](../agents/architecture.md) for flow, invariants and which fil
 ## Setup
 
 ```bash
-git clone https://github.com/icarosuper/AutoAnimeDownloader.git
+git clone https://github.com/taurzon5/Nyaanchiver.git
 cd AutoAnimeDownloader
 
 go mod download
@@ -103,6 +103,6 @@ How to report bugs, suggest features and open a pull request: see [CONTRIBUTING.
 ## See Also
 
 - [Build Guide](build.md) — building release binaries
-- [Release](../../.claude/skills/release/SKILL.md) — tagging a version, GitHub Release, AUR bump (a Claude Code skill; readable as plain steps)
+- [Release](../../.claude/skills/release/SKILL.md) — tagging a version and its GitHub Release (a Claude Code skill; readable as plain steps)
 - [CLI Guide](cli.md) — CLI reference
 - [WebUI Guide](webui.md) — web interface reference

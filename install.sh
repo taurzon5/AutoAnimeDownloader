@@ -2,14 +2,14 @@
 # Installs (or updates) the latest release for the current user: binaries in ~/.local/bin and the
 # systemd user service, through the `make install-user` shipped inside the release zip.
 #
-#   curl -fsSL https://raw.githubusercontent.com/icarosuper/AutoAnimeDownloader/master/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | bash
 #
 # Running it again updates: install-user stops the service, replaces the binaries and starts it.
 # The asset is picked by its suffix, not by its full name, so the project prefix in the zip name can
 # change without breaking this script. The checksum check is mandatory: this is curl into bash.
 set -euo pipefail
 
-REPO="icarosuper/AutoAnimeDownloader"
+REPO="taurzon5/Nyaanchiver"
 
 die() {
 	echo "error: $*" >&2

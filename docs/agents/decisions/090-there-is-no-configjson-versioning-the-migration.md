@@ -5,7 +5,7 @@
 blocks the app with an old config. And the migration lives in **one** place —
 `api/endpoint_config.go` deliberately does not repeat it on `PUT`.
 
-**What it looks like:** a lack of robustness. The project is distributed (AUR + releases) and an
+**What it looks like:** a lack of robustness. The project is distributed (GitHub releases) and an
 old-version `config.json` loading wrong is a silent failure. The natural way out looks like
 numbering the format, writing a v1→v2→v3 chain and locking the app with a big warning when the
 migration does not go through.

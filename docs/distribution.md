@@ -4,10 +4,9 @@ How the app is installed today and what is worth adding. Ordered by return on ef
 
 ## Today
 
-- **AUR** — `autoanimedownloader-bin` repackages the release zips and gets its `pkgver` and
-  checksums bumped by hand on every release (helper outside the repo);
-  `autoanimedownloader-git` builds from `master` and needs no bump. The stamp steps, including
-  this bump, are in the [release skill](../.claude/skills/release/SKILL.md)
+- **No AUR package.** `autoanimedownloader-bin` and `autoanimedownloader-git` belong to the
+  original project and install its releases, not this repo's. Whether this repo gets its own is
+  open in [v3.0.0](v3.0.0.md) (D7)
 - **GitHub Releases zip** + `make install-user` / `sudo make install-global` (`infra/linux/Makefile`),
   or `install.sh` (curl | bash) wrapping the same `install-user` — see section 2
 - **Windows** — a standalone exe, runs in the foreground, no service and no installer
@@ -39,8 +38,8 @@ Cost: ~15 lines in `.github/workflows/release.yml`, no new file, no new script t
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/icarosuper/autoanimedownloader:${{ needs.build-frontend.outputs.version }}
-            ghcr.io/icarosuper/autoanimedownloader:latest
+            ghcr.io/taurzon5/nyaanchiver:${{ needs.build-frontend.outputs.version }}
+            ghcr.io/taurzon5/nyaanchiver:latest
 ```
 
 Win: installing, updating (`docker compose pull`) and uninstalling become one command, on any
@@ -53,7 +52,7 @@ Serves whoever runs bare-metal outside Arch. `install.sh` at the repo root wraps
 `make install-user`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/icarosuper/AutoAnimeDownloader/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | bash
 ```
 
 It shipped before the ghcr image: it depends on neither. It reads the latest release from the

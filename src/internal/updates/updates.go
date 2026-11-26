@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultAPIURL = "https://api.github.com"
-	releasePath   = "/repos/icarosuper/AutoAnimeDownloader/releases/latest"
+	releasePath   = "/repos/taurzon5/Nyaanchiver/releases/latest"
 )
 
 // The first check waits so it doesn't compete with the first verification pass; then once a day.

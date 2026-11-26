@@ -19,9 +19,9 @@ func main() {
 		tag = "v99.0.0"
 	}
 
-	http.HandleFunc("/repos/icarosuper/AutoAnimeDownloader/releases/latest", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/repos/taurzon5/Nyaanchiver/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"tag_name":%q,"html_url":"https://github.com/icarosuper/AutoAnimeDownloader/releases/tag/%s","draft":false,"prerelease":false}`, tag, tag)
+		fmt.Fprintf(w, `{"tag_name":%q,"html_url":"https://github.com/taurzon5/Nyaanchiver/releases/tag/%s","draft":false,"prerelease":false}`, tag, tag)
 	})
 	log.Printf("Mock GitHub server starting on port %s (latest %s)", port, tag)
 	log.Fatal(http.ListenAndServe(":"+port, nil))

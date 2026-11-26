@@ -881,7 +881,7 @@ episodes are sorted before collapsing, because organize fires in completion orde
 
 ### `src/internal/updates/` — update check
 
-`Start` (from `main.go`) asks `GET {GITHUB_API_URL}/repos/icarosuper/AutoAnimeDownloader/releases/latest`
+`Start` (from `main.go`) asks `GET {GITHUB_API_URL}/repos/taurzon5/Nyaanchiver/releases/latest`
 2 min after boot and then every 24 h. A `dev` build never starts it; `check_for_updates` is read
 before **every** check, so turning it off stops the requests and clears `Latest()` without a restart.
 Every failure (network, non-200 — the 60/h unauthenticated rate limit included —, an unparsable tag)

@@ -8,7 +8,7 @@ handler, nor `swag` in `go.mod`.
 ready to take `@Summary`/`@Param`, and putting it back is a `swag init`.
 
 **Why it left:** measured — `swaggo/http-swagger` + `swaggo/swag` cost **11.2 MB in a 34 MB binary
-(33%)**, which goes in every AUR and GitHub release on three platforms. In exchange: 343 lines of
+(33%)**, which goes in every GitHub release on three platforms. In exchange: 343 lines of
 annotation in 17 files, 6,482 generated lines, ~15 indirect `go-openapi` deps and a mandatory
 regeneration step on every commit that touched the API.
 

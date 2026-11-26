@@ -137,7 +137,7 @@
   "config_label_max_concurrent": "Max Concurrent Downloads",
   "config_hint_max_concurrent": "Torrents beyond this limit wait in the queue. Set to 0 for no limit; seeding is never limited.",
   "config_label_check_for_updates": "Check for updates",
-  "config_hint_check_for_updates": "Asks GitHub once a day whether a newer version was released, to show it next to the version and send the update notification. Turn it off if your package manager already tells you (AUR, Docker).",
+  "config_hint_check_for_updates": "Asks GitHub once a day whether a newer version was released, to show it next to the version and send the update notification. Turn it off if something else already tells you, such as Docker.",
   "config_label_disable_seeding": "Disable seeding (no upload)",
   "config_hint_disable_seeding": "Never uploads to other peers, not even while downloading, and removes each torrent and its download copy once the episode is in the library. Downloads may be slower: peers favor those who upload back. Parts of a pack that were not linked into the library (another season, extras) are deleted with it. With direct library mode the files stay where they are: they are the library.",
   "config_hint_max_concurrent_qbittorrent_managed": "With qBittorrent, the app sets qBittorrent's own download queue to this.",

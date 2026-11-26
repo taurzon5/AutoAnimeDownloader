@@ -43,7 +43,7 @@ type StatusResponse struct {
 	// both "" when there is none, the check is off (check_for_updates), it hasn't run yet, or the
 	// build is "dev". Here because /status is what the shell already polls for the version.
 	LatestVersion    string `json:"latest_version" example:"2.11.0"`
-	LatestVersionURL string `json:"latest_version_url" example:"https://github.com/icarosuper/AutoAnimeDownloader/releases/tag/v2.11.0"`
+	LatestVersionURL string `json:"latest_version_url" example:"https://github.com/taurzon5/Nyaanchiver/releases/tag/v2.11.0"`
 }
 
 // StatusDisk is one download root's volume in GET /status.

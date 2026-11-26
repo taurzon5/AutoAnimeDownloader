@@ -4,7 +4,7 @@
  */
 
 /** The ONE place the repo URL lives: the v3.0.0 rename changes it. */
-export const REPO_URL = 'https://github.com/icarosuper/AutoAnimeDownloader'
+export const REPO_URL = 'https://github.com/taurzon5/Nyaanchiver'
 
 /** What fits in the issue URL before GitHub cuts it off; the full text is in the file anyway. */
 const URL_TEXT_BUDGET = 4000

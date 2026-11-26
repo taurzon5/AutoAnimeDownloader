@@ -36,7 +36,7 @@ func TestFetchLatest(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Write([]byte(`{"tag_name":"v2.11.0","html_url":"https://github.com/icarosuper/AutoAnimeDownloader/releases/tag/v2.11.0","draft":false}`))
+		w.Write([]byte(`{"tag_name":"v2.11.0","html_url":"https://github.com/taurzon5/Nyaanchiver/releases/tag/v2.11.0","draft":false}`))
 	}))
 	defer srv.Close()
 

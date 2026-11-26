@@ -29,7 +29,6 @@ body:
     attributes:
       label: How did you install AutoAnimeDownloader?
       options:
-        - AUR
         - Docker
         - Windows installer
         - Release binary
