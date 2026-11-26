@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -432,6 +433,17 @@ func TestHandleUpdateConfig(t *testing.T) {
 		}
 	})
 
+	// 0 tried no magnet at all: no episode ever downloaded one by one.
+	t.Run("PUT with episode_retry_limit 0 returns 400", func(t *testing.T) {
+		config := files.Config{CompletedAnimePath: "/tmp/completed", CheckInterval: 10, MaxEpisodesPerAnime: 12}
+		jsonData, _ := json.Marshal(config)
+		w := httptest.NewRecorder()
+		handler(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "retry limit must be at least 1") {
+			t.Errorf("got %d %s, want 400 for the retry limit", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("PUT with invalid check_interval returns 400", func(t *testing.T) {
 		config := files.Config{
 			AnilistUsernames:    []string{"testuser"},
@@ -510,6 +522,7 @@ func TestHandleUpdateConfig(t *testing.T) {
 			CompletedAnimePath:  t.TempDir(),
 			CheckInterval:       10,
 			MaxEpisodesPerAnime: 12,
+			EpisodeRetryLimit:   5,
 			LibraryMode:         files.LibraryModeDirect,
 		}
 		jsonData, _ := json.Marshal(config)
@@ -540,6 +553,7 @@ func TestHandleUpdateConfig(t *testing.T) {
 				CompletedAnimePath:  lib,
 				CheckInterval:       10,
 				MaxEpisodesPerAnime: 12,
+				EpisodeRetryLimit:   5,
 				LibraryMode:         tc.mode,
 				IncompletePath:      tc.incomplete,
 			}

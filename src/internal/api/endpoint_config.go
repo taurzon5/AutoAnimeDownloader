@@ -146,8 +146,9 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
-		if config.EpisodeRetryLimit < 0 {
-			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Episode retry limit must be non-negative")
+		// 0 would try no magnet at all: no episode would ever download one by one.
+		if config.EpisodeRetryLimit < 1 {
+			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Episode retry limit must be at least 1")
 			return
 		}
 

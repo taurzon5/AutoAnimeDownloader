@@ -44,6 +44,9 @@ const saved = {
   qbittorrent_category: 'aad',
   qbittorrent_path_map: [],
   qbittorrent_disable_seeding_upload_kib: 16,
+  // GET /config always carries these; missing, their inputs bind null and read as cleared.
+  recent_shelf_days: 3,
+  shoko_full_resync_days: 30,
   notifications: { webhooks: [], batch_window_seconds: 60 },
 }
 
@@ -208,5 +211,38 @@ describe('Config — torrent client', () => {
     await fireEvent.click(document.getElementById('use_qbittorrent') as HTMLInputElement)
     await flush()
     expect(document.getElementById('qbittorrent_url')).toBeNull()
+  })
+})
+
+describe('Config — number fields', () => {
+  beforeEach(() => {
+    vi.mocked(client.getConfig).mockResolvedValue(structuredClone(saved) as never)
+    vi.mocked(client.updateConfig).mockReset().mockResolvedValue({ message: 'ok' } as never)
+  })
+
+  async function setAndSave(group: RegExp, id: string, value: string) {
+    render(Config)
+    await flush()
+    await fireEvent.click(screen.getByRole('button', { name: group }))
+    await flush()
+    await fireEvent.input(document.getElementById(id) as HTMLInputElement, { target: { value } })
+    await flush()
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+  }
+
+  it('a cleared number field is not saved as 0 (which would turn the disk floor off)', async () => {
+    await setAndSave(/^Library/, 'min_free_disk_gb', '')
+    expect(client.updateConfig).not.toHaveBeenCalled()
+  })
+
+  it('an episode retry limit of 0 is refused: it would try no magnet at all', async () => {
+    await setAndSave(/^Torrent search/, 'episode_retry_limit', '0')
+    expect(client.updateConfig).not.toHaveBeenCalled()
+  })
+
+  it('control: a valid edit saves', async () => {
+    await setAndSave(/^Torrent search/, 'episode_retry_limit', '1')
+    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ episode_retry_limit: 1 }))
   })
 })

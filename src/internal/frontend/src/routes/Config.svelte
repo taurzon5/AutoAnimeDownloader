@@ -519,6 +519,13 @@
     }
   }
 
+  // A cleared number field binds to null, and `null >= 0` is true in JS, so a bare `>= 0` let it
+  // through and the server read the null as 0, which turns most of these limits off.
+  const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+  // A field the config doesn't carry (undefined) passes; one bound to an input on screen and
+  // cleared is null, and does not.
+  const optNum = (v: unknown, ok: (n: number) => boolean): boolean => v === undefined || (isNum(v) && ok(v));
+
   /**
    * The same six validations as before, in the same order — only now each one knows which group the
    * field it rejects lives in. That's a requirement of the new layout, not a new rule: with one
@@ -552,62 +559,65 @@
     },
     {
       group: "downloads" as GroupId,
-      ok: config.check_interval > 0,
+      ok: isNum(config.check_interval) && config.check_interval > 0,
       message: m.config_val_interval,
     },
     {
       group: "downloads" as GroupId,
-      ok: (config.recent_shelf_days ?? 3) >= 0 && (config.recent_shelf_days ?? 3) <= 30,
+      ok: optNum(config.recent_shelf_days, (n) => n >= 0 && n <= 30),
       message: m.config_val_recent_shelf_days,
     },
     {
       group: "downloads" as GroupId,
-      ok: config.max_episodes_per_anime >= 0,
+      ok: isNum(config.max_episodes_per_anime) && config.max_episodes_per_anime >= 0,
       message: m.config_val_max_episodes,
     },
     {
       group: "search" as GroupId,
-      ok: config.episode_retry_limit >= 0,
+      // 0 would try no magnet at all, so no episode would ever download one by one.
+      ok: isNum(config.episode_retry_limit) && config.episode_retry_limit >= 1,
       message: m.config_val_retry,
     },
     {
       group: "downloads" as GroupId,
-      ok: config.max_concurrent_downloads >= 0,
+      ok: isNum(config.max_concurrent_downloads) && config.max_concurrent_downloads >= 0,
       message: m.config_val_max_concurrent,
     },
     {
       group: "downloads" as GroupId,
-      ok: !(config.delete_watched_episodes && config.watched_episodes_to_keep < 0),
+      ok: !config.delete_watched_episodes || optNum(config.watched_episodes_to_keep, (n) => n >= 0),
       message: m.config_val_watched_keep,
     },
     {
       group: "search" as GroupId,
-      ok: config.max_batch_torrent_size_gb >= 0 && config.max_episode_torrent_size_gb >= 0,
+      ok:
+        isNum(config.max_batch_torrent_size_gb) && config.max_batch_torrent_size_gb >= 0 &&
+        isNum(config.max_episode_torrent_size_gb) && config.max_episode_torrent_size_gb >= 0,
       message: m.config_val_torrent_size,
     },
     {
       group: "search" as GroupId,
-      ok: config.min_seeders >= 0,
+      ok: isNum(config.min_seeders) && config.min_seeders >= 0,
       message: m.config_val_min_seeders,
     },
     {
       group: "search" as GroupId,
-      ok: config.max_search_pages >= 0,
+      ok: isNum(config.max_search_pages) && config.max_search_pages >= 0,
       message: m.config_val_max_search_pages,
     },
     {
       group: "search" as GroupId,
-      ok: config.nyaa_request_delay_seconds >= 0,
+      ok: isNum(config.nyaa_request_delay_seconds) && config.nyaa_request_delay_seconds >= 0,
       message: m.config_val_nyaa_request_delay,
     },
     {
       group: "library" as GroupId,
-      ok: config.min_free_disk_gb >= 0,
+      ok: isNum(config.min_free_disk_gb) && config.min_free_disk_gb >= 0,
       message: m.config_val_min_free_disk,
     },
     {
       group: "library" as GroupId,
-      ok: (config.incomplete_min_free_disk_gb ?? 0) >= 0,
+      ok: optNum(config.incomplete_min_free_disk_gb, (n) => n >= 0),
       message: m.config_val_incomplete_min_free_disk,
     },
     {
@@ -617,12 +627,12 @@
     },
     {
       group: "shoko" as GroupId,
-      ok: !config.shoko_enabled || (config.shoko_refresh_hours ?? 0) >= 1,
+      ok: !config.shoko_enabled || (isNum(config.shoko_refresh_hours) && config.shoko_refresh_hours >= 1),
       message: m.config_val_shoko_refresh,
     },
     {
       group: "shoko" as GroupId,
-      ok: (config.shoko_full_resync_days ?? 0) >= 0,
+      ok: optNum(config.shoko_full_resync_days, (n) => n >= 0),
       message: m.config_val_shoko_full_resync,
     },
     // A download folder that is one of Shoko's (decisions/152), as saved: Shoko never sees a
@@ -1253,7 +1263,7 @@
                 label={T && T.labelRetryLimit || ""}
                 type="number"
                 bind:value={config.episode_retry_limit}
-                min="0"
+                min="1"
                 required={true}
                 inline={true}
               />

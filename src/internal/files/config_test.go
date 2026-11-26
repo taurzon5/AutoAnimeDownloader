@@ -3,6 +3,7 @@ package files
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -100,5 +101,27 @@ func TestRecentShelfDaysDefaultsToThree(t *testing.T) {
 	}
 	if c.RecentShelfDays != 3 {
 		t.Errorf("recent_shelf_days %d, want 3", c.RecentShelfDays)
+	}
+}
+
+// TestRetryLimitZeroBecomesOne: an older version saved episode_retry_limit 0, which tried no magnet
+// at all and is refused now; left on disk it would make every later save fail. It loads as 1 and is
+// written back (decisions/090).
+func TestRetryLimitZeroBecomesOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"check_interval": 10, "episode_retry_limit": 0}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c, err := newTestManagerIn(t, dir).LoadConfigs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.EpisodeRetryLimit != 1 {
+		t.Errorf("EpisodeRetryLimit = %d, want 1", c.EpisodeRetryLimit)
+	}
+	saved, _ := os.ReadFile(path)
+	if !strings.Contains(string(saved), `"episode_retry_limit": 1`) {
+		t.Errorf("the 1 was not written back: %s", saved)
 	}
 }

@@ -76,8 +76,10 @@ with a Search button and is not saved.
 
 **Download this** sits in the list card and always posts the highlighted row. The magnet strip
 below the grid has **Download magnet** for a pasted URI; a paste does not override the list
-button. Add returns to Add; Replace returns to the anime page. Cancel saves nothing. The
-per-episode replace modal stays on Anime Detail.
+button. Add returns to Add; Replace returns to the anime page. Cancel saves nothing. From the
+anime page (Replace torrent), both buttons first ask: every downloaded episode of the anime is
+deleted with its files (files handed to Shoko stay), then the torrent downloads in their place. The per-episode replace modal
+stays on Anime Detail.
 
 ### Downloads (`/downloads`)
 

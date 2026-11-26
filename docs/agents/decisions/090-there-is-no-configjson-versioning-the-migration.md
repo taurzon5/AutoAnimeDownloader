@@ -1,7 +1,7 @@
 # 90. There is no `config.json` versioning: the migration checks SHAPE, in one place
 
-**Location:** `files/filemanager.go` — `LoadConfigs` (the two legacy-field migrations, ~22
-lines). Negative fact: **there is no** `config_version` field, migration chain, or lock that
+**Location:** `files/filemanager.go` — `LoadConfigs` (the two legacy-field migrations and the
+`episode_retry_limit` floor, ~30 lines). Negative fact: **there is no** `config_version` field, migration chain, or lock that
 blocks the app with an old config. And the migration lives in **one** place —
 `api/endpoint_config.go` deliberately does not repeat it on `PUT`.
 
@@ -18,6 +18,7 @@ migration does not go through.
 | **New** field | No — the default holds, an old config loads right |
 | **Removed** field | No — JSON ignores an unknown key |
 | **Renamed** field | **Yes** — the only case |
+| **Range made stricter** | **Yes**, when the old value would make every save fail: `episode_retry_limit` 0 → 1 (2026-11-26), in `LoadConfigs` too |
 
 A version chain would exist to serve only the third row, which happened **twice** in the life of
 the project (`anilist_username` → `anilist_usernames` and `excluded_list` → `excluded_lists`, both

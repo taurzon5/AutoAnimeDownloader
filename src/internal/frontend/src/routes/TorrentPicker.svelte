@@ -19,6 +19,7 @@
   } from "../lib/api/client.js";
   import { pickerCache } from "../lib/stores/pickerCache.js";
   import Button from "../components/ui/Button.svelte";
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import Chip from "../components/ui/Chip.svelte";
   import Cover from "../components/ui/Cover.svelte";
   import Loading from "../components/Loading.svelte";
@@ -221,6 +222,21 @@
     await pop();
   }
 
+  // Replacing deletes every downloaded episode of the anime, files and torrents included (kept
+  // forever or not; a file handed to Shoko stays, decisions/152), before adding the pick: every other delete on the anime page asks first, so
+  // this one does too. Add mode deletes nothing and doesn't ask.
+  let replaceConfirmOpen = false;
+  let pendingReplace: (() => Promise<void>) | null = null;
+
+  function askReplace(run: () => Promise<void>): void {
+    if (mode !== "replace") {
+      void run();
+      return;
+    }
+    pendingReplace = run;
+    replaceConfirmOpen = true;
+  }
+
   async function confirmSelected(): Promise<void> {
     if (!selected?.magnet) return;
     confirming = true;
@@ -313,6 +329,15 @@
   }
 </script>
 
+<ConfirmDialog
+  bind:open={replaceConfirmOpen}
+  title={m.picker_replace_confirm_title()}
+  message={m.picker_replace_confirm_msg({ title: media?.title || m.picker_title() })}
+  confirmLabel={m.picker_replace_confirm()}
+  cancelLabel={m.common_cancel()}
+  on:confirm={() => { const run = pendingReplace; pendingReplace = null; if (run) void run(); }}
+/>
+
 <div class="flex min-w-0 flex-col gap-4.5">
   <div class="flex flex-col gap-3">
     <a href={backHref} class="w-fit text-copy text-body hover:text-heading">{backLabel}</a>
@@ -402,7 +427,7 @@
       {/if}
       {#if hasCandidates}
         <div class="flex justify-end border-t border-default px-3.5 py-3">
-          <Button variant="solid" disabled={!canDownloadThis} on:click={confirmSelected}>
+          <Button variant="solid" disabled={!canDownloadThis} on:click={() => askReplace(confirmSelected)}>
             {T && T.confirm}
           </Button>
         </div>
@@ -466,7 +491,7 @@
         spellcheck="false"
         class="w-full rounded-field border border-default bg-control px-3 py-2 text-copy text-heading outline-none placeholder:font-normal placeholder:text-subtle focus:border-accent"
       />
-      <Button variant="ghost" disabled={!canDownloadMagnet} on:click={confirmMagnet}>
+      <Button variant="ghost" disabled={!canDownloadMagnet} on:click={() => askReplace(confirmMagnet)}>
         {T && T.magnetConfirm}
       </Button>
     </div>

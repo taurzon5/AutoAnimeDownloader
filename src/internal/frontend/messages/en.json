@@ -178,7 +178,7 @@
   "config_val_recent_shelf_days": "The Recently downloaded shelf takes 0 (off) to 30 days",
   "config_hint_max_episodes": "How many episodes of one anime exist at the same time. Applies to the episode-by-episode path only — a pack is a single torrent, so limiting records would not limit bytes. Set to 0 for no limit (a pack search then covers every pending episode at once).",
   "config_val_max_episodes": "Max episodes per anime must be non-negative",
-  "config_val_retry": "Episode retry limit must be non-negative",
+  "config_val_retry": "Episode retry limit must be at least 1",
   "config_val_max_concurrent": "Max concurrent downloads must be non-negative",
   "config_val_qbittorrent_disable_seeding_upload": "The upload limit with qBittorrent must be at least 1 KiB/s",
   "config_val_watched_keep": "Watched episodes to keep must be non-negative",
@@ -720,6 +720,9 @@
   "picker_query_label": "Nyaa search",
   "picker_search": "Search",
   "picker_hint": "Pick the pack. The first is what the daemon would download.",
+  "picker_replace_confirm_title": "Replace every downloaded episode?",
+  "picker_replace_confirm_msg": "Every downloaded episode of {title} is deleted with its files (files handed to Shoko stay), then this torrent downloads in their place.",
+  "picker_replace_confirm": "Delete and replace",
   "picker_pack_count": [
     {
       "declarations": [

@@ -97,6 +97,12 @@ beforeEach(() => {
   push.mockResolvedValue(undefined)
 })
 
+/** Replace mode asks before deleting the anime's episodes; this accepts. */
+async function confirmReplace(): Promise<void> {
+  await screen.findByRole('dialog')
+  await fireEvent.click(screen.getByRole('button', { name: 'Delete and replace' }))
+}
+
 describe('TorrentPicker — list', () => {
   it('selects the first row as recommended and fetches its Nyaa page', async () => {
     await mountPicker()
@@ -326,6 +332,7 @@ describe('TorrentPicker — confirm', () => {
     await screen.findByText('[SubsPlease] Frieren (01-16) [1080p]')
 
     await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    await confirmReplace()
 
     // The picked row goes along, so the release is recorded as a pick with its Nyaa page.
     await waitFor(() =>
@@ -342,6 +349,7 @@ describe('TorrentPicker — confirm', () => {
   it('replace: list button uses the selected magnet; magnet button uses the pasted URI', async () => {
     await mountPicker('#/status/21/torrents')
     await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    await confirmReplace()
     await waitFor(() =>
       expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(21, 'magnet:?xt=urn:btih:aaa', expect.objectContaining({ nyaa_id: 12345 })),
     )
@@ -351,12 +359,27 @@ describe('TorrentPicker — confirm', () => {
       target: { value: 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567' },
     })
     await fireEvent.click(screen.getByRole('button', { name: 'Download magnet' }))
+    await confirmReplace()
     await waitFor(() =>
       expect(replaceAnimeWithMagnet).toHaveBeenCalledWith(
         21,
         'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567',
       ),
     )
+  })
+})
+
+describe('TorrentPicker — replace asks first', () => {
+  it('replacing deletes every downloaded episode, so it asks, and Cancel replaces nothing', async () => {
+    await mountPicker('#/status/21/torrents')
+    await screen.findByText('[SubsPlease] Frieren (01-16) [1080p]')
+    await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog.textContent).toMatch(/deleted with its files/)
+    expect(replaceAnimeWithMagnet).not.toHaveBeenCalled()
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(replaceAnimeWithMagnet).not.toHaveBeenCalled()
   })
 })
 

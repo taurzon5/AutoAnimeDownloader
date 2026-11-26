@@ -790,6 +790,16 @@ func (m *FileManager) LoadConfigs() (*Config, error) {
 		config.MALUsernames = []string{}
 	}
 
+	// A range made stricter: episode_retry_limit 0 tried no magnet, so no episode downloaded one by
+	// one, and saving it is refused now. Left on disk it would make every later save fail, so it
+	// becomes 1, the nearest value that downloads (decisions/090).
+	if config.EpisodeRetryLimit < 1 {
+		config.EpisodeRetryLimit = 1
+		if err := m.saveConfigsLocked(config); err != nil {
+			logger.Logger.Warn().Err(err).Msg("Failed to save migrated config")
+		}
+	}
+
 	ApplyNyaaSettings(config)
 	return config, nil
 }

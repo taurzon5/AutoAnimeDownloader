@@ -178,7 +178,7 @@
   "config_val_recent_shelf_days": "A prateleira Baixados recentemente aceita de 0 (desligada) a 30 dias",
   "config_hint_max_episodes": "Quantos episódios de um anime existem ao mesmo tempo. Vale apenas no caminho episódio a episódio — um pack é um torrent só, então limitar registros não limitaria bytes. Use 0 para não limitar (aí a busca de pack cobre todos os episódios pendentes de uma vez).",
   "config_val_max_episodes": "Máx. episódios por anime não pode ser negativo",
-  "config_val_retry": "Limite de tentativas não pode ser negativo",
+  "config_val_retry": "Limite de tentativas deve ser pelo menos 1",
   "config_val_max_concurrent": "Máx. de downloads simultâneos não pode ser negativo",
   "config_val_qbittorrent_disable_seeding_upload": "O limite de upload com o qBittorrent deve ser de pelo menos 1 KiB/s",
   "config_val_watched_keep": "Episódios a manter não pode ser negativo",
@@ -824,6 +824,9 @@
   "picker_query_label": "Busca no Nyaa",
   "picker_search": "Buscar",
   "picker_hint": "Escolha o lote. O primeiro é o que o daemon baixaria.",
+  "picker_replace_confirm_title": "Substituir todos os episódios baixados?",
+  "picker_replace_confirm_msg": "Todos os episódios baixados de {title} são apagados com os arquivos (os entregues ao Shoko ficam), e este torrent é baixado no lugar deles.",
+  "picker_replace_confirm": "Apagar e substituir",
   "picker_pack_count": [
     {
       "declarations": [

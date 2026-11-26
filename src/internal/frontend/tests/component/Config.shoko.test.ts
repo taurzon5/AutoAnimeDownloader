@@ -49,6 +49,9 @@ const saved = {
   qbittorrent_path_map: [],
   qbittorrent_disable_seeding_upload_kib: 16,
   keep_removed_release_cards: true,
+  // GET /config always carries these; missing, their inputs bind null and read as cleared.
+  recent_shelf_days: 3,
+  shoko_full_resync_days: 30,
   notifications: { webhooks: [], batch_window_seconds: 60 },
 }
 
