@@ -66,7 +66,7 @@ async function setupBusyStatusPage(page: import('@playwright/test').Page) {
 }
 
 // 1024 is the smallest viewport where the anime list table is rendered (below that Status.svelte
-// switches to stacked cards); 1280 is the chromium project's default.
+// switches to stacked cards); 1280 is the firefox project's default.
 for (const width of [1024, 1280, 1600]) {
   test(`status page does not overflow horizontally at ${width}px with many active downloads`, async ({
     page,
@@ -274,7 +274,7 @@ for (const width of [375, 414, 500, 640, 768, 900, 1280]) {
     await page.setViewportSize({ width, height: 800 })
     await page.goto('/#/downloads')
 
-    const subtitle = page.getByText('Live progress of the embedded torrent client')
+    const subtitle = page.getByText('Live progress of your downloads')
     await expect(subtitle).toBeVisible()
 
     const lines = await subtitle.evaluate((el: HTMLElement) => {
@@ -341,7 +341,7 @@ test('the nav rail stays pinned to the top of the viewport while the page scroll
 
 /**
  * Config index on mobile. The same regression as the Downloads filter pills, the same remedy: the
- * strip had 358px of space for 644px of content at 390px, so "Torrent search" and the two exit
+ * strip had 358px of space for 644px of content at 390px (in Chromium), so "Torrent search" and the two exit
  * links were behind a sideways drag. `flex-wrap` puts everything on screen.
  *
  * The assertion is double on purpose: "every item whole in the viewport" catches the hidden item,
@@ -381,9 +381,9 @@ for (const width of [375, 390, 414]) {
 
 /**
  * Daemon actions in the Status header. The row was `flex shrink-0 gap-2`: it could neither shrink
- * NOR wrap, so its width was the sum of the three buttons forever (358px), and on a narrow screen
- * "Stop Daemon" went off the right edge. The UI is English only now (decisions/156); the 320px case
- * is the one that overflowed in English.
+ * NOR wrap, so its width was the sum of the three buttons forever (358px then, 344px now in
+ * Firefox), and on a narrow screen "Stop Daemon" went off the right edge. The UI is English only
+ * now (decisions/156); the 320px case is the one that overflowed in English.
  */
 for (const width of [320, 375, 390, 414] as const) {
   test(`status header daemon actions stay on screen at ${width}px`, async ({
@@ -394,16 +394,16 @@ for (const width of [320, 375, 390, 414] as const) {
     await page.goto('/#/status')
 
     // Scoped to the header row: "+ Add anime" also exists in the list's empty state and in the
-    // mobile NavTabBar, so the accessible name alone matches three elements. "Force check"
-    // ("Forçar verificação") only exists here, and serves as the anchor to reach the row.
+    // mobile NavTabBar, so the accessible name alone matches three elements. "Check now" anchors
+    // the row: the first-steps card has one too, but these mocks (a configured install) hide it.
     const row = page
-      .getByRole('button', { name: /forçar verificação|force check/i })
+      .getByRole('button', { name: /^check now$/i })
       .locator('..')
 
     const actions = [
-      row.getByRole('link', { name: /adicionar anime|add anime/i }),
-      row.getByRole('button', { name: /forçar verificação|force check/i }),
-      row.getByRole('button', { name: /parar daemon|stop daemon/i }),
+      row.getByRole('link', { name: /add anime/i }),
+      row.getByRole('button', { name: /^check now$/i }),
+      row.getByRole('button', { name: /stop daemon/i }),
     ]
     for (const action of actions) {
       // ratio 1: the WHOLE button in the viewport, not an edge of it.

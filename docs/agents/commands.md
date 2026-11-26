@@ -58,7 +58,7 @@ PORT=:8092 ./autoanimedownloader-daemon        # custom port (default 8091)
 ```
 
 Both of these run against **the real** `~/.autoAnimeDownloader` (config, state, torrents) and the
-real AniList/Nyaa. To look at the running app without that — by hand or with a browser agent — use
+real AniList/Nyaa. To look at the running app without that — by hand or with a browser check on Firefox — use
 the sandbox instead:
 
 ```bash

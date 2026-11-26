@@ -1,6 +1,6 @@
 ---
 name: sandbox
-description: Run AutoAnimeDownloader's real web UI on top of the real daemon, isolated from the user's installation, and check it in a headless browser. Use when asked to see, open, click through, screenshot or "confirm it works" in the running app, to dogfood/QA the UI, or after a frontend or API change that tests alone don't show. Never start the daemon any other way for this.
+description: Run AutoAnimeDownloader's real web UI on top of the real daemon, isolated from the user's installation, and check it in headless Firefox. Use when asked to see, open, click through, screenshot or "confirm it works" in the running app, to dogfood/QA the UI, or after a frontend or API change that tests alone don't show. Never start the daemon any other way for this.
 ---
 
 # Sandbox: the real app, without the user's data
@@ -32,19 +32,42 @@ The first start builds the frontend (~30s). If only Go code changed since the la
 `SANDBOX_SKIP_FRONTEND=1` reuses the last build. `port ... already in use` → another sandbox is
 still up (stop it, step 4) or set `SANDBOX_PORT`.
 
-## 2. Drive it with agent-browser
+## 2. Drive it with Playwright on Firefox
 
-Load the usage guide first (`agent-browser skills get core`; for a bug hunt, `skills get dogfood`).
-Always use a named session — the default one is shared with every agent and the user:
+Firefox only: never Chrome, Chromium, or a browser agent that runs on them
+([decisions/157](../../../docs/agents/decisions/157-the-smoke-tests-run-on-firefox-only-never-on.md)).
+The driver is the Playwright the smoke tests use, with its own Firefox build
+(`bunx playwright install firefox` in `src/internal/frontend/` once, and again after a Playwright
+bump). Write a short script to `$SCRATCH/look.mjs`, with `<checkout>` the absolute path of the
+checkout you work in and `<scratchpad>` your scratchpad's:
+
+```js
+import { firefox } from '<checkout>/src/internal/frontend/node_modules/@playwright/test/index.mjs'
+
+const SCRATCH = '<scratchpad>'
+const browser = await firefox.launch()                   // headless
+const context = await browser.newContext({ viewport: { width: 375, height: 812 }, colorScheme: 'light' })
+const page = await context.newPage()
+const errors = []                                        // JS errors are findings too
+page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
+page.on('pageerror', (e) => errors.push(String(e)))
+
+await page.goto('http://localhost:8092/#/status', { waitUntil: 'networkidle' })
+console.log(await page.locator('main').ariaSnapshot())   // roles and names: what you can click
+await page.getByRole('button', { name: /^check now$/i }).first().click()  // the header's: the first-steps card has one too until a check has run
+await page.screenshot({ path: `${SCRATCH}/status.png` })  // your own look: Read it. Evidence goes in step 5
+console.log('errors:', errors)
+await browser.close()
+```
 
 ```bash
-export AGENT_BROWSER_SESSION=aad-sandbox
-agent-browser open 'http://localhost:8092/#/status'
-agent-browser wait --load networkidle
-agent-browser snapshot -i                  # refs for clicking
-agent-browser screenshot "$SCRATCH/status.png"   # your own look: Read it. Evidence goes in step 5
-agent-browser console; agent-browser errors      # JS errors are findings too
+node "$SCRATCH/look.mjs"
 ```
+
+One run is one look: edit the steps and run it again. Each run starts a fresh browser, so its own
+state (localStorage, a dismissed card, a picked theme) doesn't carry over; the daemon's does. Act
+by role, label and name (`getByRole`, `getByLabel`), as the smoke specs do, and fall back to
+`page.locator('<css>')` only when nothing has a name.
 
 Routes are hash-based (table in `src/internal/frontend/src/App.svelte`): `#/status`, `#/add`,
 `#/downloads`, `#/config`, `#/priorities`, `#/notifications`, `#/logs`, `#/report`, and
@@ -65,7 +88,6 @@ flow was checked. Daemon logs: `.sandbox/daemon.out`.
 ## 4. Stop it — always, also after a failure
 
 ```bash
-agent-browser close
 kill "$(cat .sandbox/sandbox.pid)"
 sleep 2; for p in 8092 18080 18081; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/null && echo "$p still open"; done
 ```
@@ -73,7 +95,8 @@ sleep 2; for p in 8092 18080 18081; do (exec 3<>/dev/tcp/127.0.0.1/$p) 2>/dev/nu
 SIGTERM runs the script's trap, which stops the daemon and both mocks and removes the pid file.
 Not `kill -INT`: a script started in the background inherits SIGINT as ignored, so nothing happens.
 Not `pkill -f scripts/sandbox.sh`: the pattern also matches the shell running the `pkill` and kills it. Anything still open → find it
-with `pgrep -af '\.sandbox/bin'` and kill it.
+with `pgrep -af '\.sandbox/bin'` and kill it. The look script closes its own browser; a run that
+crashed before `browser.close()` can leave one, which `pgrep -af 'ms-playwright/firefox'` finds.
 
 ## 5. Report — with evidence the developer can open
 
@@ -82,24 +105,31 @@ starting the app to see it. Save them in one folder per run — `.sandbox/report
 and survives the sandbox restarts (the script wipes everything else in `.sandbox/`):
 
 ```bash
-REPORT="$PWD/.sandbox/reports/$(date +%Y-%m-%d_%H%M)"; mkdir -p "$REPORT"
-agent-browser screenshot '<selector of the broken element>' "$REPORT/downloads-375-chip-wraps-before.png"
-agent-browser screenshot --full "$REPORT/downloads-375-page.png"   # when the context matters
+REPORT="$PWD/.sandbox/reports/$(date +%Y-%m-%d_%H%M)"; mkdir -p "$REPORT"; echo "$REPORT"
+```
+
+Then, in the look script, with that path as `REPORT`:
+
+```js
+await page.locator('<selector of the broken element>').screenshot({ path: `${REPORT}/downloads-375-chip-wraps-before.png` })
+await page.screenshot({ path: `${REPORT}/downloads-375-page.png`, fullPage: true })   // when the context matters
 ```
 
 - **One screenshot per problem**, named `<screen>-<width>-<what>-before.png`. Prefer the element
-  (`screenshot <selector>`) — a full page at 375px is a 5000px strip nobody can read; add the page
-  only when the problem is where the element sits.
+  (`locator(...).screenshot`) — a full page at 375px is a 5000px strip nobody can read; add the
+  page only when the problem is where the element sits.
 - **Video only for behavior** a still can't show — a click that does nothing, a menu that closes,
-  something that flickers. Keep it to the repro, a few seconds:
-  `agent-browser record start "$REPORT/<screen>-<what>.webm"`, do the steps, `agent-browser record stop`.
-- **Fixed it? Add the after shot.** Same route, width, locale, theme and selector as the before,
+  something that flickers. Keep it to the repro, a few seconds: add
+  `` recordVideo: { dir: `${REPORT}/video`, size: <the viewport> } `` to `newContext`, do the
+  steps, then `await context.close()` and
+  `` await page.video().saveAs(`${REPORT}/<screen>-<what>.webm`) `` before `browser.close()`.
+- **Fixed it? Add the after shot.** Same route, width, theme and selector as the before,
   so the two compare one to one; name them as a pair: `downloads-375-chip-wraps-before.png` /
   `-after.png` (same for a video). The frontend is embedded in the daemon binary, so restart the
   sandbox **without** `SANDBOX_SKIP_FRONTEND` first — otherwise the after shot shows the old code
   and the fix looks like it failed. A problem only reported, not fixed, has just the before.
 - Your exploratory screenshots stay in the scratchpad; only evidence of a problem goes in the report.
 
-Then tell the user what was checked, what was not (step 3), and for each problem: route, width,
-locale and theme, what is wrong, the steps, whether it was fixed, and the **full absolute path**
+Then tell the user what was checked, what was not (step 3), and for each problem: route, width and
+theme, what is wrong, the steps, whether it was fixed, and the **full absolute path**
 of each file (before and after) — a relative path isn't clickable in the terminal.

@@ -31,7 +31,7 @@ test('clicking Start Daemon calls POST /daemon/start', async ({ page }) => {
   await startRequest
 })
 
-test('clicking Force Check calls POST /check', async ({ page }) => {
+test('clicking Check now calls POST /check', async ({ page }) => {
   await setupStatusPageMocks(page, 'running')
   await page.route('**/api/v1/check', route =>
     route.fulfill({ json: { success: true, data: null } })
@@ -41,11 +41,11 @@ test('clicking Force Check calls POST /check', async ({ page }) => {
   const checkRequest = page.waitForRequest(
     req => req.url().includes('/api/v1/check') && req.method() === 'POST'
   )
-  await page.getByRole('button', { name: /force check/i }).click()
+  await page.getByRole('button', { name: /^check now$/i }).click()
   await checkRequest
 })
 
-test('Force Check button is disabled while checking', async ({ page }) => {
+test('the Check now button is disabled while checking', async ({ page }) => {
   await setupStatusPageMocks(page, 'checking')
 
   await page.goto('/')

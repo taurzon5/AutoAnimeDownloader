@@ -193,7 +193,7 @@ jobs:
         run: cd src/internal/frontend && bun install --frozen-lockfile
 
       - name: Install Playwright browsers
-        run: cd src/internal/frontend && bunx playwright install --with-deps chromium
+        run: cd src/internal/frontend && bunx playwright install --with-deps firefox
 
       - name: Run smoke tests
         run: cd src/internal/frontend && bun run test:smoke

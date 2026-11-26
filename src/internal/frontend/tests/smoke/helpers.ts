@@ -109,6 +109,11 @@ export const baseConfig = {
     download_statuses: ['CURRENT', 'REPEATING'],
     download_media_statuses: ['RELEASING', 'FINISHED'],
     delete_statuses: [],
+    // The daemon always sends these. Left out, the Library group's switches bound to them write
+    // their default `false` after the load took its baseline, the screen reads as edited, and
+    // the unsaved-changes guard blocks leaving it (decisions/129).
+    keep_removed_release_cards: false,
+    check_for_updates: false,
     notifications: { webhooks: [], batch_window_seconds: 0 },
   },
 }

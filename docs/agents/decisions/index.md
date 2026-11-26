@@ -168,3 +168,4 @@ do not edit by hand.
 - [**#154** — Several download roots: each placement records its root, the disk budget picks the first root with space after the anime's override and its series' root, and roots on one drive share its space](154-several-download-roots-each-placement-records-its.md)
 - [**#155** — The app's blacklist stops checking and downloading an anime and keeps its files](155-the-apps-blacklist-stops-checking-and-downloading.md)
 - [**#156** — The web UI is English only, and its message layer stays with one locale](156-the-web-ui-is-english-only-and-its-message-layer.md)
+- [**#157** — The smoke tests and the sandbox's browser checks run on Firefox only, never on Chrome or Chromium](157-the-smoke-tests-run-on-firefox-only-never-on.md)

@@ -7,7 +7,8 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Firefox only: never Chrome or its engine on the user's machine (decisions/157).
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
   webServer: {
     command: 'bun run dev',

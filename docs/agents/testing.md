@@ -374,8 +374,10 @@ Any test that lets `AnimeVerification` run to completion must also stub AniList 
 ## Seeing the Real App
 
 The suites above never show front and back running together — the smoke tests mock the API with
-hand-written fixtures. To click through the real UI on top of the real daemon (by hand, or with a
-browser agent such as `agent-browser`), run `make sandbox` and open `http://localhost:8092`.
+hand-written fixtures. To click through the real UI on top of the real daemon, run `make sandbox`
+and open `http://localhost:8092`, by hand or with a Playwright script on Firefox as the
+[sandbox skill](../../.claude/skills/sandbox/SKILL.md) shows (never Chromium:
+[decisions/157](decisions/157-the-smoke-tests-run-on-firefox-only-never-on.md)).
 **Never** start the daemon without it for this: a plain `go run ./src/cmd/daemon` uses the
 developer's real data dir and the real AniList/Nyaa. What the sandbox isolates and what its mock
 data does not cover: [commands.md](commands.md#running-the-daemon).
@@ -399,11 +401,11 @@ Frontend tests live in `src/internal/frontend/tests/`:
 |---|---|---|---|
 | Unit | `tests/unit/` | Vitest + jsdom | `bun run test:unit` |
 | Component | `tests/component/` | Vitest + @testing-library/svelte | `bun run test:component` |
-| Smoke | `tests/smoke/` | Playwright (Chromium) | `bun run test:smoke` |
+| Smoke | `tests/smoke/` | Playwright (Firefox) | `bun run test:smoke` |
 
 All layers mock the backend — no daemon needed. Config: `vitest.config.ts`, `playwright.config.ts`.
 
-Run `bun install` in `src/internal/frontend/` and `bunx playwright install chromium` before first use.
+Run `bun install` in `src/internal/frontend/` and `bunx playwright install firefox` before first use, and again after a Playwright bump: each version expects one Firefox build. The suite runs on Firefox only, never Chromium ([decisions/157](decisions/157-the-smoke-tests-run-on-firefox-only-never-on.md)).
 
 **Asserting on a captured request body:** wait for the *route handler*, not for `page.waitForRequest`. The latter resolves on the request event, which can land before the handler that records the body — with the suite on parallel workers that read `undefined` intermittently. `config.spec.ts`'s `captureSave()` exposes a `whenSaved` promise resolved inside the handler; `await saved.whenSaved` before touching `saved.body`.
 

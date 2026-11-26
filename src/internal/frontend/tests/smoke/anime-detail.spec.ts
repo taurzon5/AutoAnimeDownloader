@@ -124,10 +124,9 @@ test('the row overflow menu lists the remaining actions with text labels', async
   await expect(page.getByRole('menu')).toHaveCount(0)
 })
 
-// Regression: `title="Soltar episódio"` was hardcoded Portuguese in BOTH copies of the action
-// list (AnimeDetail.svelte:785 and :956), outside i18n. It is now a message key, so an
-// English session must read "Release episode".
-test('the release action is translated, not hardcoded Portuguese', async ({ page }) => {
+// A blocked episode offers "Back to automatic", the word the Shoko panel uses for the same
+// action (it read "Release episode" before). Both copies of the action list carry it.
+test('a blocked episode offers Back to automatic', async ({ page }) => {
   await page.route('**/api/v1/animes/123/episodes', route =>
     route.fulfill({
       json: {
@@ -141,8 +140,7 @@ test('the release action is translated, not hardcoded Portuguese', async ({ page
   )
 
   await page.goto('/#/status/123')
-  await expect(page.getByRole('button', { name: /^release episode$/i }).first()).toBeVisible()
-  await expect(page.getByText('Soltar episódio')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /^back to automatic$/i }).first()).toBeVisible()
 })
 
 test('episode row shows a progress bar when an active torrent is joined to it', async ({ page }) => {

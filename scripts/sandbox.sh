@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs a throwaway daemon for poking at the real web UI (by hand or with a browser agent) without
-# touching the real installation:
+# Runs a throwaway daemon for poking at the real web UI (by hand, or with a Playwright script on
+# Firefox as the sandbox skill does) without touching the real installation:
 #   - HOME points at .sandbox/home, so ~/.autoAnimeDownloader is a scratch copy, wiped on
 #     every start (config, state, torrents, daemon.log all live there). .sandbox/reports/ is the
 #     one thing kept: the screenshots and videos a browser check leaves for the developer

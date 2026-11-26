@@ -15,9 +15,9 @@ test('status page shows Stop Daemon button when daemon is running', async ({ pag
   await expect(page.getByRole('button', { name: /stop daemon/i })).toBeVisible()
 })
 
-test('status page shows Force Check button', async ({ page }) => {
+test('status page shows the Check now button', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('button', { name: /force check/i })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^check now$/i })).toBeVisible()
 })
 
 test('status page shows Start Daemon button when daemon is stopped', async ({ page }) => {
@@ -27,9 +27,11 @@ test('status page shows Start Daemon button when daemon is stopped', async ({ pa
   await expect(page.getByRole('button', { name: /start daemon/i })).toBeVisible()
 })
 
-test('status page keeps the go-to-config empty state when there are no animes', async ({ page }) => {
+test('status page shows the connect-a-list empty state when there are no animes', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: /go to config/i })).toBeVisible()
+  const connect = page.getByRole('link', { name: /connect a list/i })
+  await expect(connect).toBeVisible()
+  await expect(connect).toHaveAttribute('href', '#/config?group=anilist')
 })
 
 // Status.svelte polls GET /api/v1/torrents to feed the hero speed card (totalSpeeds). Without
