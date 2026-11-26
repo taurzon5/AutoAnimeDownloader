@@ -83,7 +83,7 @@ describe('Config — review fixes', () => {
   it('15: Run check now waits for unsaved edits to be saved', async () => {
     render(Config)
     await flush()
-    const run = screen.getByRole('button', { name: 'Run Check Now' }) as HTMLButtonElement
+    const run = screen.getByRole('button', { name: 'Check now' }) as HTMLButtonElement
     expect(run.disabled).toBe(false)
     await fireEvent.input(document.getElementById('completed_anime_path') as HTMLInputElement, { target: { value: '/mnt/other' } })
     await flush()

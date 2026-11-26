@@ -53,6 +53,9 @@ type StatusDisk struct {
 	Total uint64 `json:"total"`
 	Free  uint64 `json:"free"`
 	Low   bool   `json:"low"`
+	// Drive is the index of the first entry on the same filesystem: entries sharing it share one
+	// free space, so the Status page shows them as one line.
+	Drive int `json:"drive"`
 }
 
 // handleStatus returns the current status of the daemon, including last check time, error state,
@@ -83,7 +86,7 @@ func handleStatus(server *Server) http.HandlerFunc {
 			}
 			diskLow = daemon.DiskLow(cfg, server.Torrents, session, saved)
 			for _, d := range daemon.RootDisks(cfg, server.Torrents, session, saved) {
-				disks = append(disks, StatusDisk{Name: d.Name, Path: d.Path, Total: d.Total, Free: d.Free, Low: d.Low})
+				disks = append(disks, StatusDisk{Name: d.Name, Path: d.Path, Total: d.Total, Free: d.Free, Low: d.Low, Drive: d.Drive})
 			}
 			if staging := cfg.StagingPath(); staging != "" && !files.SameFilesystem(staging, cfg.CompletedAnimePath) {
 				incompleteTotal, incompleteFree, _ = files.DiskSpace(staging)

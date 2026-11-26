@@ -329,6 +329,8 @@ export interface StatusDisk {
   total: number
   free: number
   low: boolean
+  /** Index of the first entry on the same filesystem: entries sharing it share one free space. */
+  drive?: number
 }
 
 export interface TorrentClientTestResult {

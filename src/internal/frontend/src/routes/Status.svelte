@@ -19,6 +19,7 @@
     getLastCheck,
     type CheckReport,
     type StatusResponse,
+    type StatusDisk,
     type AnimeInfo,
     type TorrentInfo,
   } from "../lib/api/client.js";
@@ -300,6 +301,18 @@
     const qs = encodeStatusView(currentView());
     lastWrittenQuery = qs;
     replace(`/status${qs ? `?${qs}` : ""}`);
+  }
+
+  /** The disks grouped by drive: one entry per drive, its folders' names joined, low if any is. */
+  function diskDrives(disks: StatusDisk[]): StatusDisk[] {
+    const byDrive = new Map<number | string, StatusDisk>();
+    disks.forEach((d, i) => {
+      const key = d.drive ?? i;
+      const seen = byDrive.get(key);
+      if (seen) byDrive.set(key, { ...seen, name: `${seen.name}, ${d.name}`, low: seen.low || d.low });
+      else byDrive.set(key, { ...d });
+    });
+    return [...byDrive.values()];
   }
 
   function clearFilters() {
@@ -1076,9 +1089,11 @@
           <section class="rounded-card border border-default bg-card p-4.5">
             <p class="font-mono text-mono-label uppercase text-subtle">{T && T.cardDisk}</p>
             {#if (status.disks?.length ?? 0) > 1}
-              <!-- One line per download folder (decisions/154). -->
+              <!-- One line per drive, naming its download folders: folders on one drive share its
+                   free space (decisions/154), and two lines with the same numbers read as twice
+                   the space. -->
               <ul class="mt-1.5 space-y-1" data-testid="status-disks">
-                {#each status.disks ?? [] as disk (disk.path)}
+                {#each diskDrives(status.disks ?? []) as disk (disk.path)}
                   <li class="text-caption">
                     <span class="font-semibold {disk.low ? 'text-danger' : 'text-heading'}">{disk.name}</span>
                     <span class="text-subtle">{$locale && m.status_disk_root_free({ free: formatBytes(disk.free, fmtLocale), total: formatBytes(disk.total, fmtLocale) })}</span>
@@ -1310,16 +1325,17 @@
               </a>
             {/if}
             <a
-              href="#/config"
+              href="#/config?group=anilist"
               class="inline-flex items-center rounded-control border border-neutral/45 bg-control px-3 py-1.5 text-copy font-semibold text-heading transition-colors hover:border-accent hover:text-accent"
             >
-              {T && T.goToConfig}
+              {$locale && m.status_connect_list()}
             </a>
           </div>
         </div>
       {:else if filteredAnimes.length === 0}
-        <div class="py-10 text-center">
-          <p class="text-copy text-subtle">{$locale && m.status_no_results({ search })}</p>
+        <div class="flex flex-col items-center gap-3 py-10 text-center">
+          <p class="text-copy text-subtle">{$locale && (search.trim() ? m.status_no_results({ search }) : m.status_no_results_filters())}</p>
+          <Button variant="ghost" on:click={clearFilters}>{T && T.clearFilters}</Button>
         </div>
       {:else}
         <!-- Desktop: a grid of link rows. Not a <table> on purpose — with the whole row clickable,

@@ -61,6 +61,9 @@ type RootDisk struct {
 	Name, Path  string
 	Total, Free uint64
 	Low         bool
+	// Drive is the index of the first root on the same filesystem: roots on one drive share one
+	// free space (decisions/154), and the Status page shows them as one line.
+	Drive int
 }
 
 // RootDisks reports every download root's volume. A root whose volume doesn't answer reports zeros.
@@ -70,10 +73,17 @@ func RootDisks(configs *files.Config, backend torrents.TorrentBackend, session [
 	}
 	budget := newDiskBudget(session, saved).withRoots(configs, backend, nil)
 	var out []RootDisk
-	for _, r := range configs.Roots() {
-		d := RootDisk{Name: r.Name, Path: r.Path}
+	roots := configs.Roots()
+	for i, r := range roots {
+		d := RootDisk{Name: r.Name, Path: r.Path, Drive: i}
 		d.Total, d.Free, _ = files.DiskSpace(r.Path)
 		d.Low = budget.checkOn(configs, r.Path, 0) != nil
+		for j := range i {
+			if sameFilesystem(roots[j].Path, r.Path) {
+				d.Drive = j
+				break
+			}
+		}
 		out = append(out, d)
 	}
 	return out

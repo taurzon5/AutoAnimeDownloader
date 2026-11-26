@@ -62,7 +62,7 @@
   "status_starting": "Iniciando...",
   "status_stop": "Parar Daemon",
   "status_stopping": "Parando...",
-  "status_force_check": "Forçar Verificação",
+  "status_force_check": "Verificar agora",
   "status_animes_header": "Animes",
   "status_search_placeholder": "Buscar animes...",
   "status_x_of_y": "{shown} de {total}",
@@ -166,7 +166,7 @@
   "config_hint_season_numbering": "Com a renomeação de episódios ligada: quando uma temporada vem em duas entradas do AniList (Parte 1 e Parte 2), o primeiro episódio da Parte 2 vira S02E13, como o TVDB e o TMDB numeram. Desligado mantém a numeração do AniList e acrescenta a parte, como \"S02E01 (Part 2)\".",
   "config_label_excluded_list": "Listas excluídas",
   "config_hint_excluded_list": "Listas personalizadas do AniList que não devem ser baixadas",
-  "config_btn_run_check": "Verificar Agora",
+  "config_btn_run_check": "Verificar agora",
   "config_btn_reload": "Recarregar",
   "config_btn_save": "Salvar",
   "config_btn_saving": "Salvando...",
@@ -911,8 +911,8 @@
         "candidates"
       ],
       "match": {
-        "candidates=1": "{candidates} torrent encontrado, acima do teto de {limit} GB.",
-        "candidates=*": "{candidates} torrents encontrados, todos acima do teto de {limit} GB."
+        "candidates=1": "{candidates} torrent encontrado, acima do teto de {limit} GiB.",
+        "candidates=*": "{candidates} torrents encontrados, todos acima do teto de {limit} GiB."
       }
     }
   ],
@@ -983,7 +983,7 @@
   "onboarding_action_configure": "Escolha a pasta",
   "onboarding_action_connect_anilist": "Conecte sua lista",
   "onboarding_action_add_anime": "+ Adicione um anime",
-  "onboarding_action_check_now": "Verifique agora",
+  "onboarding_action_check_now": "Verificar agora",
   "onboarding_restore_label": "Primeiros passos",
   "onboarding_restore_hint": "O card de introdução na tela de Status.",
   "onboarding_restore_button": "Mostrar novamente",
@@ -999,7 +999,7 @@
   "passerror_anilist": "A última verificação não rodou porque o AniList não respondeu. Ela tenta de novo sozinha no próximo ciclo.",
   "passerror_mal": "A última verificação não rodou porque o MyAnimeList não respondeu, ou a lista está privada ou vazia. Ela tenta de novo sozinha no próximo ciclo.",
   "passerror_setup": "A última verificação não rodou porque falta configurar a pasta da biblioteca.",
-  "passerror_library": "A última verificação não rodou porque a pasta da biblioteca não aceita hardlinks. Escolha uma pasta no mesmo disco dos downloads.",
+  "passerror_library": "A última verificação não rodou porque a pasta da biblioteca não aceita hardlinks. Escolha uma pasta num sistema de arquivos que aceite, ou ligue Gravar downloads direto na biblioteca.",
   "passerror_library_unwritable": "A última verificação não rodou porque não dá para gravar na pasta da biblioteca. Confira se o disco está montado e se o app tem permissão.",
   "passerror_incomplete_folder": "A última verificação não rodou porque a pasta de downloads incompletos sumiu ou não aceita gravação. Confira se o disco está montado; os downloads que esperam por ela voltam sozinhos.",
   "passerror_torrent_backend": "A última verificação não rodou porque o cliente de torrent não iniciou. Reinicie o app.",
@@ -1207,5 +1207,7 @@
   "config_run_check_save_first": "Salve antes: uma verificação usa as configurações salvas.",
   "config_hint_check_interval": "Minutos entre as verificações. Cada uma lê suas listas e busca no Nyaa o que falta.",
   "config_hint_retry_limit": "Quantos links magnet um episódio tenta, do melhor para o pior, antes de esperar a próxima verificação.",
-  "config_hint_delete_watched": "Apaga os episódios que você já assistiu, mantendo os últimos definidos abaixo, e os episódios de animes que saíram das suas listas. Downloads mantidos para sempre (modo direto com Apagar Downloads Automaticamente desligado) nunca são apagados."
+  "config_hint_delete_watched": "Apaga os episódios que você já assistiu, mantendo os últimos definidos abaixo, e os episódios de animes que saíram das suas listas. Downloads mantidos para sempre (modo direto com Apagar Downloads Automaticamente desligado) nunca são apagados.",
+  "status_no_results_filters": "Nenhum anime corresponde aos filtros",
+  "status_connect_list": "Conectar uma lista"
 }

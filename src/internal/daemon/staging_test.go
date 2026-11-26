@@ -276,3 +276,21 @@ func TestDiskAlertVolume_WatchesTheRoomiestDownloadFolder(t *testing.T) {
 		t.Errorf("got %s (floor %d), want ssd: 1 GiB above its floor beats hdd's half GiB", path, floor)
 	}
 }
+
+// TestRootDisksMarksFoldersOnOneDrive: roots on one filesystem share its free space, so each carries
+// the index of the first root on its drive and the Status page shows one line per drive.
+func TestRootDisksMarksFoldersOnOneDrive(t *testing.T) {
+	configs := directConfig(t.TempDir())
+	ssd, hdd := t.TempDir(), t.TempDir()
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "ssd", Path: ssd}, {Name: "hdd", Path: hdd}}
+	backend := torrents.NewFakeBackend()
+
+	stubSameFilesystem(t, true)
+	if d := RootDisks(configs, backend, nil, nil); len(d) != 2 || d[0].Drive != 0 || d[1].Drive != 0 {
+		t.Errorf("one drive: %+v, want both on drive 0", d)
+	}
+	stubSameFilesystem(t, false)
+	if d := RootDisks(configs, backend, nil, nil); len(d) != 2 || d[0].Drive != 0 || d[1].Drive != 1 {
+		t.Errorf("two drives: %+v, want drives 0 and 1", d)
+	}
+}

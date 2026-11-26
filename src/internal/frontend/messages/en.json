@@ -62,7 +62,7 @@
   "status_starting": "Starting...",
   "status_stop": "Stop Daemon",
   "status_stopping": "Stopping...",
-  "status_force_check": "Force Check",
+  "status_force_check": "Check now",
   "status_animes_header": "Animes",
   "status_search_placeholder": "Search animes...",
   "status_x_of_y": "{shown} of {total}",
@@ -166,7 +166,7 @@
   "config_hint_season_numbering": "With episode renaming on: when a season comes as two AniList entries (Part 1 and Part 2), Part 2's first episode becomes S02E13, the way TVDB and TMDB number it. Off keeps AniList's numbers and adds a part tag, like \"S02E01 (Part 2)\".",
   "config_label_excluded_list": "Excluded List",
   "config_hint_excluded_list": "AniList custom lists that should not be downloaded",
-  "config_btn_run_check": "Run Check Now",
+  "config_btn_run_check": "Check now",
   "config_btn_reload": "Reload",
   "config_btn_save": "Save",
   "config_btn_saving": "Saving...",
@@ -807,8 +807,8 @@
         "candidates"
       ],
       "match": {
-        "candidates=1": "{candidates} torrent found, above the {limit} GB ceiling.",
-        "candidates=*": "{candidates} torrents found, all above the {limit} GB ceiling."
+        "candidates=1": "{candidates} torrent found, above the {limit} GiB ceiling.",
+        "candidates=*": "{candidates} torrents found, all above the {limit} GiB ceiling."
       }
     }
   ],
@@ -882,7 +882,7 @@
   "passerror_anilist": "The last check did not run because AniList did not respond. It retries on its own next cycle.",
   "passerror_mal": "The last check did not run because MyAnimeList did not respond, or the list is private or empty. It retries on its own next cycle.",
   "passerror_setup": "The last check did not run because the library folder is not configured yet.",
-  "passerror_library": "The last check did not run because the library folder does not support hardlinks. Pick a folder on the same disk as the downloads.",
+  "passerror_library": "The last check did not run because the library folder does not support hardlinks. Pick a folder on a filesystem that supports them, or turn on Write Downloads Straight to the Library.",
   "passerror_library_unwritable": "The last check did not run because the library folder cannot be written to. Check that its drive is mounted and the app has permission.",
   "passerror_incomplete_folder": "The last check did not run because the incomplete downloads folder is missing or cannot be written to. Check that its drive is mounted; downloads waiting for it start again on their own.",
   "passerror_torrent_backend": "The last check did not run because the torrent client failed to start. Restart the app.",
@@ -1090,5 +1090,7 @@
   "config_run_check_save_first": "Save first: a check uses the saved settings.",
   "config_hint_check_interval": "Minutes between checks. Each check reads your lists and searches Nyaa for what's missing.",
   "config_hint_retry_limit": "How many magnet links an episode tries, best first, before it waits for the next check.",
-  "config_hint_delete_watched": "Deletes the episodes you've watched, keeping the last ones set below, and the episodes of anime that left your lists. Downloads kept forever (direct mode with Delete Downloads Automatically off) are never deleted."
+  "config_hint_delete_watched": "Deletes the episodes you've watched, keeping the last ones set below, and the episodes of anime that left your lists. Downloads kept forever (direct mode with Delete Downloads Automatically off) are never deleted.",
+  "status_no_results_filters": "No animes match the filters",
+  "status_connect_list": "Connect a list"
 }

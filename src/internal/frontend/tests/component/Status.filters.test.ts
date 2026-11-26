@@ -299,3 +299,48 @@ describe('Status — user filter', () => {
     expect(screen.queryByText(/couldn't load the list|não foi possível carregar a lista/i)).toBeNull()
   })
 })
+
+describe('Status — review fixes (20, 21, 22)', () => {
+  beforeEach(() => {
+    window.location.hash = '#/status'
+  })
+
+  it('20: a filter that matches nothing says so, not `No animes match ""`, and offers Clear filters', async () => {
+    await renderStatus([anime({ anime_id: 9, name: 'Only Finished', media_status: 'FINISHED' })])
+    await fireEvent.click(screen.getAllByRole('radio', { name: /airing|saindo/i })[0])
+    await tick()
+    expect(document.body.textContent).toMatch(/No animes match the filters|Nenhum anime corresponde aos filtros/)
+    expect(document.body.textContent).not.toMatch(/match ""/)
+    const clear = screen.getAllByRole('button', { name: /clear filters|limpar filtros/i })
+    await fireEvent.click(clear[clear.length - 1])
+    await tick()
+    expect(screen.getAllByText('Only Finished').length).toBeGreaterThan(0)
+  })
+
+  it('21: the empty state links to the list accounts', async () => {
+    await renderStatus([])
+    const link = screen.getByRole('link', { name: /connect a list|conectar uma lista/i })
+    expect(link.getAttribute('href')).toBe('#/config?group=anilist')
+  })
+
+  it('22: download folders on one drive show as one line', async () => {
+    vi.mocked(client.getAnimes).mockResolvedValue(library)
+    vi.mocked(client.getConfig).mockResolvedValue({ check_interval: 60 } as never)
+    vi.mocked(client.getTorrents).mockResolvedValue([])
+    vi.mocked(client.getLastCheck).mockResolvedValue({ finished_at: '0001-01-01T00:00:00Z', pass_error: '', problems: [], limits: [] })
+    vi.mocked(client.getStatus).mockResolvedValue({
+      status: 'running', last_check: '2026-08-19T12:00:00Z', has_error: false, version: '1.0.0',
+      disk_total: 100, disk_free: 90, disk_low: false,
+      disks: [
+        { name: 'shoko', path: '/shoko', total: 100, free: 90, low: false, drive: 0 },
+        { name: 'library', path: '/library', total: 100, free: 90, low: false, drive: 0 },
+        { name: 'hdd', path: '/hdd', total: 500, free: 400, low: false, drive: 2 },
+      ],
+    } as StatusResponse)
+    const view = render(Status)
+    for (let i = 0; i < 6; i++) await tick()
+    const lines = (await view.findByTestId('status-disks')).querySelectorAll('li')
+    expect(lines).toHaveLength(2)
+    expect(lines[0].textContent).toContain('shoko, library')
+  })
+})
