@@ -270,7 +270,7 @@
   "detail_bulk_confirm_btn": "Delete All",
   "detail_bulk_toast_dl_done": "{success} episode(s) queued for download",
   "detail_bulk_toast_del_done": "{success} episode(s) deleted",
-  "detail_bulk_toast_rel_done": "{success} episode(s) released",
+  "detail_bulk_toast_rel_done": "{success} episode(s) back to automatic",
   "detail_bulk_redownload": "Redownload Selected",
   "detail_bulk_redl_confirm_title": "Redownload selected episodes?",
   "detail_bulk_redl_confirm_msg": [

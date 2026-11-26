@@ -17,7 +17,7 @@ describe('count messages', () => {
   it('replaces the "(s)" hedges', () => {
     expect(forms(m.downloads_group_count, 'en')).toEqual(['0 torrents', '1 torrent', '2 torrents'])
     expect(m.detail_bulk_confirm_msg({ count: 1 }, { locale: 'pt-BR' })).toBe(
-      '1 episódio será removido. Esta ação não pode ser desfeita.',
+      '1 episódio é apagado com o arquivo e não será baixado de novo. Voltar ao automático desfaz isso.',
     )
   })
 

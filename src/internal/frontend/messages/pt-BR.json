@@ -296,7 +296,7 @@
   "detail_bulk_confirm_btn": "Deletar Todos",
   "detail_bulk_toast_dl_done": "{success} episódio(s) adicionado(s) para download",
   "detail_bulk_toast_del_done": "{success} episódio(s) deletado(s)",
-  "detail_bulk_toast_rel_done": "{success} episódio(s) solto(s)",
+  "detail_bulk_toast_rel_done": "{success} episódio(s) de volta ao automático",
   "detail_bulk_redownload": "Rebaixar Selecionados",
   "detail_bulk_redl_confirm_title": "Rebaixar episódios selecionados?",
   "detail_bulk_redl_confirm_msg": [
