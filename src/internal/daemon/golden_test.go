@@ -143,6 +143,9 @@ func exchangeKey(method, rawURL, body string) string {
 func runGoldenPass(t *testing.T, animeID int) *DebugSummary {
 	t.Helper()
 	cfg := files.DefaultConfig()
+	// The set was recorded with the old default limit of 12; the default is off now, which opens
+	// the pack window and would move the picks (decisions/158).
+	cfg.MaxEpisodesPerAnime = 12
 	defer files.ApplyNyaaSettings(cfg)()
 
 	summary, err := RunAnimeDebug(animeID, cfg, &debugMockFileManager{}, nil)

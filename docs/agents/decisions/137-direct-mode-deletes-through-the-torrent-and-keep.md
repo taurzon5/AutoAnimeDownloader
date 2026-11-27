@@ -5,7 +5,7 @@
 `effectiveMax`/`windowEnd`; `internal/daemon/placement.go` — `pruneOrphanPlacements` (end of every
 pass); `TorrentBackend.SetPlacementKept` / `Placement.Kept`; `internal/daemon/jobs.go` — `releaseTorrent` (`keepData` for a placed
 torrent); `internal/torrents/placement.go` — `placedStorage.Remove`, `RemovePlacedFiles`;
-`internal/files/filemanager.go` — `Config.LiftsEpisodeLimit`, `EpisodeStruct.DirectLibrary`. Pinned by
+`internal/files/filemanager.go` — `Config.LiftsEpisodeLimit`, `EpisodeStruct.DirectLibrary`; `frontend/src/routes/Config.svelte` — `episodeLimitLifted`, which repeats `LiftsEpisodeLimit` on the unsaved form values to grey out the episode-limit switch ([#158](158-the-episode-limit-stays-one-number-with-0-as-off.md)): the two change together. Pinned by
 `TestRemoveEpisodesAndLinks_DirectModeDeletesThroughTheTorrent`, `TestWithoutKeptForever`,
 `TestKeepForeverLiftsTheEpisodeLimit`, `TestPlacedStorage_RemoveDeletesFilesAndEmptyFoldersOnly`,
 `TestPlacedStorage_RemoveClearsJellyfinLeftovers`, `TestPruneOrphanPlacements`,

@@ -630,12 +630,14 @@ func DefaultConfig() *Config {
 	}
 
 	return &Config{
-		CompletedAnimePath:    completedPath,
-		AnilistUsernames:      []string{},
-		MALUsernames:          []string{},
-		CheckInterval:         10,
-		RecentShelfDays:       3,
-		MaxEpisodesPerAnime:   12,
+		CompletedAnimePath: completedPath,
+		AnilistUsernames:   []string{},
+		MALUsernames:       []string{},
+		CheckInterval:      10,
+		RecentShelfDays:    3,
+		// Off for a new install: every aired episode downloads. A saved value stays (LoadConfigs
+		// unmarshals over these defaults), so an existing install keeps its limit (decisions/158).
+		MaxEpisodesPerAnime:   0,
 		MaxBatchTorrentSizeGB: 100,
 		// Passes a WEB-DL (~1.4 GB) and a BD encode (~2 GB), bars a BDRemux (~6-8 GB).
 		MaxEpisodeTorrentSizeGB: 5,

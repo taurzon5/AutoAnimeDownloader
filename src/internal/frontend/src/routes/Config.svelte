@@ -231,6 +231,27 @@
     return (e.target as HTMLInputElement).checked;
   }
 
+  // The episode limit is one number in config.json, 0 meaning off, drawn as a switch with the
+  // amount under it (decisions/158). The switch has its own state, set when the config loads, so
+  // typing 0 or clearing the amount leaves the field on screen with its error instead of hiding it.
+  // Turning it off keeps the amount here so turning it back on restores it.
+  let episodeLimitOn = false;
+  let episodeLimitWhenOff = 12;
+  function toggleEpisodeLimit(on: boolean): void {
+    episodeLimitOn = on;
+    if (on) {
+      config.max_episodes_per_anime = episodeLimitWhenOff;
+    } else {
+      if (isNum(config.max_episodes_per_anime) && config.max_episodes_per_anime > 0) {
+        episodeLimitWhenOff = config.max_episodes_per_anime;
+      }
+      config.max_episodes_per_anime = 0;
+    }
+  }
+  // The daemon ignores the limit in direct mode with keep forever. This repeats
+  // Config.LiftsEpisodeLimit on the unsaved form values; the two change together (decisions/137).
+  $: episodeLimitLifted = config.library_mode === "direct" && !config.auto_delete_downloads;
+
   const ALL_STATUSES = ["CURRENT", "REPEATING", "PLANNING", "PAUSED", "DROPPED", "COMPLETED"];
   const ALL_MEDIA_STATUSES = ["RELEASING", "FINISHED", "CANCELLED", "HIATUS"];
 
@@ -240,7 +261,7 @@
     completed_anime_path: "",
     check_interval: 10,
     recent_shelf_days: 3,
-    max_episodes_per_anime: 12,
+    max_episodes_per_anime: 0,
     max_batch_torrent_size_gb: 100,
     max_episode_torrent_size_gb: 5,
     min_seeders: 3,
@@ -557,6 +578,7 @@
       // Before the snapshot: the row may carry the path with a trailing slash the field didn't have,
       // and copying it later would read as an edit nobody made (decisions/129).
       if (libraryRow >= 0) config.completed_anime_path = config.download_roots?.[libraryRow]?.path ?? config.completed_anime_path;
+      episodeLimitOn = isNum(config.max_episodes_per_anime) && config.max_episodes_per_anime > 0;
       baseline = configSnapshot(config);
     } catch (err) {
       loadFailed = true;
@@ -616,7 +638,8 @@
     },
     {
       group: "downloads" as GroupId,
-      ok: isNum(config.max_episodes_per_anime) && config.max_episodes_per_anime >= 0,
+      // Off saves 0; on needs an amount of at least 1. Ignored while the limit is lifted.
+      ok: episodeLimitLifted || !episodeLimitOn || (isNum(config.max_episodes_per_anime) && config.max_episodes_per_anime >= 1),
       message: m.config_val_max_episodes,
     },
     {
@@ -1266,17 +1289,36 @@
                 {/if}
               {/if}
             </div>
-            <div class="p-4.5">
-              <Input
-                id="max_episodes_per_anime"
-                label={T && T.labelMaxEpisodes || ""}
-                subtitle={T && T.hintMaxEpisodes || ""}
-                type="number"
-                bind:value={config.max_episodes_per_anime}
-                min="0"
-                required={true}
+            <!-- Same shape as Delete watched episodes below: the switch, then its amount. -->
+            <div class="space-y-3 p-4.5">
+              <Toggle
+                id="episode_limit"
+                describedBy="episode_limit-hint"
+                checked={!episodeLimitLifted && episodeLimitOn}
+                disabled={episodeLimitLifted}
+                on:change={(e) => toggleEpisodeLimit(isOn(e))}
+                label={$locale && m.config_label_episode_limit()}
                 inline={true}
               />
+              <p id="episode_limit-hint" class="text-caption text-subtle">
+                {#if episodeLimitLifted}
+                  {$locale && m.config_hint_episode_limit_lifted()}
+                {:else}
+                  {$locale && m.config_hint_episode_limit()}
+                {/if}
+              </p>
+              {#if !episodeLimitLifted && episodeLimitOn}
+                <Input
+                  id="max_episodes_per_anime"
+                  label={T && T.labelMaxEpisodes || ""}
+                  subtitle={T && T.hintMaxEpisodes || ""}
+                  type="number"
+                  bind:value={config.max_episodes_per_anime}
+                  min="1"
+                  required={true}
+                  inline={true}
+                />
+              {/if}
             </div>
 
             <!-- No divider between the switch and the amount: the absence of the divider is what
