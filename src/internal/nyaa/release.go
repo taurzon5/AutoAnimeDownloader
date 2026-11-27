@@ -130,36 +130,39 @@ func releaseAudioCodec(name string) string {
 
 // ParseRelease reads a release name. It never fails: what it can't read stays empty.
 func ParseRelease(name string) Release {
+	// The tags read the name with underscores as spaces (underscoresAsSpaces); the group keeps the
+	// raw name, since a group name can contain underscores.
+	tags := underscoresAsSpaces(name)
 	r := Release{
 		Group:      extractFansub(name),
 		Resolution: ExtractResolution(name),
 		Source:     canonicalSources[ExtractSource(name)],
 		VideoCodec: strings.ToLower(ExtractCodec(name)),
-		AudioCodec: releaseAudioCodec(name),
+		AudioCodec: releaseAudioCodec(tags),
 		Version:    1,
-		Repack:     reRepack.MatchString(name),
-		Uncensored: isUncensored(name),
+		Repack:     reRepack.MatchString(tags),
+		Uncensored: isUncensored(tags),
 		Batch:      IsBatch(name),
 	}
 	for _, s := range reServices {
-		if s.re.MatchString(name) {
+		if s.re.MatchString(tags) {
 			r.Service = s.service
 			break
 		}
 	}
 	switch {
-	case reBitDepth10.MatchString(name):
+	case reBitDepth10.MatchString(tags):
 		r.BitDepth = 10
-	case reBitDepth8.MatchString(name):
+	case reBitDepth8.MatchString(tags):
 		r.BitDepth = 8
 	}
-	if m := reAudioChannels.FindStringSubmatch(name); m != nil {
+	if m := reAudioChannels.FindStringSubmatch(tags); m != nil {
 		r.AudioChannels = m[1]
 	}
-	if m := reContainer.FindStringSubmatch(name); m != nil {
+	if m := reContainer.FindStringSubmatch(tags); m != nil {
 		r.Container = strings.ToLower(m[1] + m[2])
 	}
-	if m := reVersion.FindStringSubmatch(name); m != nil {
+	if m := reVersion.FindStringSubmatch(tags); m != nil {
 		r.Version = int(m[1][0] - '0')
 	}
 

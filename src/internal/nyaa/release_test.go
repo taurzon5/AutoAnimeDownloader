@@ -152,3 +152,12 @@ func TestWithRowInfo(t *testing.T) {
 		t.Errorf("plain row: %+v", got[2])
 	}
 }
+
+// An underscore-joined name reads its tags as if the underscores were spaces; the group keeps the
+// raw name.
+func TestParseRelease_UnderscoreJoinedName(t *testing.T) {
+	r := ParseRelease("[Some_Group]_Show_-_01_[CR_1080p_WEB-DL_10bit_v2_DTS]")
+	if r.Group != "some_group" || r.Service != "cr" || r.Resolution != "1080p" || r.BitDepth != 10 || r.Version != 2 {
+		t.Errorf("ParseRelease = %+v", r)
+	}
+}

@@ -1511,6 +1511,7 @@ var canonicalResolutions = map[string]string{"4k": "2160p", "uhd": "2160p", "fhd
 // ExtractResolution extracts the resolution from the torrent name, already canonicalized (same
 // contract as ExtractCodec, which returns "HEVC" for "x265").
 func ExtractResolution(name string) string {
+	name = underscoresAsSpaces(name)
 	for _, p := range reResolutionPatterns {
 		matches := p.re.FindStringSubmatch(name)
 		if len(matches) > 1 {
@@ -1578,9 +1579,16 @@ func fansubPriority(torrentName string) int {
 	return best
 }
 
+// underscoresAsSpaces lets the quality patterns read names whose words are joined with underscores
+// ((Hi10)_Gosick_-_01_(BD_720p_AAC)): `\b` counts `_` as a word character, so "_720p_" and "(BD_"
+// matched nothing and the release ranked as if it had no resolution or source.
+func underscoresAsSpaces(name string) string {
+	return strings.ReplaceAll(name, "_", " ")
+}
+
 // ExtractSource extracts the release source (BD, WEB-DL, TV, etc.)
 func ExtractSource(name string) string {
-	nameLower := strings.ToLower(name)
+	nameLower := strings.ToLower(underscoresAsSpaces(name))
 	for _, sp := range reSourcePatterns {
 		if sp.re.MatchString(nameLower) {
 			return sp.source
@@ -1591,7 +1599,7 @@ func ExtractSource(name string) string {
 
 // ExtractCodec extracts the video codec (HEVC, H.264, AV1, etc.)
 func ExtractCodec(name string) string {
-	nameLower := strings.ToLower(name)
+	nameLower := strings.ToLower(underscoresAsSpaces(name))
 	for _, cp := range reCodecPatterns {
 		if cp.re.MatchString(nameLower) {
 			return cp.codec
@@ -1602,7 +1610,7 @@ func ExtractCodec(name string) string {
 
 // extractAudio extracts the audio codec (FLAC, DDP, AAC, etc.)
 func extractAudio(name string) string {
-	nameLower := strings.ToLower(name)
+	nameLower := strings.ToLower(underscoresAsSpaces(name))
 	for _, ap := range reAudioPatterns {
 		if ap.re.MatchString(nameLower) {
 			return ap.audio

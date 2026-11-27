@@ -328,3 +328,18 @@ func TestExtractResolution_Canonicalizes(t *testing.T) {
 		}
 	}
 }
+
+// Older groups join every word with underscores, and `\b` counts `_` as a word character, so
+// "_720p_" and "(BD_" used to match nothing. The extractors read `_` as a space.
+func TestExtractors_ReadUnderscoreJoinedNames(t *testing.T) {
+	name := "(Hi10)_Gosick_-_01_(BD_720p_AAC)"
+	if got := nyaa.ExtractResolution(name); got != "720p" {
+		t.Errorf("ExtractResolution(%q) = %q, want 720p", name, got)
+	}
+	if got := nyaa.ExtractSource(name); got != "BD" {
+		t.Errorf("ExtractSource(%q) = %q, want BD", name, got)
+	}
+	if got := nyaa.ExtractCodec("[Group]_Show_-_01_[1080p_WEB-DL_AVC_AAC]"); got != "H.264" {
+		t.Errorf("ExtractCodec of an underscore AVC name = %q, want H.264", got)
+	}
+}

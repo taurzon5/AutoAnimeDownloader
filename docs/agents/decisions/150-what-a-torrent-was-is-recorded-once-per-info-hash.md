@@ -66,6 +66,12 @@ Pinned by:
   first) it now beats a tagged HEVC release where `fansub` used to decide; with an HEVC-first list,
   the reverse. That is the fix the spec asked for. The golden set's six cases pick the same
   torrents, which shows no case regressed, not that nothing moves.
+  **Amendment (2026-11-26):** the extractors read underscores as spaces (`underscoresAsSpaces`), so
+  an underscore-joined name (`(Hi10)_Gosick_-_01_(BD_720p_AAC)`) now carries its resolution, source,
+  codec and audio, and so do `ParseRelease`'s own tags; the group keeps the raw name. This **can move
+  a pick** the same way: such a name no longer ranks last on resolution, and a `_BD_` name of a
+  finished series ranks as BD instead of the assumed WEB-DL. The golden set still picks the same
+  torrents, which again shows no regression, not that nothing moves.
 - **What stays out of the ranking.** E-AC-3 and plain DTS are read only by `ParseRelease`, through its
   own audio list. In the ranking, `EAC3` and `E-AC3` still read as AC3, while `E-AC-3` and plain DTS read as nothing. Reading DTS there
   would turn a "DTS + AAC" name into DTS, which isn't in the default audio list, so it would rank
