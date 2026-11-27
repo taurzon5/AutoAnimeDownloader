@@ -4,8 +4,8 @@ Grouped by release: each section is **one** release, and its bump is the largest
 inside it — a task that doesn't touch the binary (docs, things outside the repo) rides along without
 changing the number. Only what is still to ship lives here: a section is deleted when its release
 ships (the GitHub Release and git history are the record), never kept struck through.
-Current version: `v2.11.3`. Stamp a version (tag, GitHub Release):
-the [release skill](../.claude/skills/release/SKILL.md). The version line restarts at `v0.1.0`
+Current version: `v0.1.0`. Stamp a version (tag, GitHub Release):
+the [release skill](../.claude/skills/release/SKILL.md). The version line restarted at `v0.1.0`
 with the move to taurzon5/Nyaanchiver (2026-11-26): `v2.11.3` and every older tag are the original
 project's, and the planned releases were renumbered from `v2.13.0`, `v3.0.0` and `v3.1.0`.
 Anything not tied to a specific release — problems and features alike — lives in
@@ -14,14 +14,6 @@ Anything not tied to a specific release — problems and features alike — live
 The order follows a single rule: **nothing that stamps the project's name ships before the rename**
 (Windows installer, ghcr image, README, social preview, landing page), otherwise it's a double
 migration. If presenting the repo to employers gets urgent, `v1.0.0` can move up ahead of `v0.2.0`.
-
-## `v2.12.0` — dashboard recents
-
-A shelf of just-landed, still-unwatched episodes on Status, and last-check rows that open the
-anime. Independent of the picker; does not wait for the `v1.0.0` UI overhaul.
-
-- Recents shelf, clickable last-check rows. Merged into master; waits for the `v2.12.0` stamp
-  ([decisions/151](agents/decisions/151-the-recents-shelf-is-derived-in-get-animes-after.md)).
 
 ## `v0.2.0` — episode torrent picker
 
