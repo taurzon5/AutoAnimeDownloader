@@ -19,6 +19,9 @@ dist/
 *.manifest
 *.spec
 node_modules/
+# A plain `go build` inside a mock server folder names the binary after its module (mock-anilist,
+# mock-nyaa, mock-github). Nothing uses it: the Dockerfiles and scripts/sandbox.sh build their own.
+/src/tests/mocks/*/mock-*
 
 # Runtime data (Docker volumes)
 runtime/
