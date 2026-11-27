@@ -206,17 +206,17 @@ Key settings:
 
 | Setting | Description |
 |---|---|
-| Completed Anime Path | Jellyfin library — **the only required setting**. Episodes are hardlinked into it; torrents download and seed in `<path>/.torrents` |
+| Library Folder | Jellyfin library — **the only required setting**. In direct mode, the default, each torrent is written straight into it and seeds from there; in hardlink mode episodes are hardlinked into it and torrents download and seed in `<path>/.torrents` |
 | Anilist Usernames | One or more Anilist usernames to sync (optional) |
 | MyAnimeList Usernames | One or more MyAnimeList usernames to sync (optional; the list must be public) |
 | Check Interval | How often to check for new episodes (minutes) |
-| Download / Delete Statuses | Which list statuses (`CURRENT`, `COMPLETED`, …) and media statuses (`RELEASING`, `FINISHED`, …) are eligible for download or auto-deletion |
+| List Statuses to Download / to Delete | Which list statuses (`CURRENT`, `COMPLETED`, …) and media statuses (`RELEASING`, `FINISHED`, …) are eligible for download or auto-deletion |
 | Max Episodes per Anime | Ceiling of kept episodes per anime, and the width of the pack-selection window |
 | Max Concurrent Downloads | How many torrents download at once; the rest wait in the queue |
 | Min Free Disk % | Below this, no new torrent is added |
 | Max Batch / Episode Torrent Size | Size ceilings (GiB) dropping oversized results from the search |
 | Min Seeders / Max Search Pages | Nyaa result floor and how deep the paginated search may go |
-| Rename files to a standard format | Name the library hardlink `Anime Name - E05.mkv`, batch packs included (useful for Plex/Jellyfin) |
+| Rename Files to a Standard Format | Name the library hardlink `Anime Name - E05.mkv`, batch packs included (useful for Plex/Jellyfin) |
 | Notifications | Webhook presets and the batching window |
 
 Full field-by-field reference: [Config Reference](docs/agents/config.md).

@@ -14,4 +14,8 @@ In the Config index the dividers are `w-full`, so wrapping happens on them: the 
 
 **Revision:** until 2026-08-11 this decision listed the Config index on the "scrollable" side, classifying it as a "long homogeneous list". That was factually wrong — there were six items (seven since the Torrent client group, eight since Shoko), not a long list, and measurement showed half off-screen. The criterion above ("finite vs. unbounded") is what replaces that.
 
+**Amendment (2026-11-26):** the index now has seven groups (General added) plus the two exit links,
+nine items, and the labels are Title Case ("Torrent Client", "Torrent Search"). It still wraps; the
+layout test checks every group and both links.
+
 **Don't "fix" by:** putting `shrink-0` back on the Status row "so the buttons don't shrink" (that is the bug back — `shrink-0` on the CONTAINER locks wrapping; what protects the label is `shrink-0` on the child, and here it is not even needed); putting `overflow-x-auto` back on any of the three "for consistency with the hero strip" (the hero solves a different problem — a list with no ceiling); removing `shrink-0` from the items (they would shrink and the label would wrap in the middle, instead of the whole item dropping to the next line); replacing the Config index with a `<select>` on mobile (`<option>` does not style, so the "needs filling in" cue would become text, and the two exit links would stop being `<a>` — losing open-in-new-tab, which is why they are `<a>`).

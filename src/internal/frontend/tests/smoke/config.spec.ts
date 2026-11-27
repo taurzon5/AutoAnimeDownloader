@@ -78,7 +78,7 @@ test('clicking Save calls PUT /config', async ({ page }) => {
 test('Library is the initial group and holds the required path', async ({ page }) => {
   await page.goto('/#/config')
 
-  await expect(page.getByLabel(/completed anime path/i)).toHaveValue('/completed')
+  await expect(page.getByLabel(/library folder/i)).toHaveValue('/completed')
   await expect(page.getByLabel(/check interval/i)).toHaveCount(0)
 })
 
@@ -90,22 +90,27 @@ test('Library is the initial group and holds the required path', async ({ page }
 test('each group holds its own fields', async ({ page }) => {
   await page.goto('/#/config')
 
-  await expect(page.getByLabel(/completed anime path/i)).toBeVisible()
+  await expect(page.getByLabel(/library folder/i)).toBeVisible()
   await expect(page.getByLabel(/rename files to a standard format/i)).toBeVisible()
   await expect(page.getByLabel(/min free disk space/i)).toBeVisible()
+  // Cleanup: every automatic deletion, under Delete Downloads Automatically.
+  await expect(page.getByLabel(/delete watched episodes/i)).toBeVisible()
+  await expect(page.getByRole('group', { name: /^list statuses to delete$/i })).toBeVisible()
 
   await openGroup(page, /^lists$/i)
   await expect(page.getByLabel(/anilist usernames/i)).toBeVisible()
   await expect(page.getByLabel(/excluded list/i)).toBeVisible()
-  await expect(page.getByRole('group', { name: /^download statuses$/i })).toBeVisible()
+  await expect(page.getByRole('group', { name: /^list statuses to download$/i })).toBeVisible()
   await expect(page.getByRole('group', { name: /airing statuses to download/i })).toBeVisible()
-  await expect(page.getByRole('group', { name: /^delete statuses$/i })).toBeVisible()
 
   await openGroup(page, /^downloads$/i)
   await expect(page.getByLabel(/check interval/i)).toBeVisible()
   await expect(page.getByLabel(/max concurrent downloads/i)).toBeVisible()
   await expect(page.getByLabel(/max episodes per anime/i)).toBeVisible()
-  await expect(page.getByLabel(/delete watched episodes/i)).toBeVisible()
+
+  await openGroup(page, /^general$/i)
+  await expect(page.getByLabel(/check for updates/i)).toBeVisible()
+  await expect(page.getByLabel(/recently downloaded shelf/i)).toBeVisible()
 
   await openGroup(page, /torrent search/i)
   await expect(page.getByLabel(/minimum seeders/i)).toBeVisible()
@@ -119,13 +124,13 @@ test('the side index swaps which group is on screen', async ({ page }) => {
   await page.goto('/#/config')
   await expect(sideIndex(page)).toBeVisible()
 
-  await expect(page.getByLabel(/completed anime path/i)).toBeVisible()
+  await expect(page.getByLabel(/library folder/i)).toBeVisible()
   await expect(page.getByLabel(/check interval/i)).toHaveCount(0)
 
   await openGroup(page, /^downloads$/i)
 
   await expect(page.getByLabel(/check interval/i)).toHaveValue('60')
-  await expect(page.getByLabel(/completed anime path/i)).toHaveCount(0)
+  await expect(page.getByLabel(/library folder/i)).toHaveCount(0)
 })
 
 test('the chips input adds a value with Enter and it reaches the PUT body', async ({ page }) => {
@@ -165,25 +170,19 @@ test('MyAnimeList usernames reach the PUT body in their own field', async ({ pag
 test('status pills toggle and download/delete stay mutually exclusive', async ({ page }) => {
   const saved = await captureSave(page)
   await page.goto('/#/config')
+  // List Statuses to Delete sits in Library (the Cleanup block), List Statuses to Download in Lists.
+  const downloadGroup = page.getByRole('group', { name: /^list statuses to download$/i })
+  const deleteGroup = page.getByRole('group', { name: /^list statuses to delete$/i })
+
   await openGroup(page, /^lists$/i)
+  await expect(downloadGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute('aria-pressed', 'true')
 
-  const downloadGroup = page.getByRole('group', { name: /^download statuses$/i })
-  const deleteGroup = page.getByRole('group', { name: /^delete statuses$/i })
-
-  await expect(downloadGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
+  await openGroup(page, /^library$/i)
   await deleteGroup.getByRole('button', { name: 'Watching', exact: true }).click()
+  await expect(deleteGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute('aria-pressed', 'true')
 
-  await expect(deleteGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  )
-  await expect(downloadGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'false'
-  )
+  await openGroup(page, /^lists$/i)
+  await expect(downloadGroup.getByRole('button', { name: 'Watching', exact: true })).toHaveAttribute('aria-pressed', 'false')
 
   await page.getByRole('button', { name: /^save$/i }).click()
   await saved.whenSaved
@@ -213,8 +212,8 @@ test('a failing validation brings its group to screen and blocks the PUT', async
 
   await page.getByRole('button', { name: /^save$/i }).click()
 
-  await expect(page.getByText(/completed anime path is required/i)).toBeVisible()
-  await expect(page.getByLabel(/completed anime path/i)).toBeVisible()
+  await expect(page.getByText(/library folder is required/i)).toBeVisible()
+  await expect(page.getByLabel(/library folder/i)).toBeVisible()
   expect(putCalls).toBe(0)
 })
 
@@ -237,7 +236,7 @@ test('required fields are marked and the side index flags the groups still missi
 
   // A DOM property, not an attribute: `required` is a boolean, and asserting the attribute's empty
   // string depends on a serialization detail instead of the field's state.
-  await expect(page.getByLabel(/completed anime path/i)).toHaveJSProperty('required', true)
+  await expect(page.getByLabel(/library folder/i)).toHaveJSProperty('required', true)
   await expect(page.getByText(/required field/i)).toBeVisible()
 
   const index = sideIndex(page)
@@ -254,7 +253,7 @@ test('the missing mark clears as soon as the field is filled', async ({ page }) 
   const index = sideIndex(page)
   await expect(index.getByRole('button', { name: /library.*missing/i })).toBeVisible()
 
-  await page.getByLabel(/completed anime path/i).fill('/completed')
+  await page.getByLabel(/library folder/i).fill('/completed')
 
   await expect(index.getByRole('button', { name: /library.*missing/i })).toHaveCount(0)
   await expect(index.getByRole('button', { name: /downloads.*missing/i })).toBeVisible()
@@ -283,13 +282,13 @@ test('?group=anilist opens the screen on the Lists group', async ({ page }) => {
   await page.goto('/#/config?group=anilist')
 
   await expect(page.getByLabel(/anilist usernames/i)).toBeVisible()
-  await expect(page.getByLabel(/completed anime path/i)).toHaveCount(0)
+  await expect(page.getByLabel(/library folder/i)).toHaveCount(0)
 })
 
 test('?group= with an unknown value falls back to the Library group', async ({ page }) => {
   await page.goto('/#/config?group=naoexiste')
 
-  await expect(page.getByLabel(/completed anime path/i)).toBeVisible()
+  await expect(page.getByLabel(/library folder/i)).toBeVisible()
 })
 
 // Both parameters come from the SAME URLSearchParams — each branch used to read only

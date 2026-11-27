@@ -53,7 +53,7 @@ const saved = {
 async function openClientGroup() {
   render(Config)
   await flush()
-  await fireEvent.click(screen.getByRole('button', { name: /Torrent client/ }))
+  await fireEvent.click(screen.getByRole('button', { name: /Torrent Client/ }))
   await flush()
 }
 
@@ -181,14 +181,14 @@ describe('Config — torrent client', () => {
     await flush()
     expect((document.getElementById('qbittorrent_disable_seeding_upload_kib') as HTMLInputElement).value).toBe('16')
 
-    await fireEvent.click(screen.getByRole('button', { name: /Torrent client/ }))
+    await fireEvent.click(screen.getByRole('button', { name: /Torrent Client/ }))
     await flush()
     await fireEvent.click(document.getElementById('qbittorrent_manage_settings') as HTMLInputElement)
     await fireEvent.click(screen.getByRole('button', { name: 'Downloads' }))
     await flush()
     expect(screen.getByTestId('max-concurrent-qbittorrent').textContent).toContain("sets qBittorrent's own download queue")
 
-    await fireEvent.click(screen.getByRole('button', { name: /Torrent client/ }))
+    await fireEvent.click(screen.getByRole('button', { name: /Torrent Client/ }))
     await flush()
     await fireEvent.click(document.getElementById('use_qbittorrent') as HTMLInputElement)
     await fireEvent.click(screen.getByRole('button', { name: 'Downloads' }))
@@ -248,12 +248,12 @@ describe('Config — number fields', () => {
   })
 
   it('an episode retry limit of 0 is refused: it would try no magnet at all', async () => {
-    await setAndSave(/^Torrent search/, 'episode_retry_limit', '0')
+    await setAndSave(/^Torrent Search/, 'episode_retry_limit', '0')
     expect(client.updateConfig).not.toHaveBeenCalled()
   })
 
   it('control: a valid edit saves', async () => {
-    await setAndSave(/^Torrent search/, 'episode_retry_limit', '1')
+    await setAndSave(/^Torrent Search/, 'episode_retry_limit', '1')
     expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ episode_retry_limit: 1 }))
   })
 })

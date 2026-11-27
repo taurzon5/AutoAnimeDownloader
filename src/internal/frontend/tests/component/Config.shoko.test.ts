@@ -37,6 +37,7 @@ const saved = {
   episode_retry_limit: 5,
   max_concurrent_downloads: 3,
   watched_episodes_to_keep: 2,
+  delete_watched_episodes: true,
   min_free_disk_gb: 10,
   incomplete_min_free_disk_gb: 10,
   library_mode: 'direct',

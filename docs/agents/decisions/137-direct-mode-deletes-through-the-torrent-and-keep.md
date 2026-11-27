@@ -5,7 +5,7 @@
 `effectiveMax`/`windowEnd`; `internal/daemon/placement.go` — `pruneOrphanPlacements` (end of every
 pass); `TorrentBackend.SetPlacementKept` / `Placement.Kept`; `internal/daemon/jobs.go` — `releaseTorrent` (`keepData` for a placed
 torrent); `internal/torrents/placement.go` — `placedStorage.Remove`, `RemovePlacedFiles`;
-`internal/files/filemanager.go` — `Config.LiftsEpisodeLimit`, `EpisodeStruct.DirectLibrary`; `frontend/src/routes/Config.svelte` — `episodeLimitLifted`, which repeats `LiftsEpisodeLimit` on the unsaved form values to grey out the episode-limit switch ([#158](158-the-episode-limit-stays-one-number-with-0-as-off.md)): the two change together. Pinned by
+`internal/files/filemanager.go` — `Config.LiftsEpisodeLimit`, `EpisodeStruct.DirectLibrary`; `frontend/src/routes/Config.svelte` — `episodeLimitLifted`, which repeats `LiftsEpisodeLimit` on the unsaved form values to grey out the episode-limit switch ([#158](158-the-episode-limit-stays-one-number-with-0-as-off.md)), and `cleanupInactive`, which dims the Cleanup block on the same condition, meaning "deletes nothing you download now" (on purpose not `withoutKeptForever`'s gate, which would dim it in hardlink mode, where it still deletes): they change together. Pinned by
 `TestRemoveEpisodesAndLinks_DirectModeDeletesThroughTheTorrent`, `TestWithoutKeptForever`,
 `TestKeepForeverLiftsTheEpisodeLimit`, `TestPlacedStorage_RemoveDeletesFilesAndEmptyFoldersOnly`,
 `TestPlacedStorage_RemoveClearsJellyfinLeftovers`, `TestPruneOrphanPlacements`,

@@ -6,7 +6,8 @@
 Downloads group; `internal/daemon/golden_test.go` — `runGoldenPass` pins `12`. Pinned by
 `tests/component/Config.episodeLimit.test.ts`.
 
-**What it looks like:** the switch right below it, Delete watched episodes, is a real bool
+**What it looks like:** Delete Watched Episodes Automatically (in Library's Cleanup block since
+2026-11-26) is a real bool
 (`delete_watched_episodes`) with an amount (`watched_episodes_to_keep`). The episode limit is one
 int where `0` means off, and the page builds the switch out of it. The obvious cleanup is a
 `limit_episodes` bool so the two match. And off by default looks less safe than the old 12.

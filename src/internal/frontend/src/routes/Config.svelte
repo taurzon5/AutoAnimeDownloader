@@ -40,7 +40,7 @@
     onboardingDone,
   } from "../lib/stores/onboarding.js";
 
-  type GroupId = "library" | "anilist" | "downloads" | "search" | "client" | "shoko";
+  type GroupId = "library" | "anilist" | "downloads" | "search" | "client" | "shoko" | "general";
 
   $: T = $locale && {
     title: m.config_title(),
@@ -167,6 +167,7 @@
     { id: "downloads" as GroupId, label: m.config_section_downloads(), advanced: false },
     { id: "client" as GroupId, label: m.config_section_client(), advanced: false },
     { id: "shoko" as GroupId, label: m.config_section_shoko(), advanced: false },
+    { id: "general" as GroupId, label: m.config_section_general(), advanced: false },
     { id: "search" as GroupId, label: m.config_section_search(), advanced: true },
   ]) || [];
 
@@ -251,6 +252,10 @@
   // The daemon ignores the limit in direct mode with keep forever. This repeats
   // Config.LiftsEpisodeLimit on the unsaved form values; the two change together (decisions/137).
   $: episodeLimitLifted = config.library_mode === "direct" && !config.auto_delete_downloads;
+  // The same condition dims the Cleanup block, meaning "deletes nothing you download now": direct mode
+  // with keep forever. On purpose not withoutKeptForever's gate (auto_delete_downloads alone), which
+  // would dim it in hardlink mode, where it still deletes (decisions/137).
+  $: cleanupInactive = episodeLimitLifted;
 
   const ALL_STATUSES = ["CURRENT", "REPEATING", "PLANNING", "PAUSED", "DROPPED", "COMPLETED"];
   const ALL_MEDIA_STATUSES = ["RELEASING", "FINISHED", "CANCELLED", "HIATUS"];
@@ -336,6 +341,8 @@
   // is Shoko's when the server, through shoko_path_map, finds it in one of them; the answer is for
   // the saved folders, so an edited row waits for Save.
   $: shokoOn = !!config.shoko_enabled && !!shokoStatus?.signed_in;
+  // Signed in as the server sees it: an address and a saved key (validateShoko in endpoint_config.go).
+  $: shokoSignedIn = !!config.shoko_url?.trim() && !!config.shoko_api_key;
   $: shokoRoots = shokoStatus?.download_roots ?? [];
   // The answers are an argument, not read from the closure: the row must redraw when they change.
   function rootInShoko(answers: ShokoDownloadFolder[], root: DownloadRoot): ShokoDownloadFolder | undefined {
@@ -632,7 +639,7 @@
       message: m.config_val_interval,
     },
     {
-      group: "downloads" as GroupId,
+      group: "general" as GroupId,
       ok: optNum(config.recent_shelf_days, (n) => n >= 0 && n <= 30),
       message: m.config_val_recent_shelf_days,
     },
@@ -654,7 +661,7 @@
       message: m.config_val_max_concurrent,
     },
     {
-      group: "downloads" as GroupId,
+      group: "library" as GroupId,
       ok: !config.delete_watched_episodes || optNum(config.watched_episodes_to_keep, (n) => n >= 0),
       message: m.config_val_watched_keep,
     },
@@ -700,6 +707,12 @@
       group: "client" as GroupId,
       ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
       message: m.config_val_qbittorrent_url,
+    },
+    // The server refuses Use Shoko without a sign-in; say it here, in the switch's words, first.
+    {
+      group: "shoko" as GroupId,
+      ok: !config.shoko_enabled || shokoSignedIn,
+      message: m.config_val_shoko_sign_in,
     },
     {
       group: "shoko" as GroupId,
@@ -947,28 +960,6 @@
               </div>
             </fieldset>
 
-            <fieldset class="p-4.5">
-              <legend class="float-left w-full text-[14.5px] font-bold text-heading">{T && T.labelDeleteStatuses}</legend>
-              <p class="text-caption text-subtle">{T && T.hintDeleteStatuses}</p>
-              <div class="mt-2.5 flex flex-wrap gap-2">
-                {#each ALL_STATUSES as status}
-                  {@const active = (config.delete_statuses ?? []).includes(status)}
-                  <button
-                    type="button"
-                    aria-pressed={active}
-                    on:click={() => toggleDeleteStatus(status)}
-                    title={status}
-                    class="inline-flex items-center gap-1 rounded-pill border px-3 py-1.5 text-caption font-semibold transition-colors {statusPillClass(
-                      active,
-                      'danger'
-                    )}"
-                  >
-                    {#if active}<Check size={13} strokeWidth={3} />{/if}
-                    {T ? T.statusLabels[status] : status}
-                  </button>
-                {/each}
-              </div>
-            </fieldset>
           {/if}
 
           {#if activeGroup === "library"}
@@ -1054,15 +1045,58 @@
               <p id="auto_delete_downloads-hint" class="text-caption text-subtle">{T && T.hintAutoDeleteDownloads}</p>
             </div>
 
-            <div class="space-y-1.5 p-4.5">
-              <Toggle
-                id="keep_removed_release_cards"
-                describedBy="keep_removed_release_cards-hint"
-                bind:checked={config.keep_removed_release_cards}
-                label={$locale && m.config_label_keep_removed_release_cards()}
-                inline={true}
-              />
-              <p id="keep_removed_release_cards-hint" class="text-caption text-subtle">{$locale && m.config_hint_keep_removed_release_cards()}</p>
+            <!-- Cleanup: deleting watched episodes and by list status, together under the switch that governs direct-mode
+                 downloads (UI review of 2026-11-25). Dimmed, not disabled, while direct mode keeps
+                 downloads forever: they still apply to downloads added in hardlink mode. -->
+            {#if cleanupInactive}
+              <p class="p-4.5 text-caption text-subtle" data-testid="cleanup-inactive">{$locale && m.config_hint_cleanup_inactive()}</p>
+            {/if}
+            <div class="divide-y divide-divider" class:opacity-60={cleanupInactive}>
+              <!-- No divider between the switch and the amount: the absence of the divider is what
+                   says the second field depends on the first. -->
+              <div class="space-y-3 p-4.5">
+                <Toggle
+                  id="delete_watched_episodes"
+                  describedBy="delete_watched_episodes-hint"
+                  bind:checked={config.delete_watched_episodes}
+                  label={(T && T.labelDeleteWatched) || ""}
+                  inline={true}
+                />
+                <p id="delete_watched_episodes-hint" class="text-caption text-subtle">{$locale && m.config_hint_delete_watched()}</p>
+                {#if config.delete_watched_episodes}
+                  <Input
+                    id="watched_episodes_to_keep"
+                    label={T && T.labelWatchedKeep || ""}
+                    subtitle={T && T.hintWatchedKeep || ""}
+                    type="number"
+                    bind:value={config.watched_episodes_to_keep}
+                    min="0"
+                    inline={true}
+                  />
+                {/if}
+              </div>
+              <fieldset class="p-4.5">
+                <legend class="float-left w-full text-[14.5px] font-bold text-heading">{T && T.labelDeleteStatuses}</legend>
+                <p class="text-caption text-subtle">{T && T.hintDeleteStatuses}</p>
+                <div class="mt-2.5 flex flex-wrap gap-2">
+                  {#each ALL_STATUSES as status}
+                    {@const active = (config.delete_statuses ?? []).includes(status)}
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      on:click={() => toggleDeleteStatus(status)}
+                      title={status}
+                      class="inline-flex items-center gap-1 rounded-pill border px-3 py-1.5 text-caption font-semibold transition-colors {statusPillClass(
+                        active,
+                        'danger'
+                      )}"
+                    >
+                      {#if active}<Check size={13} strokeWidth={3} />{/if}
+                      {T ? T.statusLabels[status] : status}
+                    </button>
+                  {/each}
+                </div>
+              </fieldset>
             </div>
 
             {#if config.library_mode === "direct"}
@@ -1186,38 +1220,6 @@
               />
             </div>
 
-            <div class="space-y-1.5 p-4.5">
-              <Toggle
-                id="check_for_updates"
-                describedBy="check_for_updates-hint"
-                bind:checked={config.check_for_updates}
-                label={(T && T.labelCheckForUpdates) || ""}
-                inline={true}
-              />
-              <p id="check_for_updates-hint" class="text-caption text-subtle">{T && T.hintCheckForUpdates}</p>
-            </div>
-
-            <!-- The way back to the first-steps card. It's NOT a config field: it doesn't go into
-                 `requiredChecks` nor into the PUT body — it's a UI preference, per browser. The
-                 divider comes for free from the container's `divide-y`. `Input`/`Toggle` don't fit
-                 here because both `bind:` to a `config` field, and there's no field.
-
-                 The disabled state is about the DISMISSAL, not about the card being visible: with
-                 the three items green the card doesn't show anyway, and an enabled button here
-                 would be a click with no visible effect. -->
-            <div class="flex flex-wrap items-center justify-between gap-3 p-4.5">
-              <div class="min-w-0">
-                <p class="text-[14.5px] font-bold text-heading">{T && T.onboardingRestoreLabel}</p>
-                <p class="text-caption text-subtle">{T && T.onboardingRestoreHint}</p>
-              </div>
-              <Button
-                variant="ghost"
-                disabled={!onboardingHidden}
-                on:click={restoreOnboarding}
-              >
-                {T && T.onboardingRestoreButton}
-              </Button>
-            </div>
           {/if}
 
           {#if activeGroup === "downloads"}
@@ -1232,19 +1234,6 @@
                 required={true}
                 inline={true}
                 suffix="min"
-              />
-            </div>
-            <div class="p-4.5">
-              <Input
-                id="recent_shelf_days"
-                label={$locale && m.config_label_recent_shelf_days()}
-                subtitle={$locale && m.config_hint_recent_shelf_days()}
-                type="number"
-                bind:value={config.recent_shelf_days}
-                min="0"
-                max="30"
-                inline={true}
-                suffix={$locale && m.config_suffix_recent_shelf_days()}
               />
             </div>
             <div class="space-y-1.5 p-4.5">
@@ -1321,28 +1310,66 @@
               {/if}
             </div>
 
-            <!-- No divider between the switch and the amount: the absence of the divider is what
-                 says the second field depends on the first. -->
-            <div class="space-y-3 p-4.5">
+          {/if}
+
+          <!-- App and display preferences, out of Library, where the first run sends people (the UI
+               review of 2026-11-25). None of them is required. -->
+          {#if activeGroup === "general"}
+            <div class="space-y-1.5 p-4.5">
               <Toggle
-                id="delete_watched_episodes"
-                describedBy="delete_watched_episodes-hint"
-                bind:checked={config.delete_watched_episodes}
-                label={(T && T.labelDeleteWatched) || ""}
+                id="check_for_updates"
+                describedBy="check_for_updates-hint"
+                bind:checked={config.check_for_updates}
+                label={(T && T.labelCheckForUpdates) || ""}
                 inline={true}
               />
-              <p id="delete_watched_episodes-hint" class="text-caption text-subtle">{$locale && m.config_hint_delete_watched()}</p>
-              {#if config.delete_watched_episodes}
-                <Input
-                  id="watched_episodes_to_keep"
-                  label={T && T.labelWatchedKeep || ""}
-                  subtitle={T && T.hintWatchedKeep || ""}
-                  type="number"
-                  bind:value={config.watched_episodes_to_keep}
-                  min="0"
-                  inline={true}
-                />
-              {/if}
+              <p id="check_for_updates-hint" class="text-caption text-subtle">{T && T.hintCheckForUpdates}</p>
+            </div>
+
+            <!-- The way back to the first-steps card. It's NOT a config field: it doesn't go into
+                 `requiredChecks` nor into the PUT body — it's a UI preference, per browser. The
+                 divider comes for free from the container's `divide-y`. `Input`/`Toggle` don't fit
+                 here because both `bind:` to a `config` field, and there's no field.
+
+                 The disabled state is about the DISMISSAL, not about the card being visible: with
+                 the three items green the card doesn't show anyway, and an enabled button here
+                 would be a click with no visible effect. -->
+            <div class="flex flex-wrap items-center justify-between gap-3 p-4.5">
+              <div class="min-w-0">
+                <p class="text-[14.5px] font-bold text-heading">{T && T.onboardingRestoreLabel}</p>
+                <p class="text-caption text-subtle">{T && T.onboardingRestoreHint}</p>
+              </div>
+              <Button
+                variant="ghost"
+                disabled={!onboardingHidden}
+                on:click={restoreOnboarding}
+              >
+                {T && T.onboardingRestoreButton}
+              </Button>
+            </div>
+
+            <div class="space-y-1.5 p-4.5">
+              <Toggle
+                id="keep_removed_release_cards"
+                describedBy="keep_removed_release_cards-hint"
+                bind:checked={config.keep_removed_release_cards}
+                label={$locale && m.config_label_keep_removed_release_cards()}
+                inline={true}
+              />
+              <p id="keep_removed_release_cards-hint" class="text-caption text-subtle">{$locale && m.config_hint_keep_removed_release_cards()}</p>
+            </div>
+            <div class="p-4.5">
+              <Input
+                id="recent_shelf_days"
+                label={$locale && m.config_label_recent_shelf_days()}
+                subtitle={$locale && m.config_hint_recent_shelf_days()}
+                type="number"
+                bind:value={config.recent_shelf_days}
+                min="0"
+                max="30"
+                inline={true}
+                suffix={$locale && m.config_suffix_recent_shelf_days()}
+              />
             </div>
           {/if}
 
@@ -1427,16 +1454,6 @@
           {/if}
 
           {#if activeGroup === "shoko"}
-            <div class="space-y-1.5 p-4.5">
-              <Toggle
-                id="shoko_enabled"
-                describedBy="shoko_enabled-hint"
-                bind:checked={config.shoko_enabled}
-                label={$locale && m.config_label_shoko_enabled()}
-                inline={true}
-              />
-              <p id="shoko_enabled-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
-            </div>
             <div class="p-4.5">
               <Input
                 id="shoko_url"
@@ -1477,120 +1494,139 @@
                 <p class="text-caption text-danger">{$locale && m.config_shoko_last_error({ error: shokoStatus.last_error })}</p>
               {/if}
             </div>
+            <!-- Sign in first, then the switch (UI review of 2026-11-25): the server refuses Use Shoko
+                 without a key, so the switch waits for the sign-in, and what depends on it is dimmed
+                 while it is off. -->
             <div class="space-y-1.5 p-4.5">
               <Toggle
-                id="shoko_watch"
-                describedBy="shoko_watch-hint"
-                bind:checked={config.shoko_watch}
-                label={$locale && m.config_label_shoko_watch()}
+                id="shoko_enabled"
+                describedBy="shoko_enabled-hint"
+                bind:checked={config.shoko_enabled}
+                disabled={!shokoSignedIn && !config.shoko_enabled}
+                label={$locale && m.config_label_shoko_enabled()}
                 inline={true}
               />
-              <p id="shoko_watch-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
-              {#if config.shoko_enabled && config.shoko_watch && shokoStatus?.signed_in}
-                <p class="text-caption {shokoStatus.watching ? 'text-body' : 'text-danger'}" data-testid="shoko-watch-status">
-                  {#if shokoStatus.watching}
-                    {$locale && m.config_shoko_watching()}
-                  {:else}
-                    {$locale && m.config_shoko_not_watching({ error: shokoStatus.watch_error ?? "" })}
-                  {/if}
-                </p>
+              <p id="shoko_enabled-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_enabled()}</p>
+              {#if !shokoSignedIn}
+                <p class="text-caption text-subtle" data-testid="shoko-sign-in-first">{$locale && m.config_hint_shoko_sign_in_first()}</p>
               {/if}
             </div>
-            <div class="p-4.5">
-              <Input
-                id="shoko_refresh_hours"
-                label={$locale && m.config_label_shoko_refresh()}
-                subtitle={$locale && m.config_hint_shoko_refresh()}
-                type="number"
-                bind:value={config.shoko_refresh_hours}
-                min="1"
-                inline={true}
-                suffix="h"
-              />
-            </div>
-            <div class="p-4.5">
-              <Input
-                id="shoko_full_resync_days"
-                label={$locale && m.config_label_shoko_full_resync()}
-                subtitle={$locale && m.config_hint_shoko_full_resync()}
-                type="number"
-                bind:value={config.shoko_full_resync_days}
-                min="0"
-                inline={true}
-                suffix={$locale && m.config_suffix_days()}
-              />
-            </div>
-            <div class="space-y-1.5 p-4.5">
-              <!-- The pass reads Shoko only while it is on in the saved config (shoko.go ForPass). -->
-              <Button variant="ghost" disabled={!shokoStatus?.signed_in || !shokoStatus?.enabled} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
-              {#if shokoStatus?.signed_in && !shokoStatus?.enabled}
-                <p class="text-caption text-subtle" data-testid="shoko-full-sync-off">{$locale && m.config_hint_shoko_full_sync_off()}</p>
-              {/if}
-              {#if shokoStatus?.last_full_sync && !shokoStatus.last_full_sync.startsWith("0001")}
-                <p class="text-caption text-body" data-testid="shoko-last-full">{$locale && m.config_shoko_last_full_sync({ when: new Date(shokoStatus.last_full_sync).toLocaleString() })}</p>
-              {/if}
-              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_sync()}</p>
-            </div>
-            <div class="space-y-1.5 p-4.5">
-              <Toggle
-                id="shoko_full_packs"
-                describedBy="shoko_full_packs-hint"
-                bind:checked={config.shoko_full_packs}
-                label={$locale && m.config_label_shoko_full_packs()}
-                inline={true}
-              />
-              <p id="shoko_full_packs-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_packs()}</p>
-            </div>
-            <div class="space-y-1.5 p-4.5" data-testid="shoko-folders">
-              <p class="text-copy font-semibold text-heading">{$locale && m.config_label_shoko_folders()}</p>
-              <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_folders()}</p>
-              {#if shokoStatus?.signed_in && !shokoStatus.import_folders?.length && !shokoStatus.import_folders_error}
-                <p class="text-caption text-subtle">{$locale && m.config_shoko_no_import_folder()}</p>
-              {/if}
-              {#if anyRootInShoko}
-                <p class="text-caption text-body" data-testid="shoko-roots-in">{$locale && m.config_shoko_roots_in({ folders: shokoRoots.filter((r) => r.in_shoko).map((r) => r.name).join(", ") })}</p>
-                {#if shokoStatus?.last_import_request}
-                  <p class="text-caption text-body" data-testid="shoko-last-import">{$locale && m.config_shoko_last_import({ when: new Date(shokoStatus.last_import_request).toLocaleString() })}</p>
+            <div class="divide-y divide-divider" class:opacity-60={!config.shoko_enabled}>
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="shoko_watch"
+                  describedBy="shoko_watch-hint"
+                  bind:checked={config.shoko_watch}
+                  label={$locale && m.config_label_shoko_watch()}
+                  inline={true}
+                />
+                <p id="shoko_watch-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_watch()}</p>
+                {#if config.shoko_enabled && config.shoko_watch && shokoStatus?.signed_in}
+                  <p class="text-caption {shokoStatus.watching ? 'text-body' : 'text-danger'}" data-testid="shoko-watch-status">
+                    {#if shokoStatus.watching}
+                      {$locale && m.config_shoko_watching()}
+                    {:else}
+                      {$locale && m.config_shoko_not_watching({ error: shokoStatus.watch_error ?? "" })}
+                    {/if}
+                  </p>
                 {/if}
-                {#if shokoStatus?.import_error}
-                  <p class="text-caption text-danger">{$locale && m.config_shoko_import_error({ error: shokoStatus.import_error })}</p>
-                {/if}
-              {/if}
-              {#if shokoStatus?.import_folders?.length}
-                <p class="text-caption text-body">{$locale && m.config_shoko_import_folders()}</p>
-                <ul class="space-y-0.5" data-testid="shoko-import-folders">
-                  {#each shokoStatus.import_folders as folder (folder.id)}
-                    <li class="text-caption text-body">
-                      <span class="break-all font-mono">{folder.path}</span>
-                      · {$locale && shokoFolderKind(folder)}{#if folder.watched}, {$locale && m.config_shoko_folder_watched()}{/if}
-                      {#if folder.app_path && trimSlash(folder.app_path) !== trimSlash(folder.path)}
-                        · {$locale && m.config_shoko_folder_here()} <span class="break-all font-mono">{folder.app_path}</span>
-                      {/if}
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-              {#if shokoStatus?.import_folders_error}
-                <p class="text-caption text-danger">{$locale && m.config_shoko_import_folders_error({ error: shokoStatus.import_folders_error })}</p>
-              {/if}
-            </div>
-            <div class="space-y-2.5 p-4.5" data-testid="shoko-path-map">
-              <div class="space-y-1">
-                <p class="text-copy text-body">{$locale && m.config_label_shoko_path_map()}</p>
-                <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_path_map()}</p>
               </div>
-              {#each config.shoko_path_map ?? [] as mapping, k (k)}
-                <div class="flex flex-col gap-2 md:flex-row md:items-end">
-                  <div class="flex-1">
-                    <Input id={`shoko_map_app_${k}`} label={(T && T.pathMapApp) || ""} bind:value={mapping.app} placeholder="/mnt/anime" />
-                  </div>
-                  <div class="flex-1">
-                    <Input id={`shoko_map_shoko_${k}`} label={$locale && m.config_shoko_path_map_shoko()} bind:value={mapping.shoko} placeholder="/import" />
-                  </div>
-                  <Button variant="ghost" ariaLabel={(T && T.pathMapRemove) || ""} on:click={() => removeShokoPathMapping(k)}>✕</Button>
+              <div class="p-4.5">
+                <Input
+                  id="shoko_refresh_hours"
+                  label={$locale && m.config_label_shoko_refresh()}
+                  subtitle={$locale && m.config_hint_shoko_refresh()}
+                  type="number"
+                  bind:value={config.shoko_refresh_hours}
+                  min="1"
+                  inline={true}
+                  suffix="h"
+                />
+              </div>
+              <div class="p-4.5">
+                <Input
+                  id="shoko_full_resync_days"
+                  label={$locale && m.config_label_shoko_full_resync()}
+                  subtitle={$locale && m.config_hint_shoko_full_resync()}
+                  type="number"
+                  bind:value={config.shoko_full_resync_days}
+                  min="0"
+                  inline={true}
+                  suffix={$locale && m.config_suffix_days()}
+                />
+              </div>
+              <div class="space-y-1.5 p-4.5">
+                <!-- The pass reads Shoko only while it is on in the saved config (shoko.go ForPass). -->
+                <Button variant="ghost" disabled={!shokoStatus?.signed_in || !shokoStatus?.enabled} on:click={fullShokoSync}>{$locale && m.config_btn_shoko_full_sync()}</Button>
+                {#if shokoStatus?.signed_in && !shokoStatus?.enabled}
+                  <p class="text-caption text-subtle" data-testid="shoko-full-sync-off">{$locale && m.config_hint_shoko_full_sync_off()}</p>
+                {/if}
+                {#if shokoStatus?.last_full_sync && !shokoStatus.last_full_sync.startsWith("0001")}
+                  <p class="text-caption text-body" data-testid="shoko-last-full">{$locale && m.config_shoko_last_full_sync({ when: new Date(shokoStatus.last_full_sync).toLocaleString() })}</p>
+                {/if}
+                <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_sync()}</p>
+              </div>
+              <div class="space-y-1.5 p-4.5">
+                <Toggle
+                  id="shoko_full_packs"
+                  describedBy="shoko_full_packs-hint"
+                  bind:checked={config.shoko_full_packs}
+                  label={$locale && m.config_label_shoko_full_packs()}
+                  inline={true}
+                />
+                <p id="shoko_full_packs-hint" class="text-caption text-subtle">{$locale && m.config_hint_shoko_full_packs()}</p>
+              </div>
+              <div class="space-y-1.5 p-4.5" data-testid="shoko-folders">
+                <p class="text-copy font-semibold text-heading">{$locale && m.config_label_shoko_folders()}</p>
+                <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_folders()}</p>
+                {#if shokoStatus?.signed_in && !shokoStatus.import_folders?.length && !shokoStatus.import_folders_error}
+                  <p class="text-caption text-subtle">{$locale && m.config_shoko_no_import_folder()}</p>
+                {/if}
+                {#if anyRootInShoko}
+                  <p class="text-caption text-body" data-testid="shoko-roots-in">{$locale && m.config_shoko_roots_in({ folders: shokoRoots.filter((r) => r.in_shoko).map((r) => r.name).join(", ") })}</p>
+                  {#if shokoStatus?.last_import_request}
+                    <p class="text-caption text-body" data-testid="shoko-last-import">{$locale && m.config_shoko_last_import({ when: new Date(shokoStatus.last_import_request).toLocaleString() })}</p>
+                  {/if}
+                  {#if shokoStatus?.import_error}
+                    <p class="text-caption text-danger">{$locale && m.config_shoko_import_error({ error: shokoStatus.import_error })}</p>
+                  {/if}
+                {/if}
+                {#if shokoStatus?.import_folders?.length}
+                  <p class="text-caption text-body">{$locale && m.config_shoko_import_folders()}</p>
+                  <ul class="space-y-0.5" data-testid="shoko-import-folders">
+                    {#each shokoStatus.import_folders as folder (folder.id)}
+                      <li class="text-caption text-body">
+                        <span class="break-all font-mono">{folder.path}</span>
+                        · {$locale && shokoFolderKind(folder)}{#if folder.watched}, {$locale && m.config_shoko_folder_watched()}{/if}
+                        {#if folder.app_path && trimSlash(folder.app_path) !== trimSlash(folder.path)}
+                          · {$locale && m.config_shoko_folder_here()} <span class="break-all font-mono">{folder.app_path}</span>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if shokoStatus?.import_folders_error}
+                  <p class="text-caption text-danger">{$locale && m.config_shoko_import_folders_error({ error: shokoStatus.import_folders_error })}</p>
+                {/if}
+              </div>
+              <div class="space-y-2.5 p-4.5" data-testid="shoko-path-map">
+                <div class="space-y-1">
+                  <p class="text-copy text-body">{$locale && m.config_label_shoko_path_map()}</p>
+                  <p class="text-caption text-subtle">{$locale && m.config_hint_shoko_path_map()}</p>
                 </div>
-              {/each}
-              <Button variant="ghost" on:click={addShokoPathMapping}>{T && T.pathMapAdd}</Button>
+                {#each config.shoko_path_map ?? [] as mapping, k (k)}
+                  <div class="flex flex-col gap-2 md:flex-row md:items-end">
+                    <div class="flex-1">
+                      <Input id={`shoko_map_app_${k}`} label={(T && T.pathMapApp) || ""} bind:value={mapping.app} placeholder="/mnt/anime" />
+                    </div>
+                    <div class="flex-1">
+                      <Input id={`shoko_map_shoko_${k}`} label={$locale && m.config_shoko_path_map_shoko()} bind:value={mapping.shoko} placeholder="/import" />
+                    </div>
+                    <Button variant="ghost" ariaLabel={(T && T.pathMapRemove) || ""} on:click={() => removeShokoPathMapping(k)}>✕</Button>
+                  </div>
+                {/each}
+                <Button variant="ghost" on:click={addShokoPathMapping}>{T && T.pathMapAdd}</Button>
+              </div>
             </div>
           {/if}
 
@@ -1663,6 +1699,16 @@
                   inline={true}
                 />
                 <p id="qbittorrent_manage_settings-hint" class="text-caption text-subtle">{T && T.hintQBittorrentManage}</p>
+                <!-- What it applies, read-only (decisions/144): the queue from Max Concurrent Downloads (0 =
+                     no limit), no ".!qB" extension, and simple disk I/O. Max Concurrent Downloads lives in
+                     Downloads because the built-in client uses it too (UI review of 2026-11-25). The
+                     disable-seeding upload limit doesn't depend on this switch, so it isn't named here. -->
+                {#if config.qbittorrent_manage_settings}
+                  <p class="text-caption text-body" data-testid="qbittorrent-manage-summary">
+                    {$locale && m.config_qbittorrent_manage_summary({ queue: (config.max_concurrent_downloads ?? 0) > 0 ? m.config_qbittorrent_queue_n({ count: config.max_concurrent_downloads ?? 0 }) : m.config_qbittorrent_queue_unlimited() })}
+                    <button type="button" class="font-semibold text-accent hover:underline" on:click={() => (activeGroup = "downloads")}>{$locale && m.config_qbittorrent_manage_open_downloads()}</button>
+                  </p>
+                {/if}
               </div>
 
               <div class="space-y-3 p-4.5">

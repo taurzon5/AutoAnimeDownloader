@@ -309,7 +309,9 @@ test.describe('onboarding card', () => {
     await page.getByRole('button', { name: /don't show again/i }).click()
     await expect(page.getByTestId('onboarding-card')).toHaveCount(0)
 
+    // First Steps' Show again sits in the General group.
     await page.goto('/#/config')
+    await page.getByRole('navigation', { name: /configuration sections/i }).getByRole('button', { name: /^general$/i }).click()
     const restore = page.getByRole('button', { name: /show again/i })
     await expect(restore).toBeEnabled()
     await restore.click()
@@ -322,6 +324,7 @@ test.describe('onboarding card', () => {
   test('"Show again" starts disabled when there is nothing to restore', async ({ page }) => {
     await setupFreshInstall(page)
     await page.goto('/#/config')
+    await page.getByRole('navigation', { name: /configuration sections/i }).getByRole('button', { name: /^general$/i }).click()
 
     await expect(page.getByRole('button', { name: /show again/i })).toBeDisabled()
   })

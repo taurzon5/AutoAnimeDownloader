@@ -341,7 +341,7 @@ test('the nav rail stays pinned to the top of the viewport while the page scroll
 
 /**
  * Config index on mobile. The same regression as the Downloads filter pills, the same remedy: the
- * strip had 358px of space for 644px of content at 390px (in Chromium), so "Torrent search" and the two exit
+ * strip had 358px of space for 644px of content at 390px (in Chromium), so "Torrent Search" and the two exit
  * links were behind a sideways drag. `flex-wrap` puts everything on screen.
  *
  * The assertion is double on purpose: "every item whole in the viewport" catches the hidden item,
@@ -364,6 +364,9 @@ for (const width of [375, 390, 414]) {
       index.getByRole('button', { name: /^library$/i }),
       index.getByRole('button', { name: /^lists$/i }),
       index.getByRole('button', { name: /^downloads$/i }),
+      index.getByRole('button', { name: /^torrent client$/i }),
+      index.getByRole('button', { name: /^shoko$/i }),
+      index.getByRole('button', { name: /^general$/i }),
       index.getByRole('button', { name: /^torrent search$/i }),
       index.getByRole('link', { name: /priorities/i }),
       index.getByRole('link', { name: /notifications/i }),

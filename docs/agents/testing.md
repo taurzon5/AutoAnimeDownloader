@@ -422,7 +422,7 @@ Separate from the per-screen specs, which assert **content**. A broken layout do
 | `elementFromPoint` over the delete dialog returns the dialog | the counterpart — something (Modal/Toasts at root `z-50`) ending up *below* the rail's `z-30` |
 | the Downloads header subtitle wraps into ≤2 line boxes at 375–1280px | the title block going back to `min-w-0 flex-1`: with flex-basis 0 and no min-width floor, `flex-wrap` never moves the speed box to its own line and the subtitle collapses to one word per line |
 | all four Downloads filter pills pass `toBeInViewport({ ratio: 1 })` and their row has `scrollWidth <= clientWidth` at 375/414/640px | the pill row going back to `overflow-x-auto`, which hid "Seeding"/"Problems" behind a horizontal scroll |
-| every config group and exit link passes `toBeInViewport({ ratio: 1 })` and the index has `scrollWidth <= clientWidth` at 375/390/414px | the Config side index going back to `overflow-x-auto`, which hid "Torrent search" and both exit links (decision 39) |
+| every config group and exit link passes `toBeInViewport({ ratio: 1 })` and the index has `scrollWidth <= clientWidth` at 375/390/414px | the Config side index going back to `overflow-x-auto`, which hid "Torrent Search" and both exit links (decision 39) |
 | all five Logs level pills pass `toBeInViewport({ ratio: 1 })` and their row has `scrollWidth <= clientWidth` at 320/375/414px | the pill row going back to `overflow-x-auto`, which cut "Info" in half and hid "Debug" |
 | the three Status daemon actions pass `toBeInViewport({ ratio: 1 })` and the page does not scroll horizontally at 320/375/390/414px | the action row going back to `flex shrink-0` with no `flex-wrap`, which pinned it to the sum of its buttons and pushed "Stop Daemon" off-screen |
 

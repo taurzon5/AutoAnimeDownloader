@@ -102,6 +102,7 @@ describe('Config — download folders (decisions/154)', () => {
 const complete = {
   auto_delete_downloads: false, check_for_updates: false, rename_files_for_jellyfin: false, recent_shelf_days: 3,
   keep_removed_release_cards: true, torrent_client: 'builtin', shoko_enabled: false, shoko_url: '', shoko_api_key: '',
+  delete_watched_episodes: true,
   shoko_refresh_hours: 24, shoko_watch: true, shoko_full_resync_days: 30, shoko_full_packs: true,
 }
 
