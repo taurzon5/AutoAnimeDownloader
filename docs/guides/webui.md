@@ -163,4 +163,5 @@ the crash banner on Status also land here. See [decisions/102](../agents/decisio
 ## See Also
 
 - [CLI Guide](cli.md) — command-line equivalent for most of these actions
+- [Options Guide](options.md) — every option with an example of using it, and what is planned
 - [Config Reference](../agents/config.md) — full config field reference
