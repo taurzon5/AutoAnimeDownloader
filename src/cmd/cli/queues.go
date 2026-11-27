@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"slices"
+	"maps"
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/api"
+	"AutoAnimeDownloader/src/internal/files"
 
 	"github.com/urfave/cli/v2"
 )
@@ -52,23 +53,17 @@ func queuesCommand() *cli.Command {
 					{Name: "get", Usage: "Show a queue's ranking", ArgsUsage: "<id>", Action: handleQueuePrioritiesGet},
 					{
 						Name:      "set",
-						Usage:     "Set a queue's ranking from a JSON file (- for stdin)",
-						ArgsUsage: "<id> <file|->",
-						Description: "The lists the JSON names replace the queue's; the others keep their value. Start\n" +
-							"from `queues priorities get <id> --json`. For the default queue this writes the\n" +
-							"config's priorities, as `priorities set` does.",
+						Usage:     "Set the ranking of one queue or several together from a JSON file (- for stdin)",
+						ArgsUsage: "<id>... <file|-> | --all <file|->",
+						Description: "The lists the JSON names replace each queue's; the others keep each queue's own\n" +
+							"value, as when the Priorities page edits the queues ticked together. Start from\n" +
+							"`queues priorities get <id> --json`. For the default queue this writes the\n" +
+							"config's priorities, as `priorities set` does. The ignore list is the default\n" +
+							"queue's alone (every queue shares it): only `set default <file>` sends it, and\n" +
+							"with several ids or --all the file's is sent to no queue. A null list is skipped\n" +
+							"(send [] to empty one).",
+						Flags:  []cli.Flag{&cli.BoolFlag{Name: "all", Usage: "Set every queue"}},
 						Action: handleQueuePrioritiesSet,
-					},
-					{
-						Name:      "copy",
-						Usage:     "Give other queues the same ranking as one queue (the shared ignore list stays)",
-						ArgsUsage: "<from> <to>... | <from> --all",
-						Description: "Copies every list of <from>'s ranking except the ignore list, which every queue\n" +
-							"shares, onto each queue named (or every other queue with --all). Each one can\n" +
-							"still be changed on its own afterwards with `queues priorities set`. The web\n" +
-							"app's Priorities page does the same in \"Same criteria for several queues\".",
-						Flags:  []cli.Flag{&cli.BoolFlag{Name: "all", Usage: "Copy onto every other queue"}},
-						Action: handleQueuePrioritiesCopy,
 					},
 				},
 			},
@@ -176,84 +171,70 @@ func handleQueuePrioritiesGet(c *cli.Context) error {
 	return printValue(q.Priorities, "")
 }
 
+// handleQueuePrioritiesSet sends the lists the JSON names to each queue given, through the partial
+// PUT /queues/{id}/priorities: what it names replaces the queue's, the rest stays each queue's own.
+// Several queues are checked against `queues` first, so a mistyped id changes none of them. The
+// ignore list is the default queue's alone (decisions/164): it goes only with `set default`, since
+// a file for several queues is usually another queue's dump, whose copy nothing reads. A null list
+// is skipped: a dump can carry one, and it would clear the list in every queue named.
 func handleQueuePrioritiesSet(c *cli.Context) error {
-	if err := requireArgs(c, 2, "queues priorities set <id> <file|->"); err != nil {
-		return err
-	}
-	var body json.RawMessage
-	if err := readJSONArg(c.Args().Get(1), &body); err != nil {
-		return err
-	}
-	if err := mapClientError(getClient().UpdateQueuePriorities(c.Args().Get(0), body)); err != nil {
-		return err
-	}
-	return printMessage("Queue ranking updated", "Queue ranking updated")
-}
-
-// handleQueuePrioritiesCopy sends <from>'s ranking, minus the ignore list, to each target through
-// the same partial PUT as `queues priorities set`: the lists it names replace the target's, and the
-// ignore list (the default queue's, shared by every queue) is left as it is.
-func handleQueuePrioritiesCopy(c *cli.Context) error {
-	usage := "queues priorities copy <from> <to>... | <from> --all"
+	usage := "queues priorities set <id>... <file|-> | --all <file|->"
 	all := c.Bool("all")
-	if c.NArg() < 1 || (all && c.NArg() != 1) || (!all && c.NArg() < 2) {
+	if (all && c.NArg() != 1) || (!all && c.NArg() < 2) {
 		return fmt.Errorf("usage: %s", usage)
 	}
-	queues, err := getClient().GetQueues()
-	if err != nil {
-		return mapClientError(err)
+	args := c.Args().Slice()
+	var lists map[string]json.RawMessage
+	if err := readJSONArg(args[len(args)-1], &lists); err != nil {
+		return err
 	}
-	byID := map[string]api.Queue{}
-	for _, q := range queues {
-		byID[q.ID] = q
-	}
-	from, ok := byID[c.Args().Get(0)]
-	if !ok {
-		return fmt.Errorf("no queue has the id %q (see `queues`)", c.Args().Get(0))
-	}
-	var targets []string
-	if all {
-		for _, q := range queues {
-			if q.ID != from.ID {
-				targets = append(targets, q.ID)
-			}
+	for key, value := range lists {
+		if string(value) == "null" {
+			delete(lists, key)
 		}
-	} else {
-		for _, id := range c.Args().Slice()[1:] {
-			if _, ok := byID[id]; !ok {
+	}
+	ids := args[:len(args)-1]
+	several := all || len(ids) > 1
+	if several {
+		queues, err := getClient().GetQueues()
+		if err != nil {
+			return mapClientError(err)
+		}
+		known := map[string]bool{}
+		var every []string
+		for _, q := range queues {
+			known[q.ID] = true
+			every = append(every, q.ID)
+		}
+		if all {
+			ids = every
+		}
+		for _, id := range ids {
+			if !known[id] {
 				return fmt.Errorf("no queue has the id %q (see `queues`)", id)
 			}
-			if id != from.ID && !slices.Contains(targets, id) {
-				targets = append(targets, id)
-			}
 		}
 	}
-	if len(targets) == 0 {
-		return fmt.Errorf("no other queue to copy onto (see `queues`)")
-	}
-	var lists map[string]json.RawMessage
-	data, err := json.Marshal(from.Priorities)
-	if err == nil {
-		err = json.Unmarshal(data, &lists)
-	}
-	if err != nil {
-		return err
-	}
-	// A null list would clear the target's (the PUT unmarshals over it): only real lists go.
-	delete(lists, "ignore_list")
-	for k, v := range lists {
-		if string(v) == "null" {
-			delete(lists, k)
+	_, hasIgnore := lists["ignore_list"]
+	for _, id := range ids {
+		body := lists
+		if several || id != files.DefaultQueueID {
+			body = maps.Clone(lists)
+			delete(body, "ignore_list")
 		}
-	}
-	body, err := json.Marshal(lists)
-	if err != nil {
-		return err
-	}
-	for _, id := range targets {
-		if err := getClient().UpdateQueuePriorities(id, body); err != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		if err := getClient().UpdateQueuePriorities(id, data); err != nil {
 			return fmt.Errorf("queue %s: %w", id, mapClientError(err))
 		}
 	}
-	return printMessage(fmt.Sprintf("Ranking of %s copied to %s", from.ID, strings.Join(targets, ", ")), "Queue ranking copied")
+	if several && hasIgnore && !outputJSON {
+		fmt.Println("The file's ignore_list was sent to no queue: it is the default queue's alone; set it with `queues priorities set default <file>`")
+	}
+	if len(ids) == 1 {
+		return printMessage("Queue ranking updated", "Queue ranking updated")
+	}
+	return printMessage(fmt.Sprintf("Ranking updated for %d queues: %s", len(ids), strings.Join(ids, ", ")), "Queue rankings updated")
 }

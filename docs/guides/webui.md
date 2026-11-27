@@ -127,12 +127,15 @@ searches every anime of the first queue, then the second, and so on, so a later 
 the earlier ones. Downloads don't wait: they share Max Concurrent Downloads and start as slots free
 up, whatever their queue. Rename, move up or down, or delete a queue (its anime go back to
 Default; Default can't be deleted). Click a queue to open its criteria below the list, and click
-it again (or **Close**) to close them; with a single queue its criteria are open from the start. A
-queue with changes not saved yet says **Unsaved**, and Save saves every queue you changed. The
-ignore list (**Block list**) is shared by all queues, so it shows only in Default's criteria.
-**Same criteria for several queues** (with two queues or more, folded by default) sets one set of
-criteria, starting from any queue's, and **Apply** gives it to the queues ticked; each can still
-be changed on its own afterwards, and the Block list stays as it is. An anime is put in a queue on
+it again (or **Close**) to close them; with a single queue its criteria are open from the start.
+Tick queues, or **Select all queues**, to change them together: a highlighted line says how many
+queues each change reaches, a change to a list gives that list to every queue ticked, the lists you
+leave alone stay each queue's own, and a list that isn't the same in all of them says so (the first
+queue's is shown). A queue with changes not saved yet says **Unsaved**, and Save saves every queue
+you changed. The ignore list (**Block list**) is one list shared by all queues: it shows only when
+Default is being edited, always Default's own, and a change to it changes that one list. A preset
+(**I prefer compatibility**, **I prefer smaller files**) reorders each ticked queue's own codec
+list. An anime is put in a queue on
 the Add screen or on its page (**Download queue**).
 
 ### Notifications (`/notifications`)

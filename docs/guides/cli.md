@@ -188,8 +188,8 @@ autoanimedownloader queues order watch-first default
 autoanimedownloader queues rename watch-first "Top"
 autoanimedownloader queues priorities get watch-first --json > top.json
 autoanimedownloader queues priorities set watch-first top.json
-autoanimedownloader queues priorities copy watch-first default
-autoanimedownloader queues priorities copy watch-first --all
+autoanimedownloader queues priorities set watch-first default top.json
+autoanimedownloader queues priorities set --all top.json
 autoanimedownloader queues delete watch-first --yes
 autoanimedownloader animes queue 154587 watch-first
 autoanimedownloader animes add 154587 --queue watch-first
@@ -202,10 +202,12 @@ the default queue's lists are the ones `priorities get` shows. `queues` lists th
 how many anime each holds (the default queue holds every anime no other queue lists). `add` makes a
 queue at the end with a copy of the default ranking; `order` needs every id once; `delete` sends the
 queue's anime back to the default queue (the default queue can't be deleted). `queues priorities
-set` replaces the lists the JSON names and keeps the others. `queues priorities copy <from> <to>...`
-gives the named queues (or every other queue, with `--all`) the same lists as `<from>`, the shared
-ignore list aside; each can still be set on its own afterwards. The Priorities page's "Same
-criteria for several queues" does the same. `animes queue <id> default` moves an
+set` replaces the lists the JSON names and keeps the others; given several ids (or `--all`), it does
+that for each queue, as the Priorities page does for the queues ticked: the lists the file names
+become the same in all of them, the others stay each queue's own. The ignore list is the default
+queue's alone (every queue shares it): only `queues priorities set default <file>` sends it, and
+with several ids or `--all` the file's is sent to no queue. A null list in the file is skipped
+(`[]` empties one), and a mistyped id changes no queue. `animes queue <id> default` moves an
 anime back.
 
 ## Blacklist

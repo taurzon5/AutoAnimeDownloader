@@ -1,11 +1,11 @@
 <script lang="ts">
-  // The criteria of one ranking: the lists the Priorities page edits, for one queue or for the
-  // "same criteria for several queues" draft. It never keeps the ranking: every edit goes back to
-  // the page as `change`, which owns the per-queue dirty state.
+  // The criteria lists the Priorities page edits, for one queue or for several queues edited
+  // together. It never keeps the ranking: every edit goes back to the page as `change` with the
+  // one list it touched, and the page gives that list to every queue being edited.
   import { createEventDispatcher } from "svelte";
   import type { Priorities } from "../lib/api/client.js";
   import Checkbox from "./ui/Checkbox.svelte";
-  import { PRESETS, applyPreset } from "../lib/domain/priorityPresets.js";
+  import { PRESETS } from "../lib/domain/priorityPresets.js";
   import * as m from "../lib/i18n/messages.js";
   import { locale } from "../lib/stores/locale.js";
 
@@ -13,8 +13,18 @@
   export let defaults: Priorities | null;
   /** The ignore list is the default queue's alone: every queue shares it (decisions/164). */
   export let showIgnore = true;
+  /** Lists that differ between the queues edited together, and the line that says so. */
+  export let differs: (keyof Priorities)[] = [];
+  export let differsNote = "";
+  /** A line under the block list: with several queues ticked, a change to it reaches one list. */
+  export let ignoreNote = "";
 
-  const dispatch = createEventDispatcher<{ change: Priorities }>();
+  // `preset` is its own event: with several queues edited together, each queue's own list is
+  // promoted, so a token one of them added by hand isn't lost (decisions/070).
+  const dispatch = createEventDispatcher<{
+    change: { key: keyof Priorities; list: string[] };
+    preset: { key: keyof Priorities; first: string[] };
+  }>();
 
   // scope: source applies to movies and FINISHED series; audio stays movies-only.
   const LISTS: { key: keyof Priorities; label: () => string; scope?: () => string }[] = [
@@ -50,7 +60,7 @@
 
   /** Replaces one list of the ranking. */
   function setList(key: keyof Priorities, list: string[]) {
-    dispatch("change", { ...ranking, [key]: list });
+    dispatch("change", { key, list });
   }
 
   function move(key: keyof Priorities, i: number, dir: -1 | 1) {
@@ -94,7 +104,7 @@
   }
 
   function preset(key: keyof Priorities, first: string[]) {
-    setList(key, applyPreset(ranking[key], first));
+    dispatch("preset", { key, first });
   }
 
   function resetList(key: keyof Priorities) {
@@ -122,6 +132,13 @@
               {T.resetList}
             </button>
           </div>
+
+          {#if differsNote && differs.includes(key)}
+            <p class="text-xs text-warn">{differsNote}</p>
+          {/if}
+          {#if ignoreNote && key === "ignore_list"}
+            <p class="text-xs text-warn">{ignoreNote}</p>
+          {/if}
 
           {#if T.presets[key]}
             <div class="flex flex-wrap gap-2">

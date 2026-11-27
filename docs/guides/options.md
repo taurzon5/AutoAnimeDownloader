@@ -815,10 +815,12 @@ autoanimedownloader animes queue 154587 watch-first
 
 The Priorities page ranks Nyaa releases. Each list is an order: higher in the list is better, and
 an item not in the list ranks last. The page lists the queues first: click one to edit its lists
-(with a single queue they are open from the start). **Same criteria for several queues** gives one
-set of lists to the queues you tick, the Block list aside, and each can still be changed on its own
-afterwards (`autoanimedownloader queues priorities copy <from> <to>...` or `--all`). **Reset this
-list** and **Reset all** bring back the defaults for the queue open
+(with a single queue they are open from the start), or tick several (**Select all queues** ticks
+every one) to change them together: a change to a list goes to each queue ticked (a preset reorders
+each queue's own list, and the Block list, shared by every queue, stays one list), the lists left
+alone stay each queue's own, and a highlighted line says how many queues a change reaches
+(`autoanimedownloader queues priorities set <id>... <file>` or `--all`). **Reset this list** and
+**Reset all** bring back the defaults for the queues being edited
 (`autoanimedownloader priorities defaults` prints them).
 
 | List | Default | Applies to |

@@ -2,8 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { baseConfig, setupStatusPageMocks } from './helpers'
 
 // The Priorities page with two download queues (decisions/164): the queues come first, a click
-// opens one queue's criteria, and "Same criteria for several queues" copies one set onto the
-// queues ticked.
+// opens one queue's criteria, and the queues ticked are edited together.
 
 const ranking = {
   criteria_order: ['uncensored', 'resolution', 'health', 'source', 'codec', 'fansub', 'audio', 'size'],
@@ -37,6 +36,10 @@ async function setup(page: Page): Promise<Put[]> {
       },
     }),
   )
+  await page.route('**/api/v1/config/priorities', route => {
+    puts.push({ url: route.request().url(), body: route.request().postDataJSON() })
+    return route.fulfill({ json: { success: true, data: { message: 'ok' } } })
+  })
   await page.route('**/api/v1/queues/*/priorities', route => {
     puts.push({ url: route.request().url(), body: route.request().postDataJSON() })
     return route.fulfill({ json: { success: true, data: { message: 'ok' } } })
@@ -48,7 +51,7 @@ test('lists the queues first and opens the criteria of the one clicked', async (
   await setup(page)
   await page.goto('/#/priorities')
 
-  await expect(page.getByText('Watch first')).toBeVisible()
+  await expect(page.getByText('Watch first', { exact: true })).toBeVisible()
   await expect(page.getByText('Codec', { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Change the criteria of Watch first' }).click()
@@ -61,20 +64,23 @@ test('lists the queues first and opens the criteria of the one clicked', async (
   await expect(page.getByText('Codec', { exact: true })).toHaveCount(0)
 })
 
-test('gives the same criteria to the queues ticked', async ({ page }) => {
+test('edits the queues ticked together', async ({ page }) => {
   const puts = await setup(page)
   await page.goto('/#/priorities')
 
-  await page.getByText('Same criteria for several queues').click()
-  await expect(page.getByText(/Set the criteria once/)).toBeVisible()
-  await page.getByRole('checkbox', { name: /Default$/ }).uncheck({ force: true })
-  await page.getByRole('button', { name: 'Apply to 1 queue' }).click()
+  await page.getByRole('checkbox', { name: /Select all queues$/ }).check({ force: true })
+  await expect(page.getByTestId('several-queues-note')).toContainText('2 queues at once')
+  // A change to the codec list gives it to both; the resolutions, left alone, stay each queue's own.
+  await page.getByRole('checkbox', { name: /Use av1$/ }).uncheck({ force: true })
   await page.getByRole('button', { name: 'Save' }).click()
 
-  await expect.poll(() => puts.length).toBe(1)
-  expect(puts[0].url).toContain('/queues/watch-first/priorities')
-  expect(puts[0].body.resolutions).toEqual(['1080p', '720p'])
-  expect(puts[0].body.ignore_list).toEqual([])
+  await expect.poll(() => puts.length).toBe(2)
+  const byUrl = (part: string) => puts.find((p) => p.url.includes(part))!.body
+  expect(byUrl('/config/priorities').codecs).toEqual(['h.264', 'hevc', 'xvid'])
+  expect(byUrl('/config/priorities').resolutions).toEqual(['1080p', '720p'])
+  expect(byUrl('/queues/watch-first/priorities').codecs).toEqual(['h.264', 'hevc', 'xvid'])
+  expect(byUrl('/queues/watch-first/priorities').resolutions).toEqual(['720p', '1080p'])
+  expect(byUrl('/queues/watch-first/priorities').ignore_list).toEqual([])
 })
 
 test('the queue list does not overflow at phone width', async ({ page }) => {

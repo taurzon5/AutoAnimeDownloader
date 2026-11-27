@@ -82,14 +82,24 @@ note that this change deleted).
   `priorities`, which four other paths write (the Priorities page, `priorities set`, `PUT
   /config/priorities` and `PUT /queues/default/priorities`).
 
-**Amendment (2026-11-27, the Priorities page lists the queues first):** a queue's criteria open on
-a click on it, and **Same criteria for several queues** (the page) and `queues priorities copy
-<from> <to>... | --all` (the CLI) give one set of lists to several queues. The copy is a **one-time
-stamp**: the queues are not linked afterwards, each keeps its own ranking and can be changed on its
-own, which is what the user asked for ("making the criteria for some or all lists the same, which
-can be modified further individually"). The ignore list never travels (it is the default queue's,
-shared). The CLI sends one partial `PUT /queues/{id}/priorities` per target, without the ignore
-list and without null lists (a null would clear the target's list): not atomic, so a failure part
-way leaves the earlier targets changed and says which queue failed; running it again finishes it.
-Don't "fix" by linking queues to a shared ranking (the per-queue edit after the copy is the point)
-or by adding a batch endpoint for a convenience the per-queue PUT already serves.
+**Amendment (2026-11-27, the Priorities page lists the queues first):** a click on a queue opens
+its criteria; ticking queues (or **Select all queues**) edits them together. A change to a list
+gives that **one list** to every queue ticked; the lists left alone keep each queue's own value, a
+list that differs between them says so (the first queue's shows), and a highlighted line says how
+many queues a change reaches. A preset is applied to each queue's own list (#70). The block list
+shown is **always the default queue's**, whatever the order (Default may sit below another queue,
+whose copy nothing reads), and a change to it goes to that one list. The CLI does the same with
+`queues priorities set <id>... <file>` or `--all <file>`: the partial PUT per queue already means
+"what the file names replaces, the rest stays". Only `set default <file>` sends an ignore list;
+with several ids or `--all` the file's goes to no queue, since such a file is usually another
+queue's dump (`get <id> --json`), whose copy is stale. A null list in the file is skipped: a dump
+can carry one, and it would clear that list in every queue named. With several ids or `--all` the
+CLI checks every id against `GET /queues` before writing (a single mistyped id is refused by the
+server), then sends one PUT per queue: not atomic, a failure part way says
+which queue failed, and running it again finishes it. A first version the same day kept a separate
+"same criteria for several queues" draft and copied it whole onto the queues ticked; the user
+rejected it for editing the ticked queues in place. Don't "fix" by linking queues to a shared
+ranking (each keeps its own; a list becomes the same only when changed while ticked), by copying a
+whole ranking onto the ticked queues when one list changes (it would overwrite the lists they
+differ in without the user touching them), by showing the first ticked queue's block list (it is a
+stale copy), or by adding a batch endpoint for what the per-queue PUT already serves.

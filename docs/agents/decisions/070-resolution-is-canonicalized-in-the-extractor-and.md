@@ -2,8 +2,12 @@
 
 **Location:** `nyaa/nyaa.go` — `ExtractResolution`, `canonicalResolutions`; `nyaa/priorities.go` —
 defaults of `Resolutions`/`Codecs`/`Sources`; `frontend/src/lib/domain/priorityPresets.ts`;
-`frontend/src/components/PriorityListsEditor.svelte` (the lists the Priorities page shows for a
-queue, and for its "Same criteria for several queues" draft).
+`frontend/src/components/PriorityListsEditor.svelte` (the lists the Priorities page shows for the
+queue or queues being edited) and `frontend/src/routes/Priorities.svelte` — `applyListPreset`.
+
+**Amendment (see #164):** with several queues ticked on the Priorities page, a preset is applied to
+**each queue's own list**, not to the list shown: stamping the shown queue's promoted list on the
+others would drop a token one of them added by hand, which is what (b) exists to avoid.
 
 **(a) Canonicalization lives in `ExtractResolution`, not in the list order.** `ExtractCodec` already
 returned a canonical token (`x265` → `HEVC`) and `ExtractResolution` returned the raw capture. That
