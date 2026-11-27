@@ -543,6 +543,49 @@ export async function updatePriorities(priorities: Priorities): Promise<void> {
   await apiRequest<unknown>('PUT', '/config/priorities', priorities)
 }
 
+/**
+ * A download queue (decisions/164): queues search in their order and rank with their own
+ * priorities. The default queue holds every anime no other queue lists, so its `animes` is empty;
+ * its priorities are config.json's.
+ */
+export interface Queue {
+  id: string
+  name: string
+  default: boolean
+  animes: number[]
+  priorities: Priorities
+}
+
+export async function getQueues(): Promise<Queue[]> {
+  return apiRequest<Queue[]>('GET', '/queues')
+}
+
+export async function createQueue(name: string): Promise<Queue> {
+  return apiRequest<Queue>('POST', '/queues', { name })
+}
+
+export async function renameQueue(id: string, name: string): Promise<void> {
+  await apiRequest<unknown>('PUT', `/queues/${encodeURIComponent(id)}`, { name })
+}
+
+export async function orderQueues(ids: string[]): Promise<void> {
+  await apiRequest<unknown>('PUT', '/queues/order', { ids })
+}
+
+/** Deletes a queue; its anime go back to the default queue. */
+export async function deleteQueue(id: string): Promise<{ moved_to_default: number }> {
+  return apiRequest<{ moved_to_default: number }>('DELETE', `/queues/${encodeURIComponent(id)}`)
+}
+
+/** Saves a queue's ranking; the default queue's is config.json's priorities. */
+export async function updateQueuePriorities(id: string, priorities: Priorities): Promise<void> {
+  await apiRequest<unknown>('PUT', `/queues/${encodeURIComponent(id)}/priorities`, priorities)
+}
+
+export async function moveAnimeToQueue(animeId: number, queue: string): Promise<void> {
+  await apiRequest<unknown>('PUT', `/animes/${animeId}/queue`, { queue })
+}
+
 /** Saves the notification settings only (PUT /config/notifications). */
 export async function updateNotifications(notifications: Config['notifications']): Promise<void> {
   await apiRequest<unknown>('PUT', '/config/notifications', notifications)
@@ -1049,9 +1092,14 @@ export async function getTorrentCandidates(
   id: number,
   query?: string,
   signal?: AbortSignal,
+  queue?: string,
 ): Promise<TorrentCandidates> {
+  const params = new URLSearchParams()
   const trimmed = query?.trim() ?? ''
-  const q = trimmed ? `?q=${encodeURIComponent(trimmed)}` : ''
+  if (trimmed) params.set('q', trimmed)
+  // Ranked as the queue Add anime chose, before the anime is in it (decisions/164).
+  if (queue) params.set('queue', queue)
+  const q = params.size ? `?${params.toString()}` : ''
   return apiRequest<TorrentCandidates>('GET', `/animes/${id}/torrent-candidates${q}`, null, {
     silent: true,
     signal,
@@ -1097,10 +1145,11 @@ export async function getTorrentCandidateDetail(
  */
 export async function addStandaloneAnime(
   mediaId: number,
-  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number; unblacklist?: boolean },
+  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number; unblacklist?: boolean; queue?: string },
 ): Promise<{ added: number }> {
   const body: Record<string, unknown> = { media_id: mediaId }
   if (opts?.unblacklist) body.unblacklist = true
+  if (opts?.queue) body.queue = opts.queue
   if (opts?.magnet) body.magnet = opts.magnet
   if (opts?.name) body.name = opts.name
   if (opts?.nyaa_id !== undefined) body.nyaa_id = opts.nyaa_id

@@ -17,6 +17,8 @@ export interface PickerCache {
    * sends it, or the daemon refuses with BLACKLISTED (decisions/155).
    */
   unblacklist?: boolean
+  /** The download queue chosen on the Add screen (decisions/164); absent = the default queue. */
+  queue?: string
 }
 
 const store = writable<PickerCache | null>(null)

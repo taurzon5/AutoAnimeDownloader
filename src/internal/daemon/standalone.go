@@ -160,6 +160,7 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 	// the button do nothing for up to a day.
 	searcher := defaultNyaaSearcher()
 	searcher.misses = nil
+	searcher.ranking = queueRanking(mediaID)
 	torrentsNow := backend.List()
 	// What Shoko already has stays out, as in the pass (decisions/147); the download roots and this
 	// anime's root override, as in the pass (decisions/154).

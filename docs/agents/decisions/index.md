@@ -175,3 +175,4 @@ do not edit by hand.
 - [**#161** — Priorities and notifications save only their part, merged into the saved one, and skip the full save's checks](161-priorities-and-notifications-save-only-their-part.md)
 - [**#162** — A download custom list brings its anime whatever their list status, read from MediaListCollection, and vetoes status deletion](162-a-download-custom-list-brings-its-anime-whatever.md)
 - [**#163** — A megapack is a torrent whose files map onto two entries of a franchise group, and a group entry needs both an AniList relation and a similar name](163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)
+- [**#164** — Download queues search in their order and rank with their own priorities, live in their own store, and share the download limit](164-download-queues-search-in-their-order-and-rank.md)

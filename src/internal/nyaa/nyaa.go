@@ -1585,8 +1585,8 @@ func isWithinThreeMonths(date time.Time) bool {
 
 // resolutionPriority returns a priority value for the resolution (lower = better). Based on Nyaa's
 // rules (Section 3 of the rules document)
-func resolutionPriority(resolution string) int {
-	return priorityIndex(ActivePriorities().Resolutions, resolution)
+func resolutionPriority(p *Priorities, resolution string) int {
+	return priorityIndex(p.Resolutions, resolution)
 }
 
 // isUncensored reports whether the torrent has "Uncensored" in the title
@@ -1596,9 +1596,9 @@ func isUncensored(torrentName string) bool {
 
 // fansubPriority returns a priority value for the fansub (lower = better). Based on Nyaa's rules
 // (Section 4 of the rules document)
-func fansubPriority(torrentName string) int {
+func fansubPriority(p *Priorities, torrentName string) int {
 	nameLower := strings.ToLower(torrentName)
-	fansubs := ActivePriorities().Fansubs
+	fansubs := p.Fansubs
 	best := len(fansubs)
 	for i, f := range fansubs {
 		if strings.Contains(nameLower, f) && i < best {
@@ -1649,18 +1649,18 @@ func extractAudio(name string) string {
 }
 
 // sourcePriority returns the source priority (lower = better)
-func sourcePriority(source string) int {
-	return priorityIndex(ActivePriorities().Sources, source)
+func sourcePriority(p *Priorities, source string) int {
+	return priorityIndex(p.Sources, source)
 }
 
 // codecPriority returns the codec priority (lower = better)
-func codecPriority(codec string) int {
-	return priorityIndex(ActivePriorities().Codecs, codec)
+func codecPriority(p *Priorities, codec string) int {
+	return priorityIndex(p.Codecs, codec)
 }
 
 // audioPriority returns the audio priority (lower = better)
-func audioPriority(audio string) int {
-	return priorityIndex(ActivePriorities().Audio, audio)
+func audioPriority(p *Priorities, audio string) int {
+	return priorityIndex(p.Audio, audio)
 }
 
 // SortTorrentResults sorts torrents by quality, applying the CriteriaOrder criteria that apply to
@@ -1668,7 +1668,13 @@ func audioPriority(audio string) int {
 // out because a weekly episode is WEB-DL in almost every release; finished series go through
 // SortFinishedSeriesResults. Based on Nyaa's rules (Section 8 of the rules document)
 func SortTorrentResults(results []TorrentResult) []TorrentResult {
-	return sortByCriteria(results, filterCriteria(ActivePriorities().CriteriaOrder, episodeCriteria))
+	return SortTorrentResultsBy(ActivePriorities(), results)
+}
+
+// SortTorrentResultsBy is SortTorrentResults with a ranking of its own: a download queue's
+// (decisions/164).
+func SortTorrentResultsBy(p Priorities, results []TorrentResult) []TorrentResult {
+	return sortByCriteria(&p, results, filterCriteria(p.CriteriaOrder, episodeCriteria))
 }
 
 // ParseSeeders converts the seeders string to int (Nyaa's column can come as "-"). Consumed outside
@@ -1747,5 +1753,11 @@ func extractSeasonFromName(name string) string {
 // SortMovieResults sorts movie search results by quality. Uses CriteriaOrder as-is
 // (every criterion, including source and audio).
 func SortMovieResults(results []TorrentResult) []TorrentResult {
-	return sortByCriteria(results, ActivePriorities().CriteriaOrder)
+	return SortMovieResultsBy(ActivePriorities(), results)
+}
+
+// SortMovieResultsBy is SortMovieResults with a ranking of its own: a download queue's
+// (decisions/164).
+func SortMovieResultsBy(p Priorities, results []TorrentResult) []TorrentResult {
+	return sortByCriteria(&p, results, p.CriteriaOrder)
 }

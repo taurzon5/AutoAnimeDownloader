@@ -663,6 +663,9 @@
   "detail_root_label": "Download folder",
   "detail_root_default": "Fill order (default)",
   "detail_root_hint": "New torrents of this anime go to this folder first; when it's full they go to the next.",
+  "detail_queue_label": "Download queue",
+  "detail_queue_hint": "The anime searches in its queue's turn and ranks releases with that queue's lists (set on the Priorities page).",
+  "detail_queue_saved": "Moved to the queue {name}",
   "detail_root_saved": "Saved. New torrents of this anime go there.",
   "config_hint_incomplete_path": "Optional. Torrents download here and move into the library when they finish, so the library disk only takes one sequential write per file. Use an SSD or NVMe folder, especially when the library is on a USB or SMR hard disk. The folder must already exist, inside that drive (not its mount point itself) and outside the library. Files here keep their real names.",
   "config_label_incomplete_min_free_disk": "Min Free Space for Incomplete Folder",
@@ -682,6 +685,7 @@
   "add_btn_view_status": "View status",
   "add_link_anilist": "Open on AniList",
   "add_toggle_unreleased": "Include unreleased",
+  "add_queue_label": "Queue",
   "add_meta_episodes": [
     {
       "declarations": [
@@ -941,6 +945,53 @@
   "report_after_open": "Now drag the downloaded file ({file}) into the issue.",
   "report_text_required": "Describe what happened first.",
   "priorities_title": "Torrent priorities",
+  "queues_title": "Download queues",
+  "queues_hint": "Queues search in this order: a later queue's searches wait until the earlier queues are done. Downloads share one limit, whatever their queue. Each queue ranks releases with its own lists below.",
+  "queues_default_count": "Every anime not in another queue",
+  "queues_count": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} anime",
+        "count=*": "{count} anime"
+      }
+    }
+  ],
+  "queues_rename": "Rename",
+  "queues_rename_save": "Save name",
+  "queues_rename_label": "New name for {name}",
+  "queues_move_up": "Move {name} up",
+  "queues_move_down": "Move {name} down",
+  "queues_delete": "Delete {name}",
+  "queues_delete_title": "Delete the queue {name}?",
+  "queues_delete_msg": "Its anime go back to the default queue, and its ranking is lost.",
+  "queues_delete_confirm": "Delete queue",
+  "queues_new_placeholder": "New queue name",
+  "queues_add": "Add queue",
+  "queues_ranking_for": "Ranking of queue",
+  "queues_ignore_shared": "The ignore list is shared by every queue: edit it with the default queue selected.",
+  "queues_toast_created": "Queue {name} made, with a copy of the default ranking",
+  "queues_toast_deleted": [
+    {
+      "declarations": [
+        "input name",
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Queue {name} deleted; {count} anime went back to the default queue",
+        "count=*": "Queue {name} deleted; {count} anime went back to the default queue"
+      }
+    }
+  ],
+  "queues_toast_error": "Could not change the queues",
   "priorities_subtitle": "Controls the preference order used to rank and filter Nyaa releases.",
   "priorities_loading": "Loading...",
   "priorities_list_criteria_order": "Criteria order",

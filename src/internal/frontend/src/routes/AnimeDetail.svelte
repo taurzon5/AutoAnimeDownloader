@@ -39,6 +39,7 @@
   import AnimeAccountsPanel from "../components/AnimeAccountsPanel.svelte";
   import ShokoMatchPanel from "../components/ShokoMatchPanel.svelte";
   import AnimeRootPicker from "../components/AnimeRootPicker.svelte";
+  import AnimeQueuePicker from "../components/AnimeQueuePicker.svelte";
   import AnimeReleasesPanel from "../components/AnimeReleasesPanel.svelte";
   import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
@@ -1039,6 +1040,7 @@
 
   <ShokoMatchPanel animeId={animeId} shoko={detail?.shoko} />
   <AnimeRootPicker {animeId} />
+  <AnimeQueuePicker {animeId} />
 
   {#if loading}
     <Loading message={m.detail_loading()} />

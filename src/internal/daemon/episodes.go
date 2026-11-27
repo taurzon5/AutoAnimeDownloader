@@ -224,7 +224,7 @@ func processAnimeEpisodes(
 	}
 
 	if magnetsForEpisodes == nil && len(sel.toDownload) > 0 {
-		packs, singles, packStats := partitionSearchResults(configs, anime, animeSeason, rankSeriesResults(searcher.searchAnime(anime.Media.Title, synonyms, episodeNumbers(sel.toDownload)), finished))
+		packs, singles, packStats := partitionSearchResults(configs, anime, animeSeason, rankSeriesResults(searcher.searchAnime(anime.Media.Title, synonyms, episodeNumbers(sel.toDownload)), finished, searcher.ranking))
 
 		// Pack eligibility: not a movie, more than one pending episode, and the FILTERED search returned
 		// a pack covering the window. None of this is AniList metadata — the torrent that's there decides
@@ -349,7 +349,7 @@ func processAnimeEpisodes(
 					Bool("earlier_episode_missing", stuck).
 					Msg("Skipping per-episode search: a recent search came back empty")
 			} else {
-				candidates, searchStats = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), finished), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+				candidates, searchStats = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), finished, searcher.ranking), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
 				if len(candidates) == 0 && searcher.misses != nil {
 					searcher.misses.record(missKey, time.Now(), searchStats)
 				}
@@ -485,7 +485,7 @@ func resolveMovie(configs *files.Config, anime anilist.MediaList, animeTitle str
 		Str("anime", animeTitle).
 		Msg("Detected movie - searching for movie torrent")
 
-	movieResult, _ := filterSearchResults(searcher.searchMovie(anime.Media.Title, true), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+	movieResult, _ := filterSearchResults(rankMovieResults(searcher.searchMovie(anime.Media.Title, true), searcher.ranking), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
 	if len(movieResult) == 0 {
 		return episodes, nil
 	}

@@ -110,6 +110,7 @@ func newApp() *cli.App {
 			torrentsCommand(),
 			shokoCommand(),
 			notificationsCommand(),
+			queuesCommand(),
 		},
 		// Tests (and main) inspect the returned error; the default handler would os.Exit.
 		ExitErrHandler: func(*cli.Context, error) {},

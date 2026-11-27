@@ -22,6 +22,9 @@ type StandaloneAnimeRequest struct {
 	// Unblacklist takes the anime off the app's blacklist and adds it. Without it a blacklisted
 	// anime is refused with 409 BLACKLISTED, so the screen can ask first (decisions/155).
 	Unblacklist bool `json:"unblacklist,omitempty"`
+	// Queue is the download queue the anime goes in (decisions/164): a queue id; empty = the default
+	// queue. Set before the first search, so that search ranks with the queue's priorities.
+	Queue string `json:"queue,omitempty"`
 }
 
 type StandaloneAnimeAddResponse struct {
@@ -101,11 +104,43 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 		// The app's blacklist asks instead of blocking: adding is the later choice, but taking an
 		// anime off the blacklist is the user's to confirm (decisions/155). It is lifted only once
 		// the anime is tracked, so a refused add leaves it blacklisted, like the id (decisions/108).
+		// markAdded keeps the anime in the queue the add chose once the add went through.
+		markAdded := func() {}
 		blacklisted := loadAppBlacklist(server.FileManager)[body.MediaID]
 		if blacklisted && !body.Unblacklist {
 			JSONError(w, http.StatusConflict, "BLACKLISTED", "This anime is on the blacklist: confirm taking it off to add it")
 			return
 		}
+		// The queue goes in first: the downloads below search with its ranking. An unknown queue is
+		// refused before anything is tracked, and a refused add puts the anime back in the queue it
+		// was in, as it leaves no id (decisions/108).
+		if body.Queue != "" {
+			store := daemon.QueueStore()
+			if store == nil {
+				JSONError(w, http.StatusServiceUnavailable, "QUEUES_UNAVAILABLE", "Download queues are not available")
+				return
+			}
+			before := files.DefaultQueueID
+			if list, err := store.All(); err == nil {
+				_, q := files.QueueOf(list, body.MediaID)
+				before = q.ID
+			}
+			if err := moveAnimeToQueue(store, body.MediaID, body.Queue); err != nil {
+				writeQueueError(w, err)
+				return
+			}
+			added := false
+			defer func() {
+				if added || before == body.Queue {
+					return
+				}
+				if err := moveAnimeToQueue(store, body.MediaID, before); err != nil {
+					logger.Logger.Warn().Err(err).Int("media_id", body.MediaID).Msg("Failed to put a refused add back in its queue")
+				}
+			}()
+			markAdded = func() { added = true }
+		}
+
 		liftBlacklist := func() {
 			if !blacklisted {
 				return
@@ -132,6 +167,7 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 				return
 			}
 			liftBlacklist()
+			markAdded()
 			JSONSuccess(w, http.StatusOK, StandaloneAnimeAddResponse{Added: added})
 			return
 		}
@@ -143,6 +179,7 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 		}
 		// Tracked from here, whatever the download below does: the add happened.
 		liftBlacklist()
+		markAdded()
 
 		// Synchronous, matching the episode-download POST: it is a single Nyaa search, and
 		// returning the real number of queued episodes is worth more than an empty 202.

@@ -50,6 +50,7 @@ func animesCommand() *cli.Command {
 				ArgsUsage: "<id>",
 				Flags: []cli.Flag{
 					&cli.StringFlag{Name: "query", Usage: "Custom Nyaa search query"},
+					&cli.StringFlag{Name: "queue", Usage: "Rank as this download queue would (default: the anime's own queue)"},
 				},
 				Action: handleAnimesCandidates,
 			},
@@ -84,6 +85,7 @@ func animesCommand() *cli.Command {
 					&cli.StringFlag{Name: "magnet", Usage: "Magnet URI (skips auto-pick)"},
 					&cli.StringFlag{Name: "query", Usage: "With --magnet: the Nyaa query the magnet came from (same as candidates --query)"},
 					&cli.BoolFlag{Name: "unblacklist", Usage: "The anime is on the blacklist: take it off and add it"},
+					&cli.StringFlag{Name: "queue", Usage: "The download queue it goes in (a queue id from `queues`; default: the default queue)"},
 				},
 				Action: handleAnimesAdd,
 			},
@@ -119,6 +121,14 @@ func animesCommand() *cli.Command {
 					"first (direct mode with download_roots; a full folder falls through to the others);\n" +
 					"none drops the override.",
 				Action: handleAnimesSettings,
+			},
+			{
+				Name:      "queue",
+				Usage:     "Move an anime to a download queue",
+				ArgsUsage: "<id> <queue-id>",
+				Description: "The anime searches with that queue, in its turn, and ranks with its priorities.\n" +
+					"`default` puts it back in the default queue. `queues` lists the ids.",
+				Action: handleAnimesQueue,
 			},
 			{
 				Name:      "debug",
@@ -273,7 +283,7 @@ func handleAnimesCandidates(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	candidates, err := getClient().GetTorrentCandidates(id, c.String("query"))
+	candidates, err := getClient().GetTorrentCandidatesInQueue(id, c.String("query"), c.String("queue"))
 	if err != nil {
 		return mapClientError(err)
 	}
@@ -400,6 +410,7 @@ func handleAnimesAdd(c *cli.Context) error {
 		}
 	}
 	req.Unblacklist = c.Bool("unblacklist")
+	req.Queue = c.String("queue")
 	added, err := getClient().AddStandaloneAnime(req)
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) && apiErr.Code == "BLACKLISTED" {
@@ -552,6 +563,21 @@ func handleAnimesSettings(c *cli.Context) error {
 	default:
 		return fmt.Errorf("usage: animes settings <id> [progress <n> | shoko <series-id> [offset] | shoko none | shoko auto | shoko-packs download|remove|default | root <name> | root none]")
 	}
+}
+
+func handleAnimesQueue(c *cli.Context) error {
+	if err := requireArgs(c, 2, "animes queue <id> <queue-id>"); err != nil {
+		return err
+	}
+	id, err := parsePositiveInt(c.Args().Get(0), "id")
+	if err != nil {
+		return err
+	}
+	queue := c.Args().Get(1)
+	if err := mapClientError(getClient().MoveAnimeToQueue(id, queue)); err != nil {
+		return err
+	}
+	return printMessage("Anime moved to queue "+queue, "Anime moved")
 }
 
 func handleAnimesEpisodes(c *cli.Context) error {

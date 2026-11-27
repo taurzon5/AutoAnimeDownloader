@@ -42,6 +42,9 @@ type nyaaSearcher struct {
 	// again every check_interval (see searchMisses). nil = search every episode every time: the
 	// manual download and the tests.
 	misses *searchMisses
+	// ranking is the anime's download queue's own ranking, nil for the default queue (the active
+	// priorities). rankSeriesResults and rankMovieResults read it (decisions/164).
+	ranking *nyaa.Priorities
 }
 
 func defaultNyaaSearcher() nyaaSearcher {
@@ -344,9 +347,26 @@ func searchNyaaForAnime(titles anilist.Title, synonyms []string, episodes []int)
 	}, "anime")
 }
 
-func rankSeriesResults(results []nyaa.TorrentResult, finished bool) []nyaa.TorrentResult {
-	if finished {
+// rankSeriesResults ranks a series' results: the scrape already sorted them by the active
+// priorities, so with no queue ranking only a FINISHED series is sorted again (source counts there,
+// decisions/107). A download queue's own ranking sorts them again in full (decisions/164).
+func rankSeriesResults(results []nyaa.TorrentResult, finished bool, ranking *nyaa.Priorities) []nyaa.TorrentResult {
+	switch {
+	case ranking != nil && finished:
+		return nyaa.SortFinishedSeriesResultsBy(*ranking, results)
+	case ranking != nil:
+		return nyaa.SortTorrentResultsBy(*ranking, results)
+	case finished:
 		return nyaa.SortFinishedSeriesResults(results)
 	}
 	return results
+}
+
+// rankMovieResults sorts a movie's results again by a download queue's own ranking; with none they
+// keep the scrape's order (decisions/164).
+func rankMovieResults(results []nyaa.TorrentResult, ranking *nyaa.Priorities) []nyaa.TorrentResult {
+	if ranking == nil {
+		return results
+	}
+	return nyaa.SortMovieResultsBy(*ranking, results)
 }

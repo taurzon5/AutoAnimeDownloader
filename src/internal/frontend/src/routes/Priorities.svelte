@@ -4,9 +4,18 @@
     getConfig,
     updatePriorities,
     getPriorityDefaults,
+    getQueues,
+    createQueue,
+    renameQueue,
+    orderQueues,
+    deleteQueue,
+    updateQueuePriorities,
     type Config,
     type Priorities,
+    type Queue,
   } from "../lib/api/client.js";
+  import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import { DEFAULT_QUEUE_ID } from "../lib/domain/queues.js";
   import Loading from "../components/Loading.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
   import { toast } from "../lib/stores/toast.js";
@@ -54,11 +63,29 @@
   let loading = true;
   let saving = false;
   let newItem: Record<string, string> = {};
-  // What was loaded (or last saved): dirty means "differs from it", so undoing a change clears it.
-  let baseline = "";
 
-  $: setUnsaved("priorities", !!config && snapshot(config) !== baseline);
+  // The download queues (decisions/164): each ranks with its own lists. The default queue's are
+  // config.json's priorities, saved through PUT /config/priorities as before; the others through
+  // their queue. Without a second queue the page is the one ranking it always was.
+  let queues: Queue[] = [];
+  let selected = DEFAULT_QUEUE_ID;
+  let rankings: Record<string, Priorities> = {};
+  // What was loaded (or last saved), per queue: dirty means "differs from it", so undoing a change
+  // clears it.
+  let baselines: Record<string, string> = {};
+  let newQueueName = "";
+  let renaming: string | null = null;
+  let renameValue = "";
+  let deleting: Queue | null = null;
+  let deleteOpen = false;
+
+  $: current = rankings[selected] ?? null;
+  $: changed = Object.keys(rankings).filter((id) => snapshot(rankings[id]) !== baselines[id]);
+  $: setUnsaved("priorities", changed.length > 0);
+  $: lists = T ? T.lists.filter((l) => selected === DEFAULT_QUEUE_ID || l.key !== "ignore_list") : [];
   onDestroy(() => setUnsaved("priorities", false));
+
+  const clone = (p: Priorities): Priorities => JSON.parse(JSON.stringify(p));
 
   async function load() {
     try {
@@ -66,7 +93,16 @@
       const [c, d] = await Promise.all([getConfig(), getPriorityDefaults()]);
       config = c;
       defaults = d;
-      baseline = snapshot(c);
+      rankings = { [DEFAULT_QUEUE_ID]: clone(c.priorities) };
+      try {
+        queues = (await getQueues()) ?? [];
+      } catch {
+        queues = [];
+      }
+      for (const q of queues) {
+        if (!q.default) rankings[q.id] = clone(q.priorities);
+      }
+      baselines = Object.fromEntries(Object.entries(rankings).map(([id, p]) => [id, snapshot(p)]));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.priorities_toast_load_error());
     } finally {
@@ -74,14 +110,84 @@
     }
   }
 
+  /** Replaces one list of the selected queue's ranking. */
+  function setList(key: keyof Priorities, list: string[]) {
+    if (!current) return;
+    rankings[selected] = { ...current, [key]: list };
+    rankings = rankings;
+  }
+
   function move(key: keyof Priorities, i: number, dir: -1 | 1) {
-    if (!config) return;
-    const list = [...config.priorities[key]];
+    if (!current) return;
+    const list = [...current[key]];
     const j = i + dir;
     if (j < 0 || j >= list.length) return;
     [list[i], list[j]] = [list[j], list[i]];
-    config.priorities[key] = list;
-    config = config;
+    setList(key, list);
+  }
+
+  async function addQueue() {
+    const name = newQueueName.trim();
+    if (!name) return;
+    try {
+      const q = await createQueue(name);
+      queues = [...queues, q];
+      rankings[q.id] = clone(q.priorities);
+      baselines[q.id] = snapshot(rankings[q.id]);
+      rankings = rankings;
+      newQueueName = "";
+      selected = q.id;
+      toast.success(m.queues_toast_created({ name: q.name }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m.queues_toast_error());
+    }
+  }
+
+  async function moveQueue(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= queues.length) return;
+    const next = [...queues];
+    [next[i], next[j]] = [next[j], next[i]];
+    try {
+      await orderQueues(next.map((q) => q.id));
+      queues = next;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m.queues_toast_error());
+    }
+  }
+
+  function startRename(q: Queue) {
+    renaming = q.id;
+    renameValue = q.name;
+  }
+
+  async function saveRename(q: Queue) {
+    const name = renameValue.trim();
+    renaming = null;
+    if (!name || name === q.name) return;
+    try {
+      await renameQueue(q.id, name);
+      queues = queues.map((x) => (x.id === q.id ? { ...x, name } : x));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m.queues_toast_error());
+    }
+  }
+
+  async function confirmDelete() {
+    const q = deleting;
+    deleting = null;
+    if (!q) return;
+    try {
+      const { moved_to_default } = await deleteQueue(q.id);
+      queues = queues.filter((x) => x.id !== q.id);
+      delete rankings[q.id];
+      delete baselines[q.id];
+      rankings = rankings;
+      if (selected === q.id) selected = DEFAULT_QUEUE_ID;
+      toast.success(m.queues_toast_deleted({ name: q.name, count: moved_to_default }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : m.queues_toast_error());
+    }
   }
 
   /**
@@ -102,54 +208,52 @@
   }
 
   function toggle(key: keyof Priorities, item: string, on: boolean) {
-    if (!config) return;
-    config.priorities[key] = on
-      ? [...config.priorities[key], item]
-      : config.priorities[key].filter((v) => v !== item);
-    config = config;
+    if (!current) return;
+    setList(key, on ? [...current[key], item] : current[key].filter((v) => v !== item));
   }
 
   function remove(key: keyof Priorities, i: number) {
-    if (!config) return;
-    config.priorities[key] = config.priorities[key].filter((_, idx) => idx !== i);
-    config = config;
+    if (!current) return;
+    setList(key, current[key].filter((_, idx) => idx !== i));
   }
 
   function add(key: keyof Priorities) {
-    if (!config) return;
+    if (!current) return;
     const v = (newItem[key] ?? "").trim().toLowerCase();
-    if (!v || config.priorities[key].includes(v)) return;
-    config.priorities[key] = [...config.priorities[key], v];
+    if (!v || current[key].includes(v)) return;
+    setList(key, [...current[key], v]);
     newItem[key] = "";
-    config = config;
   }
 
   function preset(key: keyof Priorities, first: string[]) {
-    if (!config) return;
-    config.priorities[key] = applyPreset(config.priorities[key], first);
-    config = config;
+    if (!current) return;
+    setList(key, applyPreset(current[key], first));
   }
 
   function resetList(key: keyof Priorities) {
-    if (!config || !defaults) return;
-    config.priorities[key] = [...defaults[key]];
-    config = config;
+    if (!current || !defaults) return;
+    setList(key, [...defaults[key]]);
   }
 
   function resetAll() {
-    if (!config || !defaults) return;
-    config.priorities = JSON.parse(JSON.stringify(defaults));
-    config = config;
+    if (!current || !defaults) return;
+    // A queue's ignore list is not its own: reset only touches what it ranks with.
+    rankings[selected] = selected === DEFAULT_QUEUE_ID ? clone(defaults) : { ...clone(defaults), ignore_list: current.ignore_list };
+    rankings = rankings;
   }
 
   async function save() {
-    if (!config) return;
+    if (!current) return;
     try {
       saving = true;
       // Only the lists: a full save would also run the folder and client checks (an unplugged
-      // drive elsewhere would refuse a reorder).
-      await updatePriorities(config.priorities);
-      baseline = snapshot(config);
+      // drive elsewhere would refuse a reorder). Every queue with a change is saved.
+      for (const id of changed) {
+        if (id === DEFAULT_QUEUE_ID) await updatePriorities(rankings[id]);
+        else await updateQueuePriorities(id, rankings[id]);
+        baselines[id] = snapshot(rankings[id]);
+      }
+      baselines = baselines;
       toast.success(m.priorities_toast_saved());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.priorities_toast_save_error());
@@ -169,10 +273,100 @@
 
   {#if loading}
     <Loading message={(T && T.loading) || ""} />
-  {:else if config && T}
+  {:else if config && current && T}
+    {#if queues.length > 0}
+      <div class="flex flex-col gap-3 rounded-card border border-default bg-sunken p-5" data-testid="queues">
+        <div>
+          <h2 class="text-sm font-semibold text-subtle uppercase tracking-wider">{$locale && m.queues_title()}</h2>
+          <p class="mt-1 text-xs text-subtle">{$locale && m.queues_hint()}</p>
+        </div>
+        <ol class="flex flex-col gap-1.5">
+          {#each queues as q, i (q.id)}
+            <li class="flex flex-wrap items-center gap-2 bg-card rounded-md px-3 py-1.5">
+              <span class="text-xs text-subtle w-5 text-right">{i + 1}</span>
+              {#if renaming === q.id}
+                <input
+                  type="text"
+                  bind:value={renameValue}
+                  aria-label={$locale && m.queues_rename_label({ name: q.name })}
+                  class="flex-1 min-w-0 rounded-md border-default bg-control text-heading text-sm px-2 py-1"
+                  on:keydown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveRename(q); } if (e.key === "Escape") renaming = null; }}
+                />
+                <button type="button" class="text-xs font-medium text-accent" on:click={() => saveRename(q)}>{$locale && m.queues_rename_save()}</button>
+              {:else}
+                <span class="flex-1 min-w-0 truncate text-sm text-heading">{q.name}</span>
+                <span class="text-xs text-subtle">
+                  {$locale && (q.default ? m.queues_default_count() : m.queues_count({ count: q.animes.length }))}
+                </span>
+                <button type="button" class="text-xs font-medium text-subtle hover:text-heading" on:click={() => startRename(q)}>{$locale && m.queues_rename()}</button>
+              {/if}
+              <button
+                type="button"
+                on:click={() => moveQueue(i, -1)}
+                disabled={i === 0}
+                aria-label={$locale && m.queues_move_up({ name: q.name })}
+                class="text-subtle hover:text-heading disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >↑</button>
+              <button
+                type="button"
+                on:click={() => moveQueue(i, 1)}
+                disabled={i === queues.length - 1}
+                aria-label={$locale && m.queues_move_down({ name: q.name })}
+                class="text-subtle hover:text-heading disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >↓</button>
+              {#if !q.default}
+                <button
+                  type="button"
+                  on:click={() => { deleting = q; deleteOpen = true; }}
+                  aria-label={$locale && m.queues_delete({ name: q.name })}
+                  class="text-subtle hover:text-danger transition-colors"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+        <form class="flex gap-2" on:submit|preventDefault={addQueue}>
+          <input
+            type="text"
+            bind:value={newQueueName}
+            placeholder={$locale && m.queues_new_placeholder()}
+            aria-label={$locale && m.queues_new_placeholder()}
+            class="flex-1 block rounded-md border-default bg-control text-heading shadow-sm focus:border-accent sm:text-sm px-3 py-2"
+          />
+          <button
+            type="submit"
+            disabled={!newQueueName.trim()}
+            class="inline-flex items-center px-3 py-2 rounded-md border border-default text-body hover:bg-control text-sm font-medium transition-colors disabled:opacity-50"
+          >{$locale && m.queues_add()}</button>
+        </form>
+        {#if queues.length > 1}
+          <div class="flex flex-wrap items-center gap-2">
+            <label for="ranking_queue" class="text-xs text-subtle">{$locale && m.queues_ranking_for()}</label>
+            <select
+              id="ranking_queue"
+              bind:value={selected}
+              class="rounded-md border border-default bg-control px-3 py-1.5 text-sm text-body"
+            >
+              {#each queues as q (q.id)}
+                <option value={q.id}>{q.name}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+      </div>
+    {/if}
+
+    {#if selected !== DEFAULT_QUEUE_ID}
+      <p class="text-xs text-subtle">{$locale && m.queues_ignore_shared()}</p>
+    {/if}
+
     <div class="space-y-4">
-      {#each T.lists as { key, label, scope } (key)}
-        {@const items = rows(key, config.priorities[key], defaults)}
+      {#each lists as { key, label, scope } (key)}
+        {@const items = rows(key, current[key], defaults)}
         <div class="flex flex-col rounded-card border border-default bg-sunken">
           <div class="flex flex-col gap-3 p-5">
             <div class="flex items-center justify-between">
@@ -230,7 +424,7 @@
                       <button
                         type="button"
                         on:click={() => move(key, i, 1)}
-                        disabled={i === config.priorities[key].length - 1}
+                        disabled={i === current[key].length - 1}
                         aria-label={$locale && m.priorities_move_down({ item: row.item })}
                         class="text-subtle hover:text-heading disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
@@ -285,6 +479,15 @@
         </div>
       {/each}
     </div>
+
+    <ConfirmDialog
+      bind:open={deleteOpen}
+      title={$locale && deleting ? m.queues_delete_title({ name: deleting.name }) : ""}
+      message={$locale && m.queues_delete_msg()}
+      confirmLabel={$locale && m.queues_delete_confirm()}
+      cancelLabel={$locale && m.common_cancel()}
+      on:confirm={confirmDelete}
+    />
 
     <div class="flex justify-end gap-3 pt-2">
       <button

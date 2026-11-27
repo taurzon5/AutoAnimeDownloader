@@ -54,6 +54,18 @@ func pickerMediaFrom(anime *anilist.MediaList) PickerMedia {
 }
 
 func PreviewWholeTitleTorrents(configs *files.Config, mediaID int, query string) (WholeTitlePreview, error) {
+	return previewWholeTitle(configs, mediaID, query, queueRanking(mediaID))
+}
+
+// PreviewWholeTitleTorrentsInQueue is PreviewWholeTitleTorrents ranked by queue's priorities instead
+// of the anime's own queue's: Add anime searches before the anime is in the queue it chose
+// (decisions/164). An unknown queue ranks as the default one.
+func PreviewWholeTitleTorrentsInQueue(configs *files.Config, mediaID int, query, queue string) (WholeTitlePreview, error) {
+	q, _ := files.FindQueue(loadQueues(), queue)
+	return previewWholeTitle(configs, mediaID, query, q.Priorities)
+}
+
+func previewWholeTitle(configs *files.Config, mediaID int, query string, ranking *nyaa.Priorities) (WholeTitlePreview, error) {
 	empty := WholeTitlePreview{}
 	anime, err := anilist.GetMediaByID(mediaID, anilist.PriorityCritical)
 	if err != nil && !errors.Is(err, anilist.ErrFromCache) {
@@ -77,7 +89,7 @@ func PreviewWholeTitleTorrents(configs *files.Config, mediaID int, query string)
 		if err != nil {
 			return WholeTitlePreview{Query: used, Media: media}, wrapNyaaSearchError(err)
 		}
-		results, _ = filterSearchResults(results, configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+		results, _ = filterSearchResults(rankMovieResults(results, ranking), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
 	} else {
 		season, part := seasonPartOf(anime.Media)
 		if used == "" {
@@ -90,7 +102,10 @@ func PreviewWholeTitleTorrents(configs *files.Config, mediaID int, query string)
 		if err != nil {
 			return WholeTitlePreview{Query: used, Media: media}, wrapNyaaSearchError(err)
 		}
-		packs, _, _ := partitionSearchResults(configs, *anime, season, results)
+		// Ranked as the pass ranks this anime: the list is the pass's own choice offered to confirm
+		// (decisions/160), so a FINISHED series counts its source here too (decisions/107).
+		finished := anime.Media.Status == anilist.MediaStatusFinished
+		packs, _, _ := partitionSearchResults(configs, *anime, season, rankSeriesResults(results, finished, ranking))
 		results = packs
 	}
 
@@ -139,7 +154,7 @@ func PreviewEpisodeTorrents(configs *files.Config, mediaID, episode int, query s
 			return WholeTitlePreview{Query: used, Media: media}, wrapNyaaSearchError(err)
 		}
 	}
-	results = rankSeriesResults(results, finished)
+	results = rankSeriesResults(results, finished, queueRanking(mediaID))
 	if len(results) > maxTorrentCandidates {
 		results = results[:maxTorrentCandidates]
 	}

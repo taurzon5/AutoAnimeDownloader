@@ -104,7 +104,13 @@ func handleTorrentCandidates(server *Server) http.HandlerFunc {
 			return
 		}
 
-		preview, err := daemon.PreviewWholeTitleTorrents(config, id, r.URL.Query().Get("q"))
+		// queue ranks as the queue Add anime chose, before the anime is in it (decisions/164).
+		var preview daemon.WholeTitlePreview
+		if queue := r.URL.Query().Get("queue"); queue != "" {
+			preview, err = daemon.PreviewWholeTitleTorrentsInQueue(config, id, r.URL.Query().Get("q"), queue)
+		} else {
+			preview, err = daemon.PreviewWholeTitleTorrents(config, id, r.URL.Query().Get("q"))
+		}
 		if err != nil {
 			if errors.Is(err, nyaa.ErrNyaaUnavailable) {
 				JSONError(w, http.StatusBadGateway, "NYAA_UNAVAILABLE", "Nyaa is unavailable")

@@ -243,10 +243,21 @@ func (c *Client) GetEpisodeTorrentCandidates(id, episode int, query string) (*To
 }
 
 func (c *Client) GetTorrentCandidates(id int, query string) (*TorrentCandidatesResponse, error) {
+	return c.GetTorrentCandidatesInQueue(id, query, "")
+}
+
+// GetTorrentCandidatesInQueue ranks the candidates as download queue queue would ("" = the anime's
+// own queue): what Add anime shows before the anime is in the queue it chose (decisions/164).
+func (c *Client) GetTorrentCandidatesInQueue(id int, query, queue string) (*TorrentCandidatesResponse, error) {
 	path := "/api/v1/animes/" + strconv.Itoa(id) + "/torrent-candidates"
+	q := url.Values{}
 	if query != "" {
-		q := url.Values{}
 		q.Set("q", query)
+	}
+	if queue != "" {
+		q.Set("queue", queue)
+	}
+	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
 	var out TorrentCandidatesResponse
@@ -536,4 +547,53 @@ func (c *Client) RunAnimeDebug(id int) (*daemon.DebugSummary, error) {
 
 func episodePath(id, episode int) string {
 	return "/api/v1/animes/" + strconv.Itoa(id) + "/episodes/" + strconv.Itoa(episode)
+}
+
+// GetQueues lists the download queues in their order (decisions/164).
+func (c *Client) GetQueues() ([]Queue, error) {
+	var queues []Queue
+	if err := c.get("/api/v1/queues", &queues); err != nil {
+		return nil, err
+	}
+	return queues, nil
+}
+
+// CreateQueue makes a queue at the end of the order, ranking as a copy of the default queue.
+func (c *Client) CreateQueue(name string) (*Queue, error) {
+	var q Queue
+	if err := c.send(http.MethodPost, "/api/v1/queues", map[string]string{"name": name}, &q); err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+// RenameQueue renames a queue; its id stays.
+func (c *Client) RenameQueue(id, name string) error {
+	return c.send(http.MethodPut, "/api/v1/queues/"+url.PathEscape(id), map[string]string{"name": name}, nil)
+}
+
+// OrderQueues sets the queues' order: every id, once.
+func (c *Client) OrderQueues(ids []string) error {
+	return c.send(http.MethodPut, "/api/v1/queues/order", map[string][]string{"ids": ids}, nil)
+}
+
+// DeleteQueue deletes a queue; its anime go back to the default queue. Returns how many moved.
+func (c *Client) DeleteQueue(id string) (int, error) {
+	var out struct {
+		Moved int `json:"moved_to_default"`
+	}
+	if err := c.send(http.MethodDelete, "/api/v1/queues/"+url.PathEscape(id), nil, &out); err != nil {
+		return 0, err
+	}
+	return out.Moved, nil
+}
+
+// UpdateQueuePriorities writes a queue's ranking, merged over its saved one.
+func (c *Client) UpdateQueuePriorities(id string, priorities json.RawMessage) error {
+	return c.send(http.MethodPut, "/api/v1/queues/"+url.PathEscape(id)+"/priorities", priorities, nil)
+}
+
+// MoveAnimeToQueue puts an anime in a queue ("default" for the default queue).
+func (c *Client) MoveAnimeToQueue(id int, queue string) error {
+	return c.send(http.MethodPut, "/api/v1/animes/"+strconv.Itoa(id)+"/queue", map[string]string{"queue": queue}, nil)
 }

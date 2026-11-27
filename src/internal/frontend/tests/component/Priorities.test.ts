@@ -8,6 +8,12 @@ vi.mock('../../src/lib/api/client.js', () => ({
   getConfig: vi.fn(),
   getPriorityDefaults: vi.fn(),
   updatePriorities: vi.fn(),
+  getQueues: vi.fn(),
+  createQueue: vi.fn(),
+  renameQueue: vi.fn(),
+  orderQueues: vi.fn(),
+  deleteQueue: vi.fn(),
+  updateQueuePriorities: vi.fn(),
 }))
 
 const getConfig = vi.mocked(client.getConfig)
@@ -109,5 +115,56 @@ describe('Priorities — unsaved changes', () => {
     await fireEvent.click(screen.getByLabelText(/Use xvid$/))
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(get(hasUnsavedChanges)).toBe(false))
+  })
+})
+
+describe('Priorities — download queues (decisions/164)', () => {
+  const getQueues = vi.mocked(client.getQueues)
+  const createQueue = vi.mocked(client.createQueue)
+  const orderQueues = vi.mocked(client.orderQueues)
+  const updateQueuePriorities = vi.mocked(client.updateQueuePriorities)
+
+  function queue(over: Partial<client.Queue> = {}): client.Queue {
+    return { id: 'default', name: 'Default', default: true, animes: [], priorities: priorities(), ...over }
+  }
+
+  it("edits and saves the selected queue's ranking, with the ignore list shared", async () => {
+    getQueues.mockResolvedValue([
+      queue(),
+      queue({ id: 'judas', name: 'Judas first', default: false, animes: [21, 22], priorities: priorities({ codecs: ['hevc', 'h.264'] }) }),
+    ])
+    await setup()
+    expect(screen.getByText('2 anime')).toBeTruthy()
+
+    await fireEvent.change(screen.getByLabelText('Ranking of queue'), { target: { value: 'judas' } })
+    expect(screen.getByText(/The ignore list is shared by every queue/)).toBeTruthy()
+    expect(screen.queryByText('[dub]')).toBeNull()
+
+    await fireEvent.click(screen.getByLabelText(/Use av1$/))
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updateQueuePriorities).toHaveBeenCalled())
+    expect(updateQueuePriorities.mock.calls[0][0]).toBe('judas')
+    expect(updateQueuePriorities.mock.calls[0][1].codecs).toEqual(['hevc', 'h.264', 'av1'])
+    expect(updatePriorities).not.toHaveBeenCalled()
+  })
+
+  it('makes a queue and reorders the queues', async () => {
+    getQueues.mockResolvedValue([queue()])
+    createQueue.mockResolvedValue(queue({ id: 'later', name: 'Later', default: false }))
+    orderQueues.mockResolvedValue(undefined)
+    await setup()
+
+    await fireEvent.input(screen.getByLabelText('New queue name'), { target: { value: 'Later' } })
+    await fireEvent.click(screen.getByRole('button', { name: 'Add queue' }))
+    await waitFor(() => expect(createQueue).toHaveBeenCalledWith('Later'))
+
+    await fireEvent.click(await screen.findByLabelText('Move Later up'))
+    await waitFor(() => expect(orderQueues).toHaveBeenCalledWith(['later', 'default']))
+  })
+
+  it('shows no queue section when the queues cannot be read', async () => {
+    getQueues.mockRejectedValue(new Error('down'))
+    await setup()
+    expect(screen.queryByTestId('queues')).toBeNull()
   })
 })

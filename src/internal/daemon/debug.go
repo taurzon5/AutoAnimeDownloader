@@ -114,6 +114,7 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 	}
 
 	searcher := defaultNyaaSearcher()
+	searcher.ranking = queueRanking(anime.Media.Id)
 	synonyms := anime.Media.OwnSynonyms()
 	season, part := ExtractAnimeSeasonPart(anime.Media.Title, synonyms)
 
@@ -125,7 +126,7 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 		episodesToDownload, magnetsForEpisodes = resolveMovie(configs, anime, animeTitle, episodesToDownload, searcher)
 	}
 	if magnetsForEpisodes == nil {
-		packs, singles, _ := partitionSearchResults(configs, anime, season, rankSeriesResults(searcher.searchAnime(anime.Media.Title, synonyms, episodeNumbers(episodesToDownload)), details.isFinished))
+		packs, singles, _ := partitionSearchResults(configs, anime, season, rankSeriesResults(searcher.searchAnime(anime.Media.Title, synonyms, episodeNumbers(episodesToDownload)), details.isFinished, searcher.ranking))
 		if windowPacks, ok := packsForWindow(packs, mediaTotalEpisodes(anime), episodesToDownload); !isAnimeMovie(anime) && ok {
 			firstPending := episodesToDownload[0].Episode
 			// Same numbering axis as production: without it debug would report "no pack covers" for every
@@ -165,7 +166,7 @@ func RunAnimeDebug(animeId int, configs *files.Config, fileManager FileManagerIn
 		// debug reported "0 magnets" on One Piece/Naruto because it hadn't searched, not because Nyaa
 		// didn't have them.
 		if len(magnets) == 0 {
-			magnets, _ = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), details.isFinished), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+			magnets, _ = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), details.isFinished, searcher.ranking), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
 		}
 
 		r := searchResult{found: len(magnets)}

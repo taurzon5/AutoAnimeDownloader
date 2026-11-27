@@ -5,6 +5,7 @@ import (
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/notifications"
+	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"context"
 	"errors"
@@ -302,41 +303,51 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	rootSettings, _ := fileManager.LoadAllAnimeSettings()
 	disk := newDiskBudget(downloadedTorrents, savedEpisodes).withRoots(configs, backend, rootSettings)
 
-	// Phase 2: process each anime concurrently, bounded by maxConcurrentAnimes.
+	// Phase 2: process each anime concurrently, bounded by maxConcurrentAnimes, one download queue
+	// after the other: a later queue's searches wait for the earlier queues' (decisions/164). Each
+	// anime ranks with its queue's own priorities.
 	sem := make(chan struct{}, maxConcurrentAnimes)
 	resultCh := make(chan animeProcessResult, len(animes))
 
 	var animeWg sync.WaitGroup
 	start := time.Now()
+	queues := loadQueues()
 
 outer:
-	for _, anime := range animes {
-		select {
-		case <-ctx.Done():
-			break outer
-		default:
-		}
-
-		// anime.Status belongs to ONE arbitrary account (the one that won the dedupe), so it can't decide
-		// anything — the AND rule above is what answers.
-		if deletableMedia[anime.Media.Id] {
-			continue
-		}
-
-		animeWg.Add(1)
-		go func(a anilist.MediaList) {
-			defer animeWg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+	for _, group := range queueGroups(animes, queues) {
+		for _, anime := range group {
 			select {
 			case <-ctx.Done():
-				return
+				break outer
 			default:
 			}
 
-			resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, defaultNyaaSearcher(), disk, shokoOwned{episodes: inShoko[a.Media.Id], trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings[a.Media.Id])})
-		}(anime)
+			// anime.Status belongs to ONE arbitrary account (the one that won the dedupe), so it can't
+			// decide anything — the AND rule above is what answers.
+			if deletableMedia[anime.Media.Id] {
+				continue
+			}
+
+			_, queue := files.QueueOf(queues, anime.Media.Id)
+			animeWg.Add(1)
+			go func(a anilist.MediaList, ranking *nyaa.Priorities) {
+				defer animeWg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				searcher := defaultNyaaSearcher()
+				searcher.ranking = ranking
+				resultCh <- processAnimeEpisodes(configs, backend, a, downloadedTorrents, savedEpisodes, seriesIndex, blockedMap, searcher, disk, shokoOwned{episodes: inShoko[a.Media.Id], trackInPacks: configs.KeepsShokoPackEpisodes(animeSettings[a.Media.Id])})
+			}(anime, queue.Priorities)
+		}
+		// The next queue starts searching once this one is done.
+		animeWg.Wait()
 	}
 
 	animeWg.Wait()

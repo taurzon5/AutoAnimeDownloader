@@ -7,6 +7,11 @@
 `updateNotifications` in `lib/api/client.ts`); CLI `priorities set`, `notifications set`. Pinned by
 `TestUpdateConfigParts` and `TestConfigPartsSetSendTheirPartOnly`.
 
+**Amendment (see #164):** a third PUT saves the priorities the same way: `PUT
+/queues/default/priorities` (`handleQueuePriorities`, `endpoint_queues.go`) goes through
+`savePart` with the same merge, since the default download queue's ranking is `config.json`'s
+`priorities`. The other queues' rankings live in `queues.json` and don't touch `config.json`.
+
 **What it looks like:** two PUTs that write `config.json` with none of `PUT /config`'s validation
 (the folder probes, the download-folder checks, the qBittorrent and Shoko checks), and a body that
 is decoded over the saved value instead of replacing it. Two obvious "fixes": run the full checks

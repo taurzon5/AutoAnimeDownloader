@@ -301,6 +301,8 @@ func main() {
 	jobQueue := daemon.NewJobQueue(fileManager, filepath.Join(dataDir, "pending_jobs.json"))
 	// What each added torrent was (the anime page's torrent cards), written at every add.
 	daemon.SetReleaseStore(files.NewReleaseStore(filepath.Join(dataDir, daemon.ReleasesFileName)))
+	// The download queues: their order, rankings and members (decisions/164).
+	daemon.SetQueueStore(files.NewQueueStore(filepath.Join(dataDir, files.QueuesFileName)))
 	// Torrent file lists never change: each is read from Nyaa once and kept (decisions/163).
 	nyaa.SetFileListCacheDir(filepath.Join(dataDir, nyaa.FileListCacheFolder))
 

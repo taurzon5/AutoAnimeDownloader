@@ -2,7 +2,8 @@
 
 **Location:** `src/internal/frontend/src/lib/stores/unsavedChanges.ts` — `snapshot`,
 `setUnsaved`, `installUnsavedGuard`; installed in `App.svelte`; used by `Config.svelte`,
-`Priorities.svelte` and `Notifications.svelte` (`baseline`, plus `formBaseline` for the open
+`Priorities.svelte` (`baselines`, one per download queue, decisions/164) and `Notifications.svelte`
+(`baseline`, plus `formBaseline` for the open
 webhook form). Tests: `tests/unit/unsavedChanges.test.ts`, the "unsaved changes" blocks in
 `tests/component/Priorities.test.ts` and `tests/component/Notifications.duplicate.test.ts`.
 

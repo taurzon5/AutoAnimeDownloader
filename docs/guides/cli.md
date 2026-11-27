@@ -148,7 +148,8 @@ the CLI to what `GET /api/v1/animes` returns:
 `search` is AniList; a term shorter than
 3 characters returns an empty list, not an error. `candidates` is the ranked whole-title list the
 picker shows (empty `items` is success, not an error). `--query` is a Nyaa `q` and skips title
-variants and season/part. `candidate <id> <nyaa_id>` is the picker's detail panel: the Nyaa URL and
+variants and season/part. `candidates --queue <id>` ranks the list as that download
+queue would (by default, the anime's own queue). `candidate <id> <nyaa_id>` is the picker's detail panel: the Nyaa URL and
 the files inside the torrent (`--json` also carries the description as HTML). For a megapack, a
 torrent whose videos belong to two entries or more of the anime's franchise, it adds the mapping
 table: each entry with its episodes (`1-26 of 26`), files and size, the anime asked about marked
@@ -176,6 +177,30 @@ a failed episode, lists the failures and exits non-zero.
 `release` is not destructive and does not take `--yes`.
 
 Download a new anime: `animes search` then `animes add <media_id>`.
+
+## Queues
+
+```bash
+autoanimedownloader queues
+autoanimedownloader queues add "Watch first"
+autoanimedownloader queues order watch-first default
+autoanimedownloader queues rename watch-first "Top"
+autoanimedownloader queues priorities get watch-first --json > top.json
+autoanimedownloader queues priorities set watch-first top.json
+autoanimedownloader queues delete watch-first --yes
+autoanimedownloader animes queue 154587 watch-first
+autoanimedownloader animes add 154587 --queue watch-first
+```
+
+Download queues search in their order: each check searches every anime of the first queue, then
+the next, so a later queue's searches wait. Downloads share `max_concurrent_downloads` whatever
+their queue. Each queue ranks releases with its own priority lists; the ignore list is shared, and
+the default queue's lists are the ones `priorities get` shows. `queues` lists the ids in order, with
+how many anime each holds (the default queue holds every anime no other queue lists). `add` makes a
+queue at the end with a copy of the default ranking; `order` needs every id once; `delete` sends the
+queue's anime back to the default queue (the default queue can't be deleted). `queues priorities
+set` replaces the lists the JSON names and keeps the others. `animes queue <id> default` moves an
+anime back.
 
 ## Blacklist
 

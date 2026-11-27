@@ -31,6 +31,8 @@ Per-anime episode list, opened by clicking an anime on the Status page:
 
 - **On lists** — every configured account that has the anime on its list, in any status, with its own status, progress (`ep 7/12`) and score in that account's own format (`85/100`, `8.5/10`, `★ 4/5`, a face for AniList's 3-point scale; MAL is always `x/10`), avatar and a link to the account's list
 - Episode table (episode number, Anilist watch status, downloaded state)
+- **Download queue** (once you have two queues or more): the queue the anime searches in and ranks
+  with; changing it saves at once
 - Header **Replace torrent** opens the [torrent picker](#torrent-picker) (`/status/:id/torrents`)
 - An episode's **Choose torrent** (in its row menu) opens the same picker on that one episode's
   releases (`/status/:id/episodes/:n/torrents`), all of them, since a hand pick ignores the size and
@@ -59,6 +61,9 @@ Per-anime episode list, opened by clicking an anime on the Status page:
 
 Search AniList and add a title as a **standalone** anime (tracked without being on any AniList
 list). An AniList account is optional; this is the entry point for an install with none.
+
+With more than one [download queue](#priorities-priorities), a **Queue** choice sits under the search: the
+anime goes into that queue before its first search, here or from the picker.
 
 Clicking Add on a card first searches ranked whole-title torrents. An empty first search adds
 without opening the picker (singles, or track-with-zero for an unreleased title). A non-empty
@@ -114,6 +119,17 @@ AniList list named in Excluded Lists are not listed here; that list is changed o
 ### Priorities (`/priorities`)
 
 Reorderable lists that drive torrent ranking during search (fansub groups, resolutions, sources, codecs, audio, an ignore list, and the order criteria are applied in). Sources rank movies and series whose AniList media status is FINISHED; audio stays movies-only. Restore-defaults is how an existing install picks up the new `criteria_order`. See [Config Reference](../agents/config.md#fields) for what each list does.
+
+**Download queues** sit at the top. The app starts with one, Default, which holds every anime you
+haven't put in another queue (those from your AniList and MyAnimeList lists included). Add a queue
+by name: it starts with a copy of the default ranking. The order is the search order: each check
+searches every anime of the first queue, then the second, and so on, so a later queue waits for
+the earlier ones. Downloads don't wait: they share Max Concurrent Downloads and start as slots free
+up, whatever their queue. Rename, move up or down, or delete a queue (its anime go back to
+Default; Default can't be deleted). With two queues or more, **Ranking of queue** picks which
+queue's lists the page edits; Save saves every queue you changed. The ignore list is shared by all
+queues, so it shows only with Default selected. An anime is put in a queue on the Add screen or on
+its page (**Download queue**).
 
 ### Notifications (`/notifications`)
 

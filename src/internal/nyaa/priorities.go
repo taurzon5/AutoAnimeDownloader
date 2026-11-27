@@ -97,18 +97,23 @@ func ShouldIgnore(torrentName string) bool {
 	return false
 }
 
-// criterionCompare maps criterion name → comparator (a better than b ⇒ <0).
-var criterionCompare = map[string]func(a, b TorrentResult) int{
-	"uncensored": func(a, b TorrentResult) int { return boolBetter(isUncensored(a.Name), isUncensored(b.Name)) },
-	"resolution": func(a, b TorrentResult) int { return resCompare(a, b) },
-	"fansub":     func(a, b TorrentResult) int { return fansubPriority(a.Name) - fansubPriority(b.Name) },
-	"source":     sourceCompare,
-	"codec":      codecCompare,
-	"audio": func(a, b TorrentResult) int {
-		return audioPriority(extractAudio(a.Name)) - audioPriority(extractAudio(b.Name))
+// criterionCompare maps criterion name → comparator (a better than b ⇒ <0). p is the ranking in
+// use: the active one, or a download queue's own (decisions/164).
+var criterionCompare = map[string]func(p *Priorities, a, b TorrentResult) int{
+	"uncensored": func(_ *Priorities, a, b TorrentResult) int {
+		return boolBetter(isUncensored(a.Name), isUncensored(b.Name))
 	},
-	"health": func(a, b TorrentResult) int { return healthTier(b) - healthTier(a) }, // higher tier is better
-	"size":   func(a, b TorrentResult) int { return sizeCompare(a, b) },
+	"resolution": resCompare,
+	"fansub": func(p *Priorities, a, b TorrentResult) int {
+		return fansubPriority(p, a.Name) - fansubPriority(p, b.Name)
+	},
+	"source": sourceCompare,
+	"codec":  codecCompare,
+	"audio": func(p *Priorities, a, b TorrentResult) int {
+		return audioPriority(p, extractAudio(a.Name)) - audioPriority(p, extractAudio(b.Name))
+	},
+	"health": func(_ *Priorities, a, b TorrentResult) int { return healthTier(b) - healthTier(a) }, // higher tier is better
+	"size":   func(_ *Priorities, a, b TorrentResult) int { return sizeCompare(a, b) },
 }
 
 // healthTierFloors are the floors of the health tiers: seeders 0–9 / 10–49 / 50+ ⇒ tier
@@ -154,20 +159,20 @@ func boolBetter(a, b bool) int {
 // x265 — exactly the opposite of what the codec list configures. Same rule as an
 // unreadable size in filterBySize: data that couldn't be read is no reason to punish
 // the release.
-func codecCompare(a, b TorrentResult) int {
+func codecCompare(p *Priorities, a, b TorrentResult) int {
 	ca, cb := ExtractCodec(a.Name), ExtractCodec(b.Name)
 	if ca == "" || cb == "" {
 		return 0
 	}
-	return codecPriority(ca) - codecPriority(cb)
+	return codecPriority(p, ca) - codecPriority(p, cb)
 }
 
 // resCompare reproduces the current logic: both with a resolution → by index;
 // whoever has a resolution beats whoever is nil; both nil → tie.
-func resCompare(a, b TorrentResult) int {
+func resCompare(p *Priorities, a, b TorrentResult) int {
 	switch {
 	case a.Resolution != nil && b.Resolution != nil:
-		return resolutionPriority(*a.Resolution) - resolutionPriority(*b.Resolution)
+		return resolutionPriority(p, *a.Resolution) - resolutionPriority(p, *b.Resolution)
 	case a.Resolution != nil:
 		return -1
 	case b.Resolution != nil:
@@ -191,9 +196,9 @@ func sizeCompare(a, b TorrentResult) int {
 	return 0
 }
 
-// sortByCriteria sorts results applying the criteria in criteria in the given order,
-// skipping those not in the registry.
-func sortByCriteria(results []TorrentResult, criteria []string) []TorrentResult {
+// sortByCriteria sorts results by p, applying the criteria in the given order and skipping those
+// not in the registry.
+func sortByCriteria(p *Priorities, results []TorrentResult, criteria []string) []TorrentResult {
 	sorted := make([]TorrentResult, len(results))
 	copy(sorted, results)
 	sort.SliceStable(sorted, func(i, j int) bool {
@@ -202,7 +207,7 @@ func sortByCriteria(results []TorrentResult, criteria []string) []TorrentResult 
 			if !ok {
 				continue
 			}
-			if d := cmp(sorted[i], sorted[j]); d != 0 {
+			if d := cmp(p, sorted[i], sorted[j]); d != 0 {
 				return d < 0
 			}
 		}
@@ -222,8 +227,8 @@ var finishedSeriesCriteria = map[string]bool{
 // packs) canonicalizes to web-dl so it ties a tagged WEB-DL and loses to BD — the codec-style
 // "either side empty ⇒ tie" would make untagged WEB tie a tagged BD and throw the criterion
 // away (decisions/107).
-func sourceCompare(a, b TorrentResult) int {
-	return sourcePriority(canonicalSource(ExtractSource(a.Name))) - sourcePriority(canonicalSource(ExtractSource(b.Name)))
+func sourceCompare(p *Priorities, a, b TorrentResult) int {
+	return sourcePriority(p, canonicalSource(ExtractSource(a.Name))) - sourcePriority(p, canonicalSource(ExtractSource(b.Name)))
 }
 
 func canonicalSource(source string) string {
@@ -237,7 +242,13 @@ func canonicalSource(source string) string {
 // criteria as SortTorrentResults plus source. The daemon calls this as a second full
 // sort; ScrapNyaa* keep using SortTorrentResults (decisions/107).
 func SortFinishedSeriesResults(results []TorrentResult) []TorrentResult {
-	return sortByCriteria(results, filterCriteria(ActivePriorities().CriteriaOrder, finishedSeriesCriteria))
+	return SortFinishedSeriesResultsBy(ActivePriorities(), results)
+}
+
+// SortFinishedSeriesResultsBy is SortFinishedSeriesResults with a ranking of its own: a download
+// queue's (decisions/164).
+func SortFinishedSeriesResultsBy(p Priorities, results []TorrentResult) []TorrentResult {
+	return sortByCriteria(&p, results, filterCriteria(p.CriteriaOrder, finishedSeriesCriteria))
 }
 
 func filterCriteria(order []string, allowed map[string]bool) []string {

@@ -18,6 +18,7 @@ vi.mock('../../src/lib/api/client.js', async () => {
     addStandaloneAnime: vi.fn(),
     getTorrentCandidates: vi.fn(),
     getConfig: vi.fn(),
+    getQueues: vi.fn().mockResolvedValue([]),
   }
 })
 
@@ -346,5 +347,35 @@ describe('AddAnime — blacklisted anime (decisions/155)', () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith('/add/21/torrents'))
     expect(get(pickerCache)?.unblacklist).toBe(true)
     expect(addStandaloneAnime).not.toHaveBeenCalled()
+  })
+})
+
+describe('AddAnime — download queue (decisions/164)', () => {
+  const getQueues = vi.mocked(client.getQueues)
+  const queues = [
+    { id: 'default', name: 'Default', default: true, animes: [], priorities: {} as client.Priorities },
+    { id: 'later', name: 'Later', default: false, animes: [], priorities: {} as client.Priorities },
+  ]
+
+  it('adds into the chosen queue, and carries it to the picker', async () => {
+    getQueues.mockResolvedValue(queues)
+    searchAniList.mockResolvedValue([result('')])
+    getTorrentCandidates.mockResolvedValue({ query: 'One Piece', media: { title: 'One Piece', format: 'TV' }, items: [] })
+    addStandaloneAnime.mockResolvedValue({ added: 1 })
+    render(AddAnime)
+    await search()
+
+    await fireEvent.change(await screen.findByLabelText('Queue'), { target: { value: 'later' } })
+    await fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+    await waitFor(() => expect(addStandaloneAnime).toHaveBeenCalledWith(21, { queue: 'later' }))
+    expect(getTorrentCandidates).toHaveBeenCalledWith(21, undefined, undefined, 'later')
+  })
+
+  it('shows no queue choice with only the default queue', async () => {
+    getQueues.mockResolvedValue(queues.slice(0, 1))
+    searchAniList.mockResolvedValue([result('')])
+    render(AddAnime)
+    await search()
+    expect(screen.queryByTestId('add-queue')).toBeNull()
   })
 })

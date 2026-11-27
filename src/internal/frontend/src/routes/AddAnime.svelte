@@ -12,8 +12,10 @@
     addStandaloneAnime,
     getTorrentCandidates,
     getConfig,
+    getQueues,
     ApiError,
     type AniListSearchResult,
+    type Queue,
     type BlockReason,
     type TorrentCandidateMedia,
   } from "../lib/api/client.js";
@@ -24,6 +26,7 @@
   import Toggle from "../components/ui/Toggle.svelte";
   import { toast } from "../lib/stores/toast.js";
   import { pickerCache } from "../lib/stores/pickerCache.js";
+  import { DEFAULT_QUEUE_ID } from "../lib/domain/queues.js";
   import * as m from "../lib/i18n/messages.js";
   import { mediaFormatLabel, mediaStatusLabel } from "../lib/domain/mediaLabels.js";
   import { locale } from "../lib/stores/locale.js";
@@ -47,10 +50,22 @@
   let adding = new Set<number>();
   let added = new Set<number>();
   let libraryConfigured = true;
+  /** The download queues (decisions/164); the choice shows only when the user made more than one. */
+  let queues: Queue[] = [];
+  let queue = DEFAULT_QUEUE_ID;
+
+  async function loadQueues() {
+    try {
+      queues = (await getQueues()) ?? [];
+    } catch {
+      queues = [];
+    }
+  }
 
   let inFlight: AbortController | undefined;
 
   onMount(async () => {
+    void loadQueues();
     try {
       const config = await getConfig();
       libraryConfigured = Boolean(config.completed_anime_path);
@@ -121,9 +136,15 @@
     }
     adding = new Set(adding).add(result.id);
     try {
-      const { query, items } = await getTorrentCandidates(result.id);
+      // With a queue choice on screen the add always sends it, Default included, so an anime left
+      // in another queue goes where the screen says (decisions/164).
+      const chosen = queues.length > 1 ? queue : undefined;
+      const { query, items } = await (chosen && chosen !== DEFAULT_QUEUE_ID
+        ? getTorrentCandidates(result.id, undefined, undefined, chosen)
+        : getTorrentCandidates(result.id));
       if (items.length === 0) {
-        const { added: count } = await (unblacklist ? addStandaloneAnime(result.id, { unblacklist }) : addStandaloneAnime(result.id));
+        const opts = { ...(unblacklist ? { unblacklist } : {}), ...(chosen ? { queue: chosen } : {}) };
+        const { added: count } = await (Object.keys(opts).length ? addStandaloneAnime(result.id, opts) : addStandaloneAnime(result.id));
         added = new Set(added).add(result.id);
         if (count > 0) {
           toast.success(m.add_toast_added({ count }), undefined, {
@@ -137,7 +158,7 @@
         }
         return;
       }
-      pickerCache.set({ mediaId: result.id, query, items, error: null, media: pickerMediaFrom(result), ...(unblacklist ? { unblacklist } : {}) });
+      pickerCache.set({ mediaId: result.id, query, items, error: null, media: pickerMediaFrom(result), ...(unblacklist ? { unblacklist } : {}), ...(chosen ? { queue: chosen } : {}) });
       await push("/add/" + result.id + "/torrents");
     } catch (error) {
       if (error instanceof ApiError && error.code === "NYAA_UNAVAILABLE") {
@@ -148,6 +169,7 @@
           error,
           media: pickerMediaFrom(result),
           ...(unblacklist ? { unblacklist } : {}),
+          ...(queues.length > 1 ? { queue } : {}),
         });
         await push("/add/" + result.id + "/torrents");
         return;
@@ -283,6 +305,21 @@
     on:change={onToggleUnreleased}
     label={($locale && m.add_toggle_unreleased()) || ""}
   />
+
+  {#if queues.length > 1}
+    <div class="flex flex-wrap items-center gap-2" data-testid="add-queue">
+      <label for="add_queue" class="text-caption text-subtle">{$locale && m.add_queue_label()}</label>
+      <select
+        id="add_queue"
+        bind:value={queue}
+        class="rounded-field border border-default bg-control px-3 py-1.5 text-copy text-body"
+      >
+        {#each queues as q (q.id)}
+          <option value={q.id}>{q.name}</option>
+        {/each}
+      </select>
+    </div>
+  {/if}
 
   {#if searching}
     <Loading message={$locale && m.add_searching()} />
