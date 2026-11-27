@@ -395,6 +395,11 @@ func (c *Config) UsesQBittorrent() bool {
 	return c.TorrentClient == TorrentClientQBittorrent
 }
 
+// SecretConfigKeys are the config.json keys MaskSecrets hides: what `config set` must not print
+// back either (decisions/143). TestSecretConfigKeysMatchMaskSecrets fails when MaskSecrets masks a
+// key this list doesn't name.
+var SecretConfigKeys = []string{"qbittorrent_password", "qbittorrent_api_key", "shoko_api_key"}
+
 // MaskSecrets returns a copy of the config with every saved secret replaced by SecretPlaceholder.
 func (c *Config) MaskSecrets() *Config {
 	out := *c

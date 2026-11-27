@@ -147,6 +147,12 @@ func configSetSummary(key, value string) string {
 	if norm == "notifications" || norm == "notifications.webhooks" || strings.HasPrefix(norm, "notifications.webhooks.") {
 		return fmt.Sprintf("Configuration updated: %s (value not shown: webhooks hold tokens)", key)
 	}
+	// The password and the API keys: GET /config never shows them, and neither does this.
+	for _, secret := range files.SecretConfigKeys {
+		if norm == strings.ReplaceAll(secret, "_", "") {
+			return fmt.Sprintf("Configuration updated: %s (value not shown: it is a secret)", key)
+		}
+	}
 	return fmt.Sprintf("Configuration updated: %s = %s", key, value)
 }
 

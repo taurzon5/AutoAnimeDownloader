@@ -29,6 +29,13 @@ how both keep it, and typing a new value (or clearing the field) still changes i
 Webhook secrets are not masked: the Notifications page edits them in place, and they unlock only a
 notification. A bug report redacts all of them anyway.
 
+**Amendment (2026-11-27):** `config set` doesn't print these keys back either: the CLI's
+`configSetSummary` (`cmd/cli/config.go`) reads `files.SecretConfigKeys`, the list of what
+`MaskSecrets` masks, and says "value not shown". `TestSecretConfigKeysMatchMaskSecrets` fills every
+string field of `Config` and checks the list names exactly what `MaskSecrets` hides, so a new
+secret added to `MaskSecrets` without the list fails; `TestConfigSetSummary_HidesSecrets` pins the
+CLI side. A new secret goes in both.
+
 **Don't "fix" by:** reusing the saved secret for a changed address "so the user doesn't have to retype it"; returning the real password from `GET /config` "because the UI needs it"; saving
 the placeholder literally; masking in the frontend only; dropping `KeepSecrets` from the connection
 test (testing unsaved settings would then always fail with the saved password).

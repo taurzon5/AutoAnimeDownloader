@@ -211,3 +211,16 @@ func TestConfigSetSummary_HidesWebhookValues(t *testing.T) {
 		t.Errorf("a non-secret value should still be echoed, got %s", got)
 	}
 }
+
+// The qBittorrent password and the API keys are masked by GET /config; `config set` must not print
+// them either, whatever case or underscores the key is typed with.
+func TestConfigSetSummary_HidesSecrets(t *testing.T) {
+	for _, key := range []string{"qbittorrent_password", "QBittorrentPassword", "qbittorrent_api_key", "shoko_api_key"} {
+		if got := configSetSummary(key, "hunter2"); strings.Contains(got, "hunter2") {
+			t.Errorf("key %q leaked the value: %s", key, got)
+		}
+	}
+	if got := configSetSummary("qbittorrent_url", "http://qb:8080"); !strings.Contains(got, "= http://qb:8080") {
+		t.Errorf("a non-secret value should still be echoed, got %s", got)
+	}
+}
