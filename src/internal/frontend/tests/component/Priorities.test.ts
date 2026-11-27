@@ -39,12 +39,12 @@ function priorities(over: Partial<P> = {}): P {
 }
 
 /** Renders with the user's config diverging (or not) from the backend defaults. jsdom's locale is en. */
-async function setup(userPriorities: P = priorities()) {
+async function setup(userPriorities: P = priorities(), ready = 'Codec') {
   getConfig.mockResolvedValue({ priorities: userPriorities } as Config)
   getPriorityDefaults.mockResolvedValue(priorities())
   render(Priorities)
   await waitFor(() => expect(getConfig).toHaveBeenCalled())
-  await screen.findByText('Codec')
+  await screen.findByText(ready)
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -128,24 +128,100 @@ describe('Priorities — download queues (decisions/164)', () => {
     return { id: 'default', name: 'Default', default: true, animes: [], priorities: priorities(), ...over }
   }
 
-  it("edits and saves the selected queue's ranking, with the ignore list shared", async () => {
-    getQueues.mockResolvedValue([
-      queue(),
-      queue({ id: 'judas', name: 'Judas first', default: false, animes: [21, 22], priorities: priorities({ codecs: ['hevc', 'h.264'] }) }),
-    ])
-    await setup()
-    expect(screen.getByText('2 anime')).toBeTruthy()
+  const twoQueues = () => [
+    queue(),
+    queue({ id: 'judas', name: 'Judas first', default: false, animes: [21, 22], priorities: priorities({ codecs: ['hevc', 'h.264'], ignore_list: [] }) }),
+  ]
 
-    await fireEvent.change(screen.getByLabelText('Ranking of queue'), { target: { value: 'judas' } })
-    expect(screen.getByText(/The ignore list is shared by every queue/)).toBeTruthy()
+  // The queues come first; a queue's criteria open on a click on it, and a second click closes them.
+  it('lists the queues first and opens the criteria of the one clicked', async () => {
+    getQueues.mockResolvedValue(twoQueues())
+    await setup(priorities(), 'Judas first')
+    // Twice: beside the name on a wide screen, under it on a phone (CSS picks one).
+    expect(screen.getAllByText('2 anime')).toHaveLength(2)
+    expect(screen.queryByText('Codec')).toBeNull()
+    expect(screen.getByText('Click a queue above to change its criteria.')).toBeTruthy()
+
+    const open = screen.getByRole('button', { name: 'Change the criteria of Judas first' })
+    await fireEvent.click(open)
+    expect(open.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('heading', { name: 'Criteria of Judas first' })).toBeTruthy()
+    expect(screen.getByText('Codec')).toBeTruthy()
+
+    await fireEvent.click(open)
+    expect(screen.queryByText('Codec')).toBeNull()
+  })
+
+  it("edits and saves the clicked queue's ranking, with the ignore list shared", async () => {
+    getQueues.mockResolvedValue(twoQueues())
+    await setup(priorities(), 'Judas first')
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Change the criteria of Judas first' }))
+    expect(screen.getByText(/The block list is shared by every queue/)).toBeTruthy()
     expect(screen.queryByText('[dub]')).toBeNull()
 
     await fireEvent.click(screen.getByLabelText(/Use av1$/))
+    expect(screen.getAllByText('Unsaved')).toHaveLength(2) // beside the name, or under it on a phone
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(updateQueuePriorities).toHaveBeenCalled())
     expect(updateQueuePriorities.mock.calls[0][0]).toBe('judas')
     expect(updateQueuePriorities.mock.calls[0][1].codecs).toEqual(['hevc', 'h.264', 'av1'])
     expect(updatePriorities).not.toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryAllByText('Unsaved')).toHaveLength(0))
+  })
+
+  // Advanced: one set of criteria copied onto the queues ticked, each still editable on its own;
+  // the block list, shared by every queue, is not part of it.
+  it('gives the same criteria to the queues ticked, keeping their block list', async () => {
+    getQueues.mockResolvedValue(twoQueues())
+    await setup(priorities(), 'Judas first')
+
+    const details = screen.getByTestId('same-criteria') as HTMLDetailsElement
+    details.open = true
+    await fireEvent(details, new Event('toggle'))
+    await screen.findByText(/Set the criteria once/)
+    expect(screen.queryByText('Block list')).toBeNull()
+
+    // Starts from the default queue's criteria: drop av1 from them, then give them to Judas only.
+    await fireEvent.click(screen.getByLabelText(/Use av1$/))
+    await fireEvent.click(screen.getByRole('checkbox', { name: /Default$/ }))
+    await fireEvent.click(screen.getByRole('button', { name: 'Apply to 1 queue' }))
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updateQueuePriorities).toHaveBeenCalledTimes(1))
+    expect(updateQueuePriorities.mock.calls[0][0]).toBe('judas')
+    expect(updateQueuePriorities.mock.calls[0][1].codecs).toEqual(['h.264', 'hevc', 'xvid'])
+    expect(updateQueuePriorities.mock.calls[0][1].fansubs).toEqual(['subsplease', 'erai-raws'])
+    expect(updateQueuePriorities.mock.calls[0][1].ignore_list).toEqual([])
+    expect(updatePriorities).not.toHaveBeenCalled()
+  })
+
+  // Like an open form, edits to the draft that were not applied yet are lost on leaving
+  // (decisions/129).
+  it('counts edits to the draft not applied yet as unsaved', async () => {
+    const { get } = await import('svelte/store')
+    const { hasUnsavedChanges } = await import('../../src/lib/stores/unsavedChanges.js')
+    getQueues.mockResolvedValue(twoQueues())
+    await setup(priorities(), 'Judas first')
+
+    const details = screen.getByTestId('same-criteria') as HTMLDetailsElement
+    details.open = true
+    await fireEvent(details, new Event('toggle'))
+    await screen.findByText(/Set the criteria once/)
+    expect(get(hasUnsavedChanges)).toBe(false)
+
+    // xvid, the last one: ticked again it comes back to the end, where it was.
+    await fireEvent.click(screen.getByLabelText(/Use xvid$/))
+    expect(get(hasUnsavedChanges)).toBe(true)
+    await fireEvent.click(screen.getByLabelText(/Use xvid$/))
+    expect(get(hasUnsavedChanges)).toBe(false)
+  })
+
+  it('opens the only queue at once', async () => {
+    getQueues.mockResolvedValue([queue()])
+    await setup()
+    expect(screen.getByText('Codec')).toBeTruthy()
+    expect(screen.queryByTestId('same-criteria')).toBeNull()
   })
 
   it('makes a queue and reorders the queues', async () => {

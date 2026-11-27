@@ -126,10 +126,14 @@ by name: it starts with a copy of the default ranking. The order is the search o
 searches every anime of the first queue, then the second, and so on, so a later queue waits for
 the earlier ones. Downloads don't wait: they share Max Concurrent Downloads and start as slots free
 up, whatever their queue. Rename, move up or down, or delete a queue (its anime go back to
-Default; Default can't be deleted). With two queues or more, **Ranking of queue** picks which
-queue's lists the page edits; Save saves every queue you changed. The ignore list is shared by all
-queues, so it shows only with Default selected. An anime is put in a queue on the Add screen or on
-its page (**Download queue**).
+Default; Default can't be deleted). Click a queue to open its criteria below the list, and click
+it again (or **Close**) to close them; with a single queue its criteria are open from the start. A
+queue with changes not saved yet says **Unsaved**, and Save saves every queue you changed. The
+ignore list (**Block list**) is shared by all queues, so it shows only in Default's criteria.
+**Same criteria for several queues** (with two queues or more, folded by default) sets one set of
+criteria, starting from any queue's, and **Apply** gives it to the queues ticked; each can still
+be changed on its own afterwards, and the Block list stays as it is. An anime is put in a queue on
+the Add screen or on its page (**Download queue**).
 
 ### Notifications (`/notifications`)
 

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/api"
@@ -57,6 +58,17 @@ func queuesCommand() *cli.Command {
 							"from `queues priorities get <id> --json`. For the default queue this writes the\n" +
 							"config's priorities, as `priorities set` does.",
 						Action: handleQueuePrioritiesSet,
+					},
+					{
+						Name:      "copy",
+						Usage:     "Give other queues the same ranking as one queue (the shared ignore list stays)",
+						ArgsUsage: "<from> <to>... | <from> --all",
+						Description: "Copies every list of <from>'s ranking except the ignore list, which every queue\n" +
+							"shares, onto each queue named (or every other queue with --all). Each one can\n" +
+							"still be changed on its own afterwards with `queues priorities set`. The web\n" +
+							"app's Priorities page does the same in \"Same criteria for several queues\".",
+						Flags:  []cli.Flag{&cli.BoolFlag{Name: "all", Usage: "Copy onto every other queue"}},
+						Action: handleQueuePrioritiesCopy,
 					},
 				},
 			},
@@ -176,4 +188,72 @@ func handleQueuePrioritiesSet(c *cli.Context) error {
 		return err
 	}
 	return printMessage("Queue ranking updated", "Queue ranking updated")
+}
+
+// handleQueuePrioritiesCopy sends <from>'s ranking, minus the ignore list, to each target through
+// the same partial PUT as `queues priorities set`: the lists it names replace the target's, and the
+// ignore list (the default queue's, shared by every queue) is left as it is.
+func handleQueuePrioritiesCopy(c *cli.Context) error {
+	usage := "queues priorities copy <from> <to>... | <from> --all"
+	all := c.Bool("all")
+	if c.NArg() < 1 || (all && c.NArg() != 1) || (!all && c.NArg() < 2) {
+		return fmt.Errorf("usage: %s", usage)
+	}
+	queues, err := getClient().GetQueues()
+	if err != nil {
+		return mapClientError(err)
+	}
+	byID := map[string]api.Queue{}
+	for _, q := range queues {
+		byID[q.ID] = q
+	}
+	from, ok := byID[c.Args().Get(0)]
+	if !ok {
+		return fmt.Errorf("no queue has the id %q (see `queues`)", c.Args().Get(0))
+	}
+	var targets []string
+	if all {
+		for _, q := range queues {
+			if q.ID != from.ID {
+				targets = append(targets, q.ID)
+			}
+		}
+	} else {
+		for _, id := range c.Args().Slice()[1:] {
+			if _, ok := byID[id]; !ok {
+				return fmt.Errorf("no queue has the id %q (see `queues`)", id)
+			}
+			if id != from.ID && !slices.Contains(targets, id) {
+				targets = append(targets, id)
+			}
+		}
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("no other queue to copy onto (see `queues`)")
+	}
+	var lists map[string]json.RawMessage
+	data, err := json.Marshal(from.Priorities)
+	if err == nil {
+		err = json.Unmarshal(data, &lists)
+	}
+	if err != nil {
+		return err
+	}
+	// A null list would clear the target's (the PUT unmarshals over it): only real lists go.
+	delete(lists, "ignore_list")
+	for k, v := range lists {
+		if string(v) == "null" {
+			delete(lists, k)
+		}
+	}
+	body, err := json.Marshal(lists)
+	if err != nil {
+		return err
+	}
+	for _, id := range targets {
+		if err := getClient().UpdateQueuePriorities(id, body); err != nil {
+			return fmt.Errorf("queue %s: %w", id, mapClientError(err))
+		}
+	}
+	return printMessage(fmt.Sprintf("Ranking of %s copied to %s", from.ID, strings.Join(targets, ", ")), "Queue ranking copied")
 }

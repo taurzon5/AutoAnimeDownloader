@@ -53,6 +53,10 @@ func TestQueuesCommandsHitTheirEndpoints(t *testing.T) {
 	if out := run("--json", "queues", "priorities", "get", "favorites"); !strings.Contains(out, "judas") {
 		t.Errorf("priorities get:\n%s", out)
 	}
+	// copy: the source's lists except the shared ignore list, onto each target.
+	if out := run("queues", "priorities", "copy", "favorites", "--all"); !strings.Contains(out, "copied to default") {
+		t.Errorf("priorities copy:\n%s", out)
+	}
 
 	want := []string{
 		`GET /api/v1/queues `,
@@ -62,6 +66,8 @@ func TestQueuesCommandsHitTheirEndpoints(t *testing.T) {
 		`DELETE /api/v1/queues/favorites `,
 		`PUT /api/v1/animes/21/queue {"queue":"favorites"}`,
 		`GET /api/v1/queues `,
+		`GET /api/v1/queues `,
+		`PUT /api/v1/queues/default/priorities {"fansubs":["judas"]}`,
 	}
 	if len(calls) != len(want) {
 		t.Fatalf("calls = %q", calls)

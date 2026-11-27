@@ -2,7 +2,8 @@
 
 **Location:** `nyaa/nyaa.go` — `ExtractResolution`, `canonicalResolutions`; `nyaa/priorities.go` —
 defaults of `Resolutions`/`Codecs`/`Sources`; `frontend/src/lib/domain/priorityPresets.ts`;
-`frontend/src/routes/Priorities.svelte`.
+`frontend/src/components/PriorityListsEditor.svelte` (the lists the Priorities page shows for a
+queue, and for its "Same criteria for several queues" draft).
 
 **(a) Canonicalization lives in `ExtractResolution`, not in the list order.** `ExtractCodec` already
 returned a canonical token (`x265` → `HEVC`) and `ExtractResolution` returned the raw capture. That

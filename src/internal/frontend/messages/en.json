@@ -946,7 +946,7 @@
   "report_text_required": "Describe what happened first.",
   "priorities_title": "Torrent priorities",
   "queues_title": "Download queues",
-  "queues_hint": "Queues search in this order: a later queue's searches wait until the earlier queues are done. Downloads share one limit, whatever their queue. Each queue ranks releases with its own lists below.",
+  "queues_hint": "Queues search in this order: a later queue's searches wait until the earlier queues are done. Downloads share one limit, whatever their queue. Each queue ranks releases with its own criteria: click a queue to change them.",
   "queues_default_count": "Every anime not in another queue",
   "queues_count": [
     {
@@ -973,8 +973,46 @@
   "queues_delete_confirm": "Delete queue",
   "queues_new_placeholder": "New queue name",
   "queues_add": "Add queue",
-  "queues_ranking_for": "Ranking of queue",
-  "queues_ignore_shared": "The ignore list is shared by every queue: edit it with the default queue selected.",
+  "queues_ignore_shared": "The block list is shared by every queue: change it in the default queue's criteria.",
+  "queues_open": "Change the criteria of {name}",
+  "queues_criteria": "Criteria",
+  "queues_unsaved": "Unsaved",
+  "queues_criteria_title": "Criteria of {name}",
+  "queues_criteria_close": "Close",
+  "queues_pick_one": "Click a queue above to change its criteria.",
+  "queues_same_title": "Same criteria for several queues",
+  "queues_same_hint": "Advanced. Set the criteria once and give them to the queues you tick. Each queue can still be changed on its own afterwards. The block list is shared by every queue and stays as it is.",
+  "queues_same_start": "Start from the criteria of",
+  "queues_same_targets": "Give these criteria to",
+  "queues_same_all": "All queues",
+  "queues_same_apply": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Apply to 1 queue",
+        "count=*": "Apply to {count} queues"
+      }
+    }
+  ],
+  "queues_same_applied": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Applied to 1 queue. Save to keep it.",
+        "count=*": "Applied to {count} queues. Save to keep it."
+      }
+    }
+  ],
   "queues_toast_created": "Queue {name} made, with a copy of the default ranking",
   "queues_toast_deleted": [
     {

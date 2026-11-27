@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import {
     getConfig,
     updatePriorities,
@@ -15,60 +15,35 @@
     type Queue,
   } from "../lib/api/client.js";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import PriorityListsEditor from "../components/PriorityListsEditor.svelte";
   import { DEFAULT_QUEUE_ID } from "../lib/domain/queues.js";
   import Loading from "../components/Loading.svelte";
   import Checkbox from "../components/ui/Checkbox.svelte";
   import { toast } from "../lib/stores/toast.js";
-  import { PRESETS, applyPreset } from "../lib/domain/priorityPresets.js";
   import * as m from "../lib/i18n/messages.js";
   import { locale } from "../lib/stores/locale.js";
   import { setUnsaved, snapshot } from "../lib/stores/unsavedChanges.js";
-
-  // scope: source applies to movies and FINISHED series; audio stays movies-only.
-  const LISTS: { key: keyof Priorities; label: () => string; scope?: () => string }[] = [
-    { key: "criteria_order", label: m.priorities_list_criteria_order },
-    { key: "fansubs", label: m.priorities_list_fansubs },
-    { key: "resolutions", label: m.priorities_list_resolutions },
-    { key: "sources", label: m.priorities_list_sources, scope: m.priorities_scope_movies_and_finished },
-    { key: "codecs", label: m.priorities_list_codecs },
-    { key: "audio", label: m.priorities_list_audio, scope: m.priorities_scope_movies_only },
-    { key: "ignore_list", label: m.priorities_list_ignore_list },
-  ];
-
-  // A fixed line instead of a tooltip: tooltips don't exist on touch, and this screen is used on
-  // the phone.
-  const NOTES: Partial<Record<keyof Priorities, () => string>> = {
-    criteria_order: m.priorities_note_criteria_order,
-    codecs: m.priorities_note_codecs,
-  };
 
   $: T = $locale && {
     title: m.priorities_title(),
     subtitle: m.priorities_subtitle(),
     loading: m.priorities_loading(),
-    resetList: m.priorities_reset_list(),
-    addPlaceholder: m.priorities_add_placeholder(),
     resetAll: m.priorities_reset_all(),
     save: m.priorities_save(),
     saving: m.priorities_saving(),
-    lists: LISTS.map((l) => ({ ...l, label: l.label(), scope: l.scope && l.scope() })),
-    notes: Object.fromEntries(Object.entries(NOTES).map(([k, f]) => [k, f()])) as Partial<Record<keyof Priorities, string>>,
-    presets: Object.fromEntries(
-      Object.entries(PRESETS).map(([k, list]) => [k, (list ?? []).map((p) => ({ ...p, label: p.label(), desc: p.desc() }))]),
-    ) as Partial<Record<keyof Priorities, { key: string; label: string; desc: string; first: string[] }[]>>,
   };
 
   let config: Config | null = null;
   let defaults: Priorities | null = null;
   let loading = true;
   let saving = false;
-  let newItem: Record<string, string> = {};
 
-  // The download queues (decisions/164): each ranks with its own lists. The default queue's are
+  // The download queues (decisions/164): each ranks with its own criteria. The default queue's are
   // config.json's priorities, saved through PUT /config/priorities as before; the others through
-  // their queue. Without a second queue the page is the one ranking it always was.
+  // their queue. The page lists the queues first and opens one queue's criteria on a click; with
+  // a single queue (or none readable) its criteria are open from the start.
   let queues: Queue[] = [];
-  let selected = DEFAULT_QUEUE_ID;
+  let selected: string | null = DEFAULT_QUEUE_ID;
   let rankings: Record<string, Priorities> = {};
   // What was loaded (or last saved), per queue: dirty means "differs from it", so undoing a change
   // clears it.
@@ -79,10 +54,14 @@
   let deleting: Queue | null = null;
   let deleteOpen = false;
 
-  $: current = rankings[selected] ?? null;
+  $: current = selected ? (rankings[selected] ?? null) : null;
+  $: currentQueue = queues.find((q) => q.id === selected) ?? null;
   $: changed = Object.keys(rankings).filter((id) => snapshot(rankings[id]) !== baselines[id]);
-  $: setUnsaved("priorities", changed.length > 0);
-  $: lists = T ? T.lists.filter((l) => selected === DEFAULT_QUEUE_ID || l.key !== "ignore_list") : [];
+  // The draft of "Same criteria for several queues" counts too: like an open form, edits not
+  // applied yet are lost on leaving (decisions/129).
+  $: draftDirty = draft !== null && snapshot(draft) !== draftBaseline;
+  $: setUnsaved("priorities", changed.length > 0 || draftDirty);
+  $: several = queues.length > 1;
   onDestroy(() => setUnsaved("priorities", false));
 
   const clone = (p: Priorities): Priorities => JSON.parse(JSON.stringify(p));
@@ -103,6 +82,7 @@
         if (!q.default) rankings[q.id] = clone(q.priorities);
       }
       baselines = Object.fromEntries(Object.entries(rankings).map(([id, p]) => [id, snapshot(p)]));
+      selected = queues.length > 1 ? null : DEFAULT_QUEUE_ID;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.priorities_toast_load_error());
     } finally {
@@ -110,20 +90,20 @@
     }
   }
 
-  /** Replaces one list of the selected queue's ranking. */
-  function setList(key: keyof Priorities, list: string[]) {
-    if (!current) return;
-    rankings[selected] = { ...current, [key]: list };
+  function setRanking(id: string, next: Priorities) {
+    rankings[id] = next;
     rankings = rankings;
   }
 
-  function move(key: keyof Priorities, i: number, dir: -1 | 1) {
-    if (!current) return;
-    const list = [...current[key]];
-    const j = i + dir;
-    if (j < 0 || j >= list.length) return;
-    [list[i], list[j]] = [list[j], list[i]];
-    setList(key, list);
+  /** Opens a queue's criteria, or closes them when they are the ones open. */
+  async function openQueue(id: string) {
+    if (selected === id) {
+      if (several) selected = null;
+      return;
+    }
+    selected = id;
+    await tick();
+    document.getElementById("queue-criteria")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
   }
 
   async function addQueue() {
@@ -182,68 +162,63 @@
       queues = queues.filter((x) => x.id !== q.id);
       delete rankings[q.id];
       delete baselines[q.id];
+      delete targets[q.id];
       rankings = rankings;
-      if (selected === q.id) selected = DEFAULT_QUEUE_ID;
+      if (sameFrom === q.id) startFrom(DEFAULT_QUEUE_ID);
+      if (selected === q.id || queues.length <= 1) selected = queues.length > 1 ? null : DEFAULT_QUEUE_ID;
       toast.success(m.queues_toast_deleted({ name: q.name, count: moved_to_default }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.queues_toast_error());
     }
   }
 
-  /**
-   * The list's rows: what is saved (checked, in order) followed by the canonical tokens left out
-   * (unchecked, at the end). A token missing from the list is already treated as the worst by the
-   * backend (`priorityIndex` returns `len(list)`), so "unchecked at the end" is exactly what
-   * unchecking means — and nothing disappears from the screen, which was the problem with the X.
-   *
-   * `custom` = not in the default: what the user typed, plus the inert leftovers of an old
-   * config.json (`x265`, `4k`). Only those can be removed for good.
-   */
-  function rows(key: keyof Priorities, list: string[], def: Priorities | null) {
-    const canon = def?.[key] ?? [];
-    return [
-      ...list.map((item) => ({ item, on: true, custom: !canon.includes(item) })),
-      ...canon.filter((v) => !list.includes(v)).map((item) => ({ item, on: false, custom: false })),
-    ];
+  // Advanced: the same criteria for several queues. A draft starts from one queue's criteria
+  // (unsaved edits included), is edited like any queue's, and is copied onto the queues ticked;
+  // each of them can then be changed on its own. The ignore list is not part of it: it is the
+  // default queue's alone and every queue shares it (decisions/164).
+  let sameOpen = false;
+  let sameFrom = DEFAULT_QUEUE_ID;
+  let draft: Priorities | null = null;
+  let draftBaseline = "";
+  let targets: Record<string, boolean> = {};
+  $: ticked = queues.filter((q) => targets[q.id]).map((q) => q.id);
+
+  function startFrom(id: string) {
+    sameFrom = id;
+    draft = rankings[id] ? clone(rankings[id]) : null;
+    draftBaseline = draft ? snapshot(draft) : "";
   }
 
-  function toggle(key: keyof Priorities, item: string, on: boolean) {
-    if (!current) return;
-    setList(key, on ? [...current[key], item] : current[key].filter((v) => v !== item));
+  function onSameToggle(e: Event) {
+    sameOpen = (e.currentTarget as HTMLDetailsElement).open;
+    if (sameOpen && !draft) {
+      startFrom(sameFrom);
+      targets = Object.fromEntries(queues.map((q) => [q.id, true]));
+    }
   }
 
-  function remove(key: keyof Priorities, i: number) {
-    if (!current) return;
-    setList(key, current[key].filter((_, idx) => idx !== i));
+  function tickAll(on: boolean) {
+    targets = Object.fromEntries(queues.map((q) => [q.id, on]));
   }
 
-  function add(key: keyof Priorities) {
-    if (!current) return;
-    const v = (newItem[key] ?? "").trim().toLowerCase();
-    if (!v || current[key].includes(v)) return;
-    setList(key, [...current[key], v]);
-    newItem[key] = "";
-  }
-
-  function preset(key: keyof Priorities, first: string[]) {
-    if (!current) return;
-    setList(key, applyPreset(current[key], first));
-  }
-
-  function resetList(key: keyof Priorities) {
-    if (!current || !defaults) return;
-    setList(key, [...defaults[key]]);
+  function applySame() {
+    if (!draft || ticked.length === 0) return;
+    for (const id of ticked) {
+      rankings[id] = { ...clone(draft), ignore_list: rankings[id].ignore_list };
+    }
+    rankings = rankings;
+    // Applied: from here the queues it went to carry the change, and they count as unsaved.
+    draftBaseline = snapshot(draft);
+    toast.info(m.queues_same_applied({ count: ticked.length }));
   }
 
   function resetAll() {
-    if (!current || !defaults) return;
+    if (!selected || !current || !defaults) return;
     // A queue's ignore list is not its own: reset only touches what it ranks with.
-    rankings[selected] = selected === DEFAULT_QUEUE_ID ? clone(defaults) : { ...clone(defaults), ignore_list: current.ignore_list };
-    rankings = rankings;
+    setRanking(selected, selected === DEFAULT_QUEUE_ID ? clone(defaults) : { ...clone(defaults), ignore_list: current.ignore_list });
   }
 
   async function save() {
-    if (!current) return;
     try {
       saving = true;
       // Only the lists: a full save would also run the folder and client checks (an unplugged
@@ -273,7 +248,7 @@
 
   {#if loading}
     <Loading message={(T && T.loading) || ""} />
-  {:else if config && current && T}
+  {:else if config && rankings[DEFAULT_QUEUE_ID] && T}
     {#if queues.length > 0}
       <div class="flex flex-col gap-3 rounded-card border border-default bg-sunken p-5" data-testid="queues">
         <div>
@@ -282,7 +257,10 @@
         </div>
         <ol class="flex flex-col gap-1.5">
           {#each queues as q, i (q.id)}
-            <li class="flex flex-wrap items-center gap-2 bg-card rounded-md px-3 py-1.5">
+            {@const open = selected === q.id}
+            <li
+              class="flex flex-wrap items-center gap-2 bg-card rounded-md border px-3 py-1.5 {open ? 'border-accent' : 'border-transparent'}"
+            >
               <span class="text-xs text-subtle w-5 text-right">{i + 1}</span>
               {#if renaming === q.id}
                 <input
@@ -294,10 +272,38 @@
                 />
                 <button type="button" class="text-xs font-medium text-accent" on:click={() => saveRename(q)}>{$locale && m.queues_rename_save()}</button>
               {:else}
-                <span class="flex-1 min-w-0 truncate text-sm text-heading">{q.name}</span>
-                <span class="text-xs text-subtle">
-                  {$locale && (q.default ? m.queues_default_count() : m.queues_count({ count: q.animes.length }))}
-                </span>
+                {@const count = $locale && (q.default ? m.queues_default_count() : m.queues_count({ count: q.animes.length }))}
+                <!-- The row's name opens the queue's criteria below the list: one click per queue
+                     instead of a picker, and the open one is the row with the accent border. -->
+                <button
+                  type="button"
+                  on:click={() => openQueue(q.id)}
+                  aria-expanded={open}
+                  aria-controls="queue-criteria"
+                  aria-label={$locale && m.queues_open({ name: q.name })}
+                  class="flex flex-1 min-w-0 items-center gap-2 text-left"
+                >
+                  <!-- On a phone the count and the Unsaved chip go under the name: beside it, "Every
+                       anime not in another queue" left the name a few letters and ran over Rename. -->
+                  <span class="min-w-0 flex-1">
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span class="min-w-0 truncate text-sm text-heading">{q.name}</span>
+                      {#if changed.includes(q.id)}
+                        <span class="hidden shrink-0 rounded-full bg-control px-1.5 text-[11px] text-subtle sm:inline">{$locale && m.queues_unsaved()}</span>
+                      {/if}
+                    </span>
+                    <span class="flex min-w-0 items-center gap-2 sm:hidden">
+                      <span class="min-w-0 truncate text-xs text-subtle">{count}</span>
+                      {#if changed.includes(q.id)}
+                        <span class="shrink-0 rounded-full bg-control px-1.5 text-[11px] text-subtle">{$locale && m.queues_unsaved()}</span>
+                      {/if}
+                    </span>
+                  </span>
+                  <span class="hidden shrink-0 text-xs text-subtle sm:inline">{count}</span>
+                  <span class="shrink-0 text-xs font-medium {open ? 'text-accent' : 'text-subtle'}" aria-hidden="true">
+                    <span class="hidden sm:inline">{$locale && m.queues_criteria()}</span> {open ? "▾" : "▸"}
+                  </span>
+                </button>
                 <button type="button" class="text-xs font-medium text-subtle hover:text-heading" on:click={() => startRename(q)}>{$locale && m.queues_rename()}</button>
               {/if}
               <button
@@ -343,142 +349,91 @@
             class="inline-flex items-center px-3 py-2 rounded-md border border-default text-body hover:bg-control text-sm font-medium transition-colors disabled:opacity-50"
           >{$locale && m.queues_add()}</button>
         </form>
-        {#if queues.length > 1}
-          <div class="flex flex-wrap items-center gap-2">
-            <label for="ranking_queue" class="text-xs text-subtle">{$locale && m.queues_ranking_for()}</label>
-            <select
-              id="ranking_queue"
-              bind:value={selected}
-              class="rounded-md border border-default bg-control px-3 py-1.5 text-sm text-body"
-            >
-              {#each queues as q (q.id)}
-                <option value={q.id}>{q.name}</option>
-              {/each}
-            </select>
-          </div>
-        {/if}
       </div>
     {/if}
 
-    {#if selected !== DEFAULT_QUEUE_ID}
-      <p class="text-xs text-subtle">{$locale && m.queues_ignore_shared()}</p>
+    {#if current && selected}
+      <section id="queue-criteria" class="space-y-4 scroll-mt-4" aria-label={$locale && m.queues_criteria_title({ name: currentQueue?.name ?? "" })}>
+        {#if several && currentQueue}
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="min-w-0 truncate text-base font-semibold text-heading">
+              {$locale && m.queues_criteria_title({ name: currentQueue.name })}
+            </h2>
+            <button
+              type="button"
+              on:click={() => (selected = null)}
+              class="shrink-0 text-xs font-medium text-subtle hover:text-heading transition-colors"
+            >{$locale && m.queues_criteria_close()}</button>
+          </div>
+        {/if}
+        {#if selected !== DEFAULT_QUEUE_ID}
+          <p class="text-xs text-subtle">{$locale && m.queues_ignore_shared()}</p>
+        {/if}
+        <PriorityListsEditor
+          ranking={current}
+          {defaults}
+          showIgnore={selected === DEFAULT_QUEUE_ID}
+          on:change={(e) => selected && setRanking(selected, e.detail)}
+        />
+      </section>
+    {:else if several}
+      <p class="text-sm text-subtle">{$locale && m.queues_pick_one()}</p>
     {/if}
 
-    <div class="space-y-4">
-      {#each lists as { key, label, scope } (key)}
-        {@const items = rows(key, current[key], defaults)}
-        <div class="flex flex-col rounded-card border border-default bg-sunken">
-          <div class="flex flex-col gap-3 p-5">
-            <div class="flex items-center justify-between">
-              <h2 class="text-sm font-semibold text-subtle uppercase tracking-wider">
-                {label}
-                {#if scope}<span class="normal-case tracking-normal font-normal text-subtle">({scope})</span>{/if}
-              </h2>
-              <button
-                type="button"
-                on:click={() => resetList(key)}
-                class="text-xs font-medium text-subtle hover:text-heading transition-colors"
+    {#if several}
+      <details class="rounded-card border border-default bg-sunken" data-testid="same-criteria" on:toggle={onSameToggle}>
+        <summary class="cursor-pointer select-none px-5 py-4 text-sm font-semibold text-subtle uppercase tracking-wider hover:text-heading">
+          {$locale && m.queues_same_title()}
+        </summary>
+        <!-- Rendered only while open: a second copy of every list in the DOM would double every
+             "Use …" control for screen readers while nobody is using it. -->
+        {#if sameOpen && draft}
+          <div class="flex flex-col gap-4 border-t border-divider p-5">
+            <p class="text-xs text-subtle">{$locale && m.queues_same_hint()}</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="same_from" class="text-xs text-subtle">{$locale && m.queues_same_start()}</label>
+              <select
+                id="same_from"
+                value={sameFrom}
+                on:change={(e) => startFrom(e.currentTarget.value)}
+                class="rounded-md border border-default bg-control px-3 py-1.5 text-sm text-body"
               >
-                {T.resetList}
-              </button>
+                {#each queues as q (q.id)}
+                  <option value={q.id}>{q.name}</option>
+                {/each}
+              </select>
             </div>
-
-            {#if T.presets[key]}
-              <div class="flex flex-wrap gap-2">
-                {#each T.presets[key] ?? [] as p (p.key)}
-                  <button
-                    type="button"
-                    on:click={() => preset(key, p.first)}
-                    title={p.desc}
-                    class="px-3 py-1.5 rounded-md border border-default text-body hover:bg-control text-xs font-medium transition-colors"
-                  >
-                    {p.label}
-                  </button>
+            <PriorityListsEditor ranking={draft} {defaults} showIgnore={false} on:change={(e) => (draft = e.detail)} />
+            <fieldset class="flex flex-col gap-2">
+              <legend class="text-xs text-subtle">{$locale && m.queues_same_targets()}</legend>
+              <div class="flex flex-wrap gap-x-4 gap-y-2">
+                <Checkbox
+                  checked={ticked.length === queues.length}
+                  indeterminate={ticked.length > 0 && ticked.length < queues.length}
+                  label={$locale && m.queues_same_all()}
+                  on:change={() => tickAll(ticked.length !== queues.length)}
+                />
+                {#each queues as q (q.id)}
+                  <Checkbox
+                    checked={!!targets[q.id]}
+                    label={q.name}
+                    on:change={() => (targets = { ...targets, [q.id]: !targets[q.id] })}
+                  />
                 {/each}
               </div>
-            {/if}
-
-            {#if items.length > 0}
-              <ol class="flex flex-col gap-1.5">
-                {#each items as row, i (row.item)}
-                  <li class="flex items-center gap-2 bg-card rounded-md px-3 py-1.5 {row.on ? '' : 'opacity-50'}">
-                    <Checkbox
-                      checked={row.on}
-                      disabled={row.custom}
-                      label={$locale && (row.custom ? m.priorities_item_custom({ item: row.item }) : m.priorities_item_use({ item: row.item }))}
-                      labelHidden
-                      on:change={() => toggle(key, row.item, !row.on)}
-                    />
-                    <span class="text-xs text-subtle w-5 text-right">{row.on ? i + 1 : ""}</span>
-                    <span class="flex-1 text-sm text-heading">{row.item}</span>
-                    {#if row.on}
-                      <button
-                        type="button"
-                        on:click={() => move(key, i, -1)}
-                        disabled={i === 0}
-                        aria-label={$locale && m.priorities_move_up({ item: row.item })}
-                        class="text-subtle hover:text-heading disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        on:click={() => move(key, i, 1)}
-                        disabled={i === current[key].length - 1}
-                        aria-label={$locale && m.priorities_move_down({ item: row.item })}
-                        class="text-subtle hover:text-heading disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                      >
-                        ↓
-                      </button>
-                    {/if}
-                    {#if row.custom}
-                      <button
-                        type="button"
-                        on:click={() => remove(key, i)}
-                        aria-label={$locale && m.priorities_remove({ item: row.item })}
-                        class="text-subtle hover:text-danger transition-colors"
-                      >
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                      </button>
-                    {/if}
-                  </li>
-                {/each}
-              </ol>
-            {/if}
-
-            {#if T.notes[key]}
-              <p class="text-xs text-subtle">{T.notes[key]}</p>
-            {/if}
-
-            <!-- criteria_order is a closed set (sortByCriteria silently skips a criterion it doesn't
-                 know) and every criterion already shows above, checked or not: there's nothing to
-                 add, and free text there would only produce inert config. -->
-            {#if key !== "criteria_order"}
-            <div class="flex gap-2">
-              <input
-                type="text"
-                bind:value={newItem[key]}
-                placeholder={T.addPlaceholder}
-                aria-label={T.addPlaceholder}
-                class="flex-1 block rounded-md border-default bg-control text-heading shadow-sm focus:border-accent sm:text-sm px-3 py-2"
-                on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(key); } }}
-              />
+            </fieldset>
+            <div class="flex justify-end">
               <button
                 type="button"
-                on:click={() => add(key)}
-                aria-label={T.addPlaceholder}
-                class="inline-flex items-center px-3 py-2 rounded-md border border-default text-body hover:bg-control text-sm font-medium transition-colors"
-              >
-                +
-              </button>
+                on:click={applySame}
+                disabled={ticked.length === 0}
+                class="inline-flex items-center px-4 py-2 rounded-lg border border-default text-body hover:bg-control font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >{$locale && m.queues_same_apply({ count: ticked.length })}</button>
             </div>
-            {/if}
           </div>
-        </div>
-      {/each}
-    </div>
+        {/if}
+      </details>
+    {/if}
 
     <ConfirmDialog
       bind:open={deleteOpen}
@@ -490,14 +445,16 @@
     />
 
     <div class="flex justify-end gap-3 pt-2">
-      <button
-        type="button"
-        on:click={resetAll}
-        disabled={saving}
-        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-default text-body hover:bg-control font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {T.resetAll}
-      </button>
+      {#if current}
+        <button
+          type="button"
+          on:click={resetAll}
+          disabled={saving}
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-default text-body hover:bg-control font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {T.resetAll}
+        </button>
+      {/if}
       <button
         type="button"
         on:click={save}

@@ -814,8 +814,11 @@ autoanimedownloader animes queue 154587 watch-first
 `priorities.codecs`, `priorities.audio`, `priorities.ignore_list`
 
 The Priorities page ranks Nyaa releases. Each list is an order: higher in the list is better, and
-an item not in the list ranks last. With two queues or more, **Ranking of queue** picks which
-queue's lists you edit. **Reset this list** and **Reset all** bring back the defaults
+an item not in the list ranks last. The page lists the queues first: click one to edit its lists
+(with a single queue they are open from the start). **Same criteria for several queues** gives one
+set of lists to the queues you tick, the Block list aside, and each can still be changed on its own
+afterwards (`autoanimedownloader queues priorities copy <from> <to>...` or `--all`). **Reset this
+list** and **Reset all** bring back the defaults for the queue open
 (`autoanimedownloader priorities defaults` prints them).
 
 | List | Default | Applies to |

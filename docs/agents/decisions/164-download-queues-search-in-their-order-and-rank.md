@@ -81,3 +81,15 @@ note that this change deleted).
 - Giving the default queue a ranking of its own in `queues.json`: it would shadow `config.json`'s
   `priorities`, which four other paths write (the Priorities page, `priorities set`, `PUT
   /config/priorities` and `PUT /queues/default/priorities`).
+
+**Amendment (2026-11-27, the Priorities page lists the queues first):** a queue's criteria open on
+a click on it, and **Same criteria for several queues** (the page) and `queues priorities copy
+<from> <to>... | --all` (the CLI) give one set of lists to several queues. The copy is a **one-time
+stamp**: the queues are not linked afterwards, each keeps its own ranking and can be changed on its
+own, which is what the user asked for ("making the criteria for some or all lists the same, which
+can be modified further individually"). The ignore list never travels (it is the default queue's,
+shared). The CLI sends one partial `PUT /queues/{id}/priorities` per target, without the ignore
+list and without null lists (a null would clear the target's list): not atomic, so a failure part
+way leaves the earlier targets changed and says which queue failed; running it again finishes it.
+Don't "fix" by linking queues to a shared ranking (the per-queue edit after the copy is the point)
+or by adding a batch endpoint for a convenience the per-queue PUT already serves.
