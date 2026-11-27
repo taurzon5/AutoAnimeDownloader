@@ -5,31 +5,33 @@ inside it — a task that doesn't touch the binary (docs, things outside the rep
 changing the number. Only what is still to ship lives here: a section is deleted when its release
 ships (the GitHub Release and git history are the record), never kept struck through.
 Current version: `v2.11.3`. Stamp a version (tag, GitHub Release):
-the [release skill](../.claude/skills/release/SKILL.md).
+the [release skill](../.claude/skills/release/SKILL.md). The version line restarts at `v0.1.0`
+with the move to taurzon5/Nyaanchiver (2026-11-26): `v2.11.3` and every older tag are the original
+project's, and the planned releases were renumbered from `v2.13.0`, `v3.0.0` and `v3.1.0`.
 Anything not tied to a specific release — problems and features alike — lives in
 [backlog/](backlog/), one file per item.
 
 The order follows a single rule: **nothing that stamps the project's name ships before the rename**
 (Windows installer, ghcr image, README, social preview, landing page), otherwise it's a double
-migration. If presenting the repo to employers gets urgent, `v3.0.0` can move up ahead of `v2.12.0`.
+migration. If presenting the repo to employers gets urgent, `v1.0.0` can move up ahead of `v0.2.0`.
 
 ## `v2.12.0` — dashboard recents
 
 A shelf of just-landed, still-unwatched episodes on Status, and last-check rows that open the
-anime. Independent of the picker; does not wait for the `v3.0.0` UI overhaul.
+anime. Independent of the picker; does not wait for the `v1.0.0` UI overhaul.
 
 - Recents shelf, clickable last-check rows. Merged into master; waits for the `v2.12.0` stamp
   ([decisions/151](agents/decisions/151-the-recents-shelf-is-derived-in-get-animes-after.md)).
 
-## `v2.13.0` — episode torrent picker
+## `v0.2.0` — episode torrent picker
 
 - Pick torrent when downloading / redownloading a single episode — same screen as the
   whole-title picker in `v2.7.0`, singles search instead of packs. Own spec; do not start
   it in the same change as the dashboard recents.
 
-## `v3.0.0` — Nyaanchiver
+## `v1.0.0` — Nyaanchiver
 
-Working checklist (one box per change, for coordinating chats): [v3.0.0.md](v3.0.0.md).
+Working checklist (one box per change, for coordinating chats): [v1.0.0.md](v1.0.0.md).
 
 Everything that stamps the project's name and look, in a single release. The major comes from the
 rename, and the Nyaa descriptor comes along so whoever upgrades goes through **one** migration, not
@@ -61,10 +63,10 @@ two.
   `gh repo edit` doesn't cover it
 - Create a landing page
 
-## `v3.1.0` — proper Windows release
+## `v1.1.0` — proper Windows release
 
 After the rename: the installer, the service name and the data path stamp the name, and Windows UI
-tweaks would be redone by the `v3.0.0` UI/UX overhaul.
+tweaks would be redone by the `v1.0.0` UI/UX overhaul.
 
 - Authenticate the app with a Microsoft account
 - Install instead of running from an executable file

@@ -6,7 +6,7 @@ How the app is installed today and what is worth adding. Ordered by return on ef
 
 - **No AUR package.** `autoanimedownloader-bin` and `autoanimedownloader-git` belong to the
   original project and install its releases, not this repo's. Whether this repo gets its own is
-  open in [v3.0.0](v3.0.0.md) (D7)
+  open in [v1.0.0](v1.0.0.md) (D7)
 - **GitHub Releases zip** + `make install-user` / `sudo make install-global` (`infra/linux/Makefile`),
   or `install.sh` (curl | bash) wrapping the same `install-user` — see section 2
 - **Windows** — a standalone exe, runs in the foreground, no service and no installer

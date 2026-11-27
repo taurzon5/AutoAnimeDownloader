@@ -5,5 +5,5 @@ done or dropped.
 
 ## When
 
-After `v3.1.0` (proper Windows release): promoting without Windows cuts off a large part of the
+After `v1.1.0` (proper Windows release): promoting without Windows cuts off a large part of the
 audience.

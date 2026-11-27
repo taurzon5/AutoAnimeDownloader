@@ -83,7 +83,7 @@ request already covers isn't "in passing", it's the job. (Portuguese text is the
   or dropped.`, then the sections that fit (a bug: Symptom / Cause / What to check). Done or dropped →
   the file is deleted in that same change; scheduled for a release → it moves to TODO.md and the file
   is deleted
-- [v3.0.0 Nyaanchiver](docs/v3.0.0.md) — working checklist for the rename release; coordinate slices across chats here; lock Open decisions before any rename diff
+- [v1.0.0 Nyaanchiver](docs/v1.0.0.md) — working checklist for the rename release; coordinate slices across chats here; lock Open decisions before any rename diff
 - [Dependency upgrades](docs/dependency-upgrades.md) — working checklist for the toolchain/library bumps: what shipped in v2.9.0, what waits for its own cycle, what is not worth doing
 - [Specs](docs/superpowers/specs/README.md) — unimplemented design docs only; executed specs were deleted (git history still has them)
 - [Architecture](docs/agents/architecture.md) — read when navigating code or adding features; update when a package, endpoint or invariant appears or disappears. Flow, negative facts, disambiguation and the API table — not a symbol list

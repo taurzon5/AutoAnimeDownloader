@@ -95,11 +95,11 @@ Both must be `200`. Anything else → the Release is missing assets: stop and re
 
 There is **no AUR step**. The AUR packages `autoanimedownloader-bin` and `autoanimedownloader-git`
 belong to the original project, not to this repo; its own packages come with the rename
-(`docs/v3.0.0.md`, D7 and R24).
+(`docs/v1.0.0.md`, D7 and R24).
 
-Tracked elsewhere, not part of a stamp: the ghcr image (`v3.0.0` in TODO.md; the Dockerfile is
+Tracked elsewhere, not part of a stamp: the ghcr image (`v1.0.0` in TODO.md; the Dockerfile is
 built in CI and never pushed — see `docs/distribution.md`), the Windows installer/service
-(`v3.1.0`), and the CLI inside the Windows package (`package-windows` doesn't ship it).
+(`v1.1.0`), and the CLI inside the Windows package (`package-windows` doesn't ship it).
 
 ## Report
 

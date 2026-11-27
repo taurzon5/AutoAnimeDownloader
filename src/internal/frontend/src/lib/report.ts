@@ -3,7 +3,7 @@
  * anything — the user attaches the file by hand (decisions/102).
  */
 
-/** The ONE place the repo URL lives: the v3.0.0 rename changes it. */
+/** The ONE place the repo URL lives: the v1.0.0 rename changes it. */
 export const REPO_URL = 'https://github.com/taurzon5/Nyaanchiver'
 
 /** What fits in the issue URL before GitHub cuts it off; the full text is in the file anyway. */

@@ -94,7 +94,7 @@ Runs a one-shot search/match pass against Nyaa without downloading anything or t
 
 Not supported yet. The Windows release is a bare `.exe` you run in the foreground — there is
 no installer and no service wrapper. Running detached as a background service is tracked in
-`docs/TODO.md` under `v3.1.0` — proper Windows release.
+`docs/TODO.md` under `v1.1.0` — proper Windows release.
 
 ## Contributing
 
