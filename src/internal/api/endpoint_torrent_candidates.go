@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,9 @@ type TorrentCandidate struct {
 	RangeStart int    `json:"range_start"`
 	RangeEnd   int    `json:"range_end"`
 	NyaaID     int    `json:"nyaa_id"`
+	// MegapackSignals is what the name says about holding several AniList entries (season range,
+	// "Complete Series", "+ Movies"); the detail's mapping confirms it. Empty for most packs.
+	MegapackSignals []string `json:"megapack_signals,omitempty"`
 }
 
 type TorrentCandidateMedia struct {
@@ -47,6 +51,37 @@ type TorrentCandidateDetail struct {
 	DescriptionHTML string        `json:"description_html"`
 	Files           []TorrentFile `json:"files"`
 	NyaaURL         string        `json:"nyaa_url"`
+	// Mapping places the torrent's videos on the anime's franchise entries (megapack spec §3).
+	// Absent for a torrent with fewer than two videos, or when AniList couldn't give the group.
+	Mapping *MegapackMapping `json:"mapping,omitempty"`
+}
+
+// MegapackMapping is daemon.MegapackMapping on the wire.
+type MegapackMapping struct {
+	Megapack    bool            `json:"megapack"`
+	Entries     []MegapackEntry `json:"entries"`
+	Unmapped    []MegapackFile  `json:"unmapped"`
+	TotalBytes  int64           `json:"total_bytes"`
+	MappedBytes int64           `json:"mapped_bytes"`
+}
+
+type MegapackEntry struct {
+	ID            int            `json:"id"`
+	Title         string         `json:"title"`
+	Format        string         `json:"format"`
+	Year          int            `json:"year,omitempty"`
+	EntryEpisodes int            `json:"entry_episodes,omitempty"`
+	Episodes      []int          `json:"episodes"`
+	Files         []MegapackFile `json:"files"`
+	Bytes         int64          `json:"bytes"`
+	Seed          bool           `json:"seed,omitempty"`
+}
+
+type MegapackFile struct {
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"size_bytes"`
+	Episode   int    `json:"episode,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 func handleTorrentCandidates(server *Server) http.HandlerFunc {
@@ -176,8 +211,51 @@ func handleTorrentCandidateDetail(server *Server) http.HandlerFunc {
 			return
 		}
 
-		JSONSuccess(w, http.StatusOK, mapTorrentCandidateDetail(detail))
+		out := mapTorrentCandidateDetail(detail)
+		out.Mapping = megapackMappingOf(id, detail.Files)
+		JSONSuccess(w, http.StatusOK, out)
 	}
+}
+
+// megapackMappingOf maps a torrent's files for the picker. A failure leaves the detail without
+// its mapping: the file list and the description are still worth showing.
+func megapackMappingOf(mediaID int, files []nyaa.TorrentFile) *MegapackMapping {
+	videos := 0
+	for _, f := range files {
+		if nyaa.IsVideoFile(path.Base(f.Name)) {
+			videos++
+		}
+	}
+	if videos < 2 {
+		return nil
+	}
+	m, err := daemon.MapTorrentFiles(mediaID, files)
+	if err != nil {
+		logger.Logger.Warn().Err(err).Int("media_id", mediaID).Msg("No franchise group for the megapack mapping")
+		return nil
+	}
+	out := &MegapackMapping{
+		Megapack:    m.Megapack,
+		Entries:     make([]MegapackEntry, 0, len(m.Entries)),
+		Unmapped:    mapMegapackFiles(m.Unmapped),
+		TotalBytes:  m.TotalBytes,
+		MappedBytes: m.MappedBytes,
+	}
+	for _, e := range m.Entries {
+		out.Entries = append(out.Entries, MegapackEntry{
+			ID: e.ID, Title: e.Title, Format: e.Format, Year: e.Year, EntryEpisodes: e.EntryEpisodes,
+			Episodes: e.Episodes, Files: mapMegapackFiles(e.Files), Bytes: e.Bytes, Seed: e.Seed,
+		})
+	}
+	return out
+}
+
+func mapMegapackFiles(in []daemon.MegapackFile) []MegapackFile {
+	out := make([]MegapackFile, 0, len(in))
+	for _, f := range in {
+		out = append(out, MegapackFile{Name: f.Name, SizeBytes: f.SizeBytes, Episode: f.Episode, Reason: f.Reason})
+	}
+	return out
 }
 
 func mapTorrentCandidates(in []daemon.TorrentCandidate) []TorrentCandidate {
@@ -195,6 +273,8 @@ func mapTorrentCandidates(in []daemon.TorrentCandidate) []TorrentCandidate {
 			RangeStart: c.RangeStart,
 			RangeEnd:   c.RangeEnd,
 			NyaaID:     c.NyaaID,
+
+			MegapackSignals: nyaa.MegapackSignals(c.Name),
 		})
 	}
 	return out

@@ -245,6 +245,7 @@ func clearCaches() {
 	listStatusCache.clear()
 	mediaByIDCache.clear()
 	seriesCache.clear()
+	franchiseCache.clear()
 	searchCache.clear()
 	malListCache.clear()
 	malIDMapCache.clear()
@@ -481,6 +482,7 @@ const (
 	MediaFormatMovie   MediaFormat = "MOVIE"
 	MediaFormatOVA     MediaFormat = "OVA"
 	MediaFormatONA     MediaFormat = "ONA"
+	MediaFormatSpecial MediaFormat = "SPECIAL"
 	MediaFormatMusic   MediaFormat = "MUSIC"
 	MediaFormatManga   MediaFormat = "MANGA"
 	MediaFormatNovel   MediaFormat = "NOVEL"

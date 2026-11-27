@@ -537,3 +537,46 @@ describe('TorrentPicker — one episode', () => {
     expect(push).toHaveBeenCalledWith('/status/21')
   })
 })
+
+describe('TorrentPicker — megapack mapping', () => {
+  it('marks a megapack row and shows what goes where, with the files no entry takes', async () => {
+    getTorrentCandidates.mockResolvedValue({
+      query: 'Kimetsu',
+      media: media({ title: 'Kimetsu no Yaiba: Yuukaku-hen' }),
+      items: [candidate({ name: '[Trix] Kimetsu no Yaiba S01-05 (Batch)', megapack_signals: ['seasons'] })],
+    })
+    getTorrentCandidateDetail.mockResolvedValue({
+      ...detail(),
+      mapping: {
+        megapack: true,
+        total_bytes: 20 * 2 ** 30,
+        mapped_bytes: 19 * 2 ** 30,
+        entries: [
+          { id: 1, title: 'Kimetsu no Yaiba', format: 'TV', year: 2019, entry_episodes: 26, episodes: Array.from({ length: 26 }, (_, i) => i + 1), files: [], bytes: 7 * 2 ** 30 },
+          { id: 3, title: 'Kimetsu no Yaiba: Yuukaku-hen', format: 'TV', year: 2021, entry_episodes: 11, episodes: [1, 2, 3, 5], files: [], bytes: 3 * 2 ** 30, seed: true },
+        ],
+        unmapped: [{ name: 'Season 1/NCOP/op.mkv', size_bytes: 10, reason: 'creditless' }],
+      },
+    })
+    await mountPicker()
+
+    expect(screen.getByText('Megapack')).toBeTruthy()
+    const table = await screen.findByTestId('megapack-mapping')
+    expect(within(table).getByText(/Episodes 1–26 of 26/)).toBeTruthy()
+    expect(within(table).getByText(/Episodes 1–3, 5 of 11/)).toBeTruthy()
+    expect(within(table).getByText('This anime')).toBeTruthy()
+    expect(screen.getByText('1 file not placed')).toBeTruthy()
+    expect(screen.getByText('Creditless opening or ending, menu or promo')).toBeTruthy()
+  })
+
+  it('shows no mapping for a torrent of one entry', async () => {
+    getTorrentCandidateDetail.mockResolvedValue({
+      ...detail(),
+      mapping: { megapack: false, total_bytes: 1, mapped_bytes: 1, entries: [], unmapped: [] },
+    })
+    await mountPicker()
+    await screen.findByText('A very good pack')
+    expect(screen.queryByText('What goes where')).toBeNull()
+    expect(screen.queryByText('Megapack')).toBeNull()
+  })
+})

@@ -25,6 +25,7 @@ import (
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/logger"
 	"AutoAnimeDownloader/src/internal/notifications"
+	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"AutoAnimeDownloader/src/internal/tray"
 	"AutoAnimeDownloader/src/internal/updates"
@@ -300,6 +301,8 @@ func main() {
 	jobQueue := daemon.NewJobQueue(fileManager, filepath.Join(dataDir, "pending_jobs.json"))
 	// What each added torrent was (the anime page's torrent cards), written at every add.
 	daemon.SetReleaseStore(files.NewReleaseStore(filepath.Join(dataDir, daemon.ReleasesFileName)))
+	// Torrent file lists never change: each is read from Nyaa once and kept (decisions/163).
+	nyaa.SetFileListCacheDir(filepath.Join(dataDir, nyaa.FileListCacheFolder))
 
 	// The torrent client (the embedded rain session, or qBittorrent) and the library organizer
 	// (hardlinks into the completed-anime folder). The session is created lazily once the save path

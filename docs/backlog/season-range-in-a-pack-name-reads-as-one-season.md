@@ -38,6 +38,14 @@ also misses the plural `Seasons`. `BatchInfo` has one `Season int`, so the range
   queries never surface `[Trix] … S01-05`; a franchise pack named `(Season 1+2+3+4+5+Movie)` does
   show up, and the spec's `S01+S02+…` shape covers it.
 
+## Progress (2026-11-27)
+
+Megapack step 1 ([decisions/163](../agents/decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md))
+reads plus lists too (`S01+S02+S03`, `Season 1+2+3+4+5+Movie`) and shows a franchise pack's files
+per entry in the picker. The pack-path filter still waits: the pass doesn't act on the mapping, and
+taking the pack for a later season would download the whole franchise until file selection (spec
+step 2) exists.
+
 ## What to check
 
 - Whether `ExtractSeason` (or a new `ExtractSeasonRange`) should return lo..hi, with the pack-path

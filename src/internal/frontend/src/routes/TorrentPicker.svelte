@@ -357,6 +357,32 @@
     }
   }
 
+  // Sorted episode numbers as runs: "1–26", "1–5, 7".
+  function episodeSpan(eps: number[]): string {
+    const parts: string[] = [];
+    for (let i = 0; i < eps.length; ) {
+      let j = i;
+      while (j + 1 < eps.length && eps[j + 1] === eps[j] + 1) j++;
+      parts.push(i === j ? `${eps[i]}` : `${eps[i]}–${eps[j]}`);
+      i = j + 1;
+    }
+    return parts.join(", ");
+  }
+
+  function unmappedReason(code: string | undefined): string {
+    switch (code) {
+      case "creditless":
+        return m.picker_mapping_reason_creditless();
+      case "no_entry":
+        return m.picker_mapping_reason_no_entry();
+      case "past_series":
+        return m.picker_mapping_reason_past_series();
+      case "no_number":
+        return m.picker_mapping_reason_no_number();
+    }
+    return code ?? "";
+  }
+
   function metaLine(item: TorrentCandidate): string {
     const parts: string[] = [];
     if (item.fansub) parts.push(item.fansub);
@@ -447,6 +473,9 @@
             >
               <div class="flex min-w-0 items-start justify-between gap-2">
                 <p class="min-w-0 flex-1 truncate text-copy text-heading" title={item.name}>{item.name}</p>
+                {#if item.megapack_signals?.length}
+                  <Chip variant="neutral">{$locale && m.picker_megapack_chip()}</Chip>
+                {/if}
                 {#if i === 0}
                   <Chip variant="accent">{T && T.recommended}</Chip>
                 {/if}
@@ -488,6 +517,51 @@
             >
               {@html detail.description_html}
             </div>
+            {#if detail.mapping?.megapack}
+              {@const mapping = detail.mapping}
+              <h2 class="mt-4 text-card-title text-heading">{$locale && m.picker_mapping_title()}</h2>
+              <p class="mt-1 text-caption text-subtle">
+                {$locale && m.picker_mapping_summary({
+                  entries: mapping.entries.length,
+                  placed: formatBytes(mapping.mapped_bytes, fmtLocale),
+                  total: formatBytes(mapping.total_bytes, fmtLocale),
+                })}
+              </p>
+              <ul class="mt-2 space-y-1.5" data-testid="megapack-mapping">
+                {#each mapping.entries as entry (entry.id)}
+                  <li class="rounded-field border border-default px-3 py-2">
+                    <div class="flex min-w-0 items-start justify-between gap-2">
+                      <p class="min-w-0 flex-1 truncate text-copy text-heading" title={entry.title}>{entry.title}</p>
+                      {#if entry.seed}
+                        <Chip variant="accent">{$locale && m.picker_mapping_this_anime()}</Chip>
+                      {/if}
+                    </div>
+                    <p class="mt-0.5 font-mono text-caption text-subtle">
+                      {entry.format}{entry.year ? ` · ${entry.year}` : ""}
+                      · {$locale && (entry.entry_episodes
+                        ? m.picker_mapping_episodes_of({ span: episodeSpan(entry.episodes), total: entry.entry_episodes })
+                        : m.picker_mapping_episodes({ span: episodeSpan(entry.episodes) }))}
+                      · {formatBytes(entry.bytes, fmtLocale)}
+                    </p>
+                  </li>
+                {/each}
+              </ul>
+              {#if mapping.unmapped.length}
+                <details class="mt-2">
+                  <summary class="cursor-pointer text-caption text-subtle hover:text-heading">
+                    {$locale && m.picker_mapping_unmapped({ count: mapping.unmapped.length })}
+                  </summary>
+                  <ul class="mt-1 max-h-48 space-y-1 overflow-y-auto pr-3 font-mono text-caption text-subtle">
+                    {#each mapping.unmapped as file (file.name)}
+                      <li class="flex justify-between gap-2">
+                        <span class="min-w-0 truncate" title={file.name}>{file.name}</span>
+                        <span class="shrink-0">{$locale && unmappedReason(file.reason)}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                </details>
+              {/if}
+            {/if}
             {#if detail.files?.length}
               <h2 class="mt-4 text-card-title text-heading">{T && T.files}</h2>
               <ul class="mt-2 max-h-80 space-y-1 overflow-y-auto pr-3 font-mono text-caption text-subtle">

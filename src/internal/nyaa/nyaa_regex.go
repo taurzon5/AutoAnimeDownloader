@@ -56,6 +56,11 @@ var (
 		regexp.MustCompile(`(?i)\bS(\d{1,2})-S?(\d{1,2})\b`),
 		regexp.MustCompile(`(?i)\bSeason\s*(\d{1,2})[-~](\d{1,2})\b`),
 		regexp.MustCompile(`(?i)\bSeasons\s*(\d{1,2})\s*(?:-|~|to|&)\s*(\d{1,2})\b`),
+		// Plus lists: "S01+S02+S03" and "(Season 1+2+3+4+5+Movie)". Go keeps the LAST repetition of a
+		// repeated group, which is the range's end. "Season 4 Part 03+04" is a part list, not this:
+		// the plus must follow the season number itself.
+		regexp.MustCompile(`(?i)\bS(\d{1,2})(?:\s*\+\s*S(\d{1,2}))+\b`),
+		regexp.MustCompile(`(?i)\bSeasons?\s*(\d{1,2})(?:\s*\+\s*(\d{1,2}))+\b`),
 	}
 
 	// Movie keyword patterns

@@ -343,16 +343,22 @@ func PackFileRange(detailURL string, totalEpisodes int) (BatchInfo, bool) {
 	if detailURL == "" {
 		return BatchInfo{}, false
 	}
-	doc, err := fetchNyaaPage(detailURL)
-	if err != nil {
-		logger.Logger.Debug().Err(err).Str("url", detailURL).Msg("Failed to fetch the torrent detail page")
-		return BatchInfo{}, false
+	nyaaID := ParseNyaaID(detailURL)
+	list, cached := cachedFileList(nyaaID)
+	if !cached {
+		doc, err := fetchNyaaPage(detailURL)
+		if err != nil {
+			logger.Logger.Debug().Err(err).Str("url", detailURL).Msg("Failed to fetch the torrent detail page")
+			return BatchInfo{}, false
+		}
+		list = flattenTorrentFiles(doc)
+		storeFileList(nyaaID, list)
 	}
 
 	var nums []int
 	groups := map[string]*packRangeGroup{}
 	var groupOrder []string
-	for _, f := range flattenTorrentFiles(doc) {
+	for _, f := range list {
 		base := path.Base(f.Name)
 		if !IsVideoFile(base) {
 			continue
@@ -1237,6 +1243,10 @@ func ScrapNyaaForAnime(animeName string, episodes []int, requestedSeason, reques
 			// old batch search's behavior, and it differs from the episode path right below — which is why
 			// the two filters can't be merged. A first-season entry still drops later-season packs, in the
 			// daemon (partitionSearchResults), where the relations are known.
+			//
+			// A multi-season pack ("S01-05", "Season 1+2+3") still reads as its first season here, so a
+			// later season's entry drops it: until a torrent's unwanted files can be skipped (megapack
+			// spec step 2), taking it would download a whole franchise for one season (decisions/083).
 			if requestedSeason != nil && (season == nil || *season != *requestedSeason) {
 				return
 			}
@@ -1464,9 +1474,9 @@ func ExtractSeason(name string) *int {
 }
 
 // ExtractSeasonRange reads the seasons a multi-season pack carries ("[Trix] Kimetsu no Yaiba S01-05":
-// 1..5). ok is false for a name with no season range, or a range that isn't increasing. Megapack
-// recognition, step 1 of the megapack spec; the pack-path season filter doesn't use it yet, so a
-// later-season entry still drops a franchise pack until its files can be mapped to entries.
+// 1..5, "(Season 1+2+3+4+5+Movie)": 1..5). ok is false for a name with no season range, or a range
+// that isn't increasing. Megapack recognition counts it (MegapackSignals); the pack-path season
+// filter doesn't use it yet (decisions/083).
 func ExtractSeasonRange(name string) (lo, hi int, ok bool) {
 	for _, re := range reSeasonRanges {
 		m := re.FindStringSubmatch(name)

@@ -77,6 +77,13 @@ packs, not singles. At most 8 rows; the first is the auto-pick. Selecting a row 
 description on demand (the other rows are not fetched). The query field is a labeled Nyaa `q`
 with a Search button and is not saved.
 
+A row whose name says it holds more than one season or the movies (`S01-05`, `Complete Series`,
+`+ Movies`) carries a **Megapack** chip. When the selected torrent's videos belong to two entries
+or more of the anime's franchise, the detail shows **What goes where**: each entry (season, movie,
+OVA) with its format, year, the episodes found (`Episodes 1–26 of 26`) and their size, this anime
+marked, and a fold with the files no entry takes and why. The table only shows what is inside: the
+whole torrent still downloads.
+
 **Download this** sits in the list card and always posts the highlighted row. The magnet strip
 below the grid has **Download magnet** for a pasted URI; a paste does not override the list
 button. Add returns to Add; Replace returns to the anime page. Cancel saves nothing. From the

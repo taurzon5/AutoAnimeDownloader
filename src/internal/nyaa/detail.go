@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -70,18 +69,18 @@ func FetchTorrentDetail(nyaaID int) (TorrentDetail, error) {
 	}
 
 	viewURL := ViewURL(nyaaID)
-	doc, err := fetchNyaaPage(viewURL)
+	doc, err := fetchViewPage(nyaaID)
 	if err != nil {
-		var httpErr *nyaaHTTPError
-		if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
-			return TorrentDetail{}, fmt.Errorf("torrent %d not found: %w", nyaaID, ErrTorrentNotFound)
-		}
-		return TorrentDetail{}, fmt.Errorf("failed to fetch nyaa view %d: %w", nyaaID, ErrNyaaUnavailable)
+		return TorrentDetail{}, err
 	}
 
+	// The description can be edited, so the page is read every time; the file list it carries is
+	// kept for PackFileRange, which reads it from the cache from then on (decisions/163).
+	files := flattenTorrentFiles(doc)
+	storeFileList(nyaaID, files)
 	return TorrentDetail{
 		DescriptionHTML: sanitizeDescriptionHTML(descriptionInnerHTML(doc.Find("#torrent-description"))),
-		Files:           flattenTorrentFiles(doc),
+		Files:           files,
 		NyaaURL:         viewURL,
 	}, nil
 }

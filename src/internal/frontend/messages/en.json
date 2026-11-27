@@ -754,6 +754,30 @@
   "picker_magnet_placeholder": "Or paste a magnet URI",
   "picker_description": "Description",
   "picker_files": "Files",
+  "picker_megapack_chip": "Megapack",
+  "picker_mapping_title": "What goes where",
+  "picker_mapping_summary": "{entries} entries of the franchise · {placed} of {total} placed",
+  "picker_mapping_this_anime": "This anime",
+  "picker_mapping_episodes": "Episodes {span}",
+  "picker_mapping_episodes_of": "Episodes {span} of {total}",
+  "picker_mapping_unmapped": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "{count} file not placed",
+        "count=*": "{count} files not placed"
+      }
+    }
+  ],
+  "picker_mapping_reason_creditless": "Creditless opening or ending, menu or promo",
+  "picker_mapping_reason_no_entry": "No entry of the franchise matches its name",
+  "picker_mapping_reason_past_series": "Past the last episode AniList lists",
+  "picker_mapping_reason_no_number": "No episode number",
   "picker_seeders": [
     {
       "declarations": [

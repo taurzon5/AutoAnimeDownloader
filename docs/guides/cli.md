@@ -149,7 +149,12 @@ the CLI to what `GET /api/v1/animes` returns:
 3 characters returns an empty list, not an error. `candidates` is the ranked whole-title list the
 picker shows (empty `items` is success, not an error). `--query` is a Nyaa `q` and skips title
 variants and season/part. `candidate <id> <nyaa_id>` is the picker's detail panel: the Nyaa URL and
-the files inside the torrent (`--json` also carries the description as HTML). `episodes` is followed
+the files inside the torrent (`--json` also carries the description as HTML). For a megapack, a
+torrent whose videos belong to two entries or more of the anime's franchise, it adds the mapping
+table: each entry with its episodes (`1-26 of 26`), files and size, the anime asked about marked
+`(this anime)`, then the videos no entry takes and why (creditless openings, a special no entry's
+name matches, a number past the last episode AniList lists). `--json` carries the `mapping` of any
+torrent with two videos or more. `episodes` is followed
 by an `On lists:` table — every configured account that has the anime, in any status, with its
 progress and score (the anime page's panel). `add --magnet` skips auto-pick and looks the magnet up among the
 candidates (pass the same `--query` you used with `candidates`), so it sends the release name, Nyaa id

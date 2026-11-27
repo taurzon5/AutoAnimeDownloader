@@ -25,7 +25,7 @@ unknown, `PackFileRange` reads the file list and the one pack covers the window.
 golden case `kimetsu-season-range-pack` (`daemon/testdata/golden/`). **Known gap:** only the
 season-1 entry benefits — `ExtractSeason` still reads `S01-05` as season 1, so under a season 2-5
 entry the pack path drops the pack before any range is read
-(`docs/backlog/season-range-in-a-pack-name-reads-as-one-season.md`).
+(the backlog note, deleted with #163's fix).
 
 **Amendment (2026-11-26):** that gap is now held **on purpose**. `ExtractSeasonRange` reads the
 seasons a pack carries (`S01-05`, `S01-S05`, `Season 1-3`, `Seasons 1 ~ 3`), but nothing filters
@@ -39,6 +39,13 @@ episode range (safe: it only keeps a pack from being read as five episodes), whi
 `reSeasonRanges` doesn't read the singular with spaces as seasons, since `Season 2 - 07` is season
 2, episode 7. Don't wire `ExtractSeasonRange` into the pack-path season filter before files map to
 entries, and don't merge the two patterns.
+
+**Amendment (see #163):** megapack step 1 reads plus lists too (`S01+S02+S03`,
+`Season 1+2+3+4+5+Movie`) and uses the range to recognize a megapack in the picker, but the hold
+above stands: the picker's mapping is never acted on by the pass, so the pack-path season filter
+keeps reading one season until file selection (spec step 2) can skip what nobody tracks. Pinned by
+`TestScrapNyaaForAnime_LaterSeasonStillDropsASeasonRangePack` and the golden case
+`kimetsu-season2-range-pack`.
 
 **`FindAll` and not `FindString`** because a rejected match must not end the search: in `[Group] Anime (2021-2022) 01-24 [BD]` the real range comes **after** the year.
 

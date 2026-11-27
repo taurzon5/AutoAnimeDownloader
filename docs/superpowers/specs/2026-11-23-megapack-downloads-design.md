@@ -1,8 +1,10 @@
 # Megapack downloads: one torrent for a whole series, and only the parts you want
 
 **Date:** 2026-11-23
-**Status:** designed, not implemented — the user's decisions are recorded at the end; it depends
-on the qBittorrent backend, which becomes the only client (rain is being dropped)
+**Status:** step 1 (mapping, no new download behavior) built on 2026-11-27
+([decisions/163](../../agents/decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md));
+steps 2-4 not started — the user's decisions are recorded at the end; step 2 depends on the
+qBittorrent backend, which becomes the only client (rain is being dropped)
 **Origin:** "create a spec for megapack downloads, and how to achieve that". It is also the design
 the qBittorrent backend spec (`docs/superpowers/specs/2026-11-23-qbittorrent-backend-design.md` on
 branch `feat/qbittorrent-backend`) and the
@@ -254,7 +256,11 @@ With qBittorrent the library is written in place (direct mode, one folder per se
 After the qBittorrent backend replaces rain:
 
 1. **Mapping, no new download behavior** — recognition (with the season-range fix), the cached file
-   list, franchise groups, the mapping table in the picker.
+   list, franchise groups, the mapping table in the picker. **Built 2026-11-27:** `nyaa/megapack.go`,
+   `anilist/franchise.go`, `daemon/megapack.go`, the picker's **What goes where** and
+   `animes candidate`. The group is not shown on the anime page yet (step 4), and the pass doesn't
+   read it. The season-range filter fix waits for step 2: without file selection, a later season
+   taking `S01-05` downloads the whole franchise (the user's hold, decisions/083).
 2. **File selection** — `TorrentBackend.SetWantedFiles` through qBittorrent's `filePrio`, selected
    bytes in the disk guard and the progress, ticking later.
 3. **Search order and the megapack queue** — megapack → season pack → episodes in the search queue,

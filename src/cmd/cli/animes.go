@@ -9,10 +9,12 @@ import (
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/api"
+	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/files"
 	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/urfave/cli/v2"
 )
 
@@ -68,8 +70,10 @@ func animesCommand() *cli.Command {
 				Usage:     "Show the files and Nyaa page of one torrent candidate",
 				ArgsUsage: "<id> <nyaa_id>",
 				Description: "The detail panel of the web picker: the files inside the torrent and its Nyaa URL.\n" +
-					"<nyaa_id> is the nyaa_id column of `animes candidates`. --json also carries the\n" +
-					"description as HTML.",
+					"<nyaa_id> is the nyaa_id column of `animes candidates`. A megapack (files of two\n" +
+					"or more AniList entries of the franchise) also gets its mapping table: which entry\n" +
+					"each video belongs to, and the videos none takes. --json also carries the\n" +
+					"description as HTML and the mapping of any torrent with two videos or more.",
 				Action: handleAnimesCandidate,
 			},
 			{
@@ -316,7 +320,68 @@ func handleAnimesCandidate(c *cli.Context) error {
 		return nil
 	}
 	fmt.Println(detail.NyaaURL)
-	return writeSliceTable(detail.Files, "No files listed")
+	if err := writeSliceTable(detail.Files, "No files listed"); err != nil {
+		return err
+	}
+	if m := detail.Mapping; m != nil && m.Megapack {
+		printMegapackMapping(*m)
+	}
+	return nil
+}
+
+// printMegapackMapping is the picker's mapping table: which franchise entry each video of a
+// megapack belongs to, and the videos no entry takes.
+func printMegapackMapping(m api.MegapackMapping) {
+	fmt.Printf("\nMegapack: %d entries, %s of %s placed\n", len(m.Entries), gibString(m.MappedBytes), gibString(m.TotalBytes))
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.AppendHeader(table.Row{"Entry", "Format", "Year", "Episodes", "Files", "Size"})
+	for _, e := range m.Entries {
+		title := e.Title
+		if e.Seed {
+			title += " (this anime)"
+		}
+		episodes := episodeSpan(e.Episodes)
+		if e.EntryEpisodes > 0 {
+			episodes += fmt.Sprintf(" of %d", e.EntryEpisodes)
+		}
+		year := ""
+		if e.Year > 0 {
+			year = strconv.Itoa(e.Year)
+		}
+		t.AppendRow(table.Row{title, e.Format, year, episodes, len(e.Files), gibString(e.Bytes)})
+	}
+	t.Render()
+	if len(m.Unmapped) == 0 {
+		return
+	}
+	fmt.Printf("\nNot placed (%d):\n", len(m.Unmapped))
+	u := table.NewWriter()
+	u.SetOutputMirror(os.Stdout)
+	u.AppendHeader(table.Row{"File", "Why"})
+	for _, f := range m.Unmapped {
+		u.AppendRow(table.Row{f.Name, unmappedReason(f.Reason)})
+	}
+	u.Render()
+}
+
+// unmappedReason words daemon.MapMegapack's reason codes.
+func unmappedReason(code string) string {
+	switch code {
+	case daemon.UnmappedCreditless:
+		return "creditless opening/ending, menu or promo"
+	case daemon.UnmappedNoEntry:
+		return "no entry of the franchise matches its name"
+	case daemon.UnmappedPastSeries:
+		return "past the last episode AniList lists"
+	case daemon.UnmappedNoNumber:
+		return "no episode number"
+	}
+	return code
+}
+
+func gibString(b int64) string {
+	return fmt.Sprintf("%.1f GiB", float64(b)/float64(1<<30))
 }
 
 func handleAnimesAdd(c *cli.Context) error {

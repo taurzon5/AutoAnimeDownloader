@@ -113,7 +113,7 @@ Key endpoints:
 | `GET` | `/api/v1/animes/{id}/episodes` | `handleAnimeEpisodes` | `endpoint_anime_episodes.go` — `in_shoko`/`shoko_file` per episode and a `shoko` block (status, series, offset, by hand), both from the last pass's `ShokoService.AnimeStatus`, `handed_to_shoko` from the record (downloaded into Shoko's drop folder, "Waiting for Shoko" until `in_shoko`, [decisions/152](decisions/152-a-library-that-is-a-shoko-drop-folder-releases.md)), and in the `shoko` block the pack choice (`pack_episodes`, `keep_pack_episodes`, `keep_pack_episodes_default`, [decisions/153](decisions/153-a-packs-episodes-already-in-shoko-are-removed-for.md)); `accounts` is every configured account that has the anime, in **any** list status, each with its own status/progress/score (the "On lists" panel). The top-level `status` is one arbitrary account's: read `accounts` instead. `score` is 0–10 whatever the account's own format; `score_raw` + `score_format` are the same score in the account's own format (MAL: always `POINT_10`), absent when the format is unknown (old cache snapshots), and the screen then falls back to `score`. Only `getMediaListEntry` asks for them (`score(format: POINT_10_DECIMAL)`, `rawScore: score`, `user { avatar mediaListOptions { scoreFormat } }`); every other query leaves them empty |
 | `GET` | `/api/v1/animes/{id}/torrent-candidates?q=` | `handleTorrentCandidates` | `endpoint_torrent_candidates.go` — ranked whole-title list, cap 8. Empty `items` is 200 (`[]`, not null). `{id}` need not be tracked. `q` skips title variants and season/part. Does not fetch `/view/<id>`. `media` is the AniList identity already fetched for the search (title, `cover_image` medium, format, episodes). 502 `NYAA_UNAVAILABLE`. 404 `ANIME_NOT_FOUND` |
 | `GET` | `/api/v1/animes/{id}/episodes/{episodeNumber}/torrent-candidates?q=` | `handleEpisodeTorrentCandidates` | `endpoint_torrent_candidates.go` — the single-episode picker: `daemon.PreviewEpisodeTorrents` runs the pass's own `searchNyaaForSingleEpisode` (or `q` through `nyaa.ScrapNyaa` with the episode number), ranked by `rankSeriesResults`, cap 8, with **no** size or seeder filter: a hand pick ignores them ([decisions/160](decisions/160-a-manual-episode-download-ignores-the-size-and.md)). The pick goes through `POST …/episodes/{episodeNumber}/replace`. CLI `animes episode-candidates` |
-| `GET` | `/api/v1/animes/{id}/torrent-candidates/{nyaaId}` | `handleTorrentCandidateDetail` | sanitised Nyaa page + file list. `{nyaaId}` digits only. `{id}` unused for the fetch (still validated). `files` is `[]` not null. 404 `TORRENT_NOT_FOUND` |
+| `GET` | `/api/v1/animes/{id}/torrent-candidates/{nyaaId}` | `handleTorrentCandidateDetail` | sanitised Nyaa page + file list. `{nyaaId}` digits only. `{id}` is the seed of the `mapping`: with two videos or more, `daemon.MapTorrentFiles` places them on `{id}`'s franchise group (`megapack: true` when two entries get files; absent when AniList can't give the group, the rest of the detail still answers). `files` is `[]` not null. 404 `TORRENT_NOT_FOUND`. CLI `animes candidate` |
 | `POST` | `/api/v1/animes/{id}/episodes/{episodeNumber}/download` | `handleDownloadEpisode` | `endpoint_episode_actions.go` |
 | `POST` | `/api/v1/animes/{id}/episodes/{episodeNumber}/redownload` | `handleRedownloadEpisode` | `endpoint_episode_actions.go` |
 | `DELETE` | `/api/v1/animes/{id}/episodes/{episodeNumber}` | `handleDeleteEpisode` | `endpoint_episode_actions.go` |
@@ -556,6 +556,14 @@ chain is the only source (decisions/071), and because one query only expands 2 l
 from the caller because **`anilist` cannot import `files`** — and only the daemon knows the right
 set.
 
+**`franchise.go` — the franchise group, not the series.** Two "franchise" ideas live in this
+package and must not be merged: `Series` (above) is the TV-only `PREQUEL` chain whose offsets are
+the episode axis; `Franchise` is every anime a megapack can hold (TV, movies, OVAs, ONAs, specials),
+reached through seven relation types **and** kept only when its name is similar to the seed's
+([decisions/163](decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)). Only the
+picker's mapping uses the group today; it is cached in memory (a day, an hour while an entry is
+airing or uncounted) and not in the snapshot.
+
 **`mal.go` — MyAnimeList, as a list source only.** It lives in `anilist` on purpose (it needs
 `ttlCache`, the snapshot, `sendAnilistRequest` and `GetMediaByIDs`); there is **no** `internal/mal`
 package and no `Account` type. A MAL entry becomes the same synthetic `MediaList` a standalone anime
@@ -631,6 +639,19 @@ with goldmark and then sanitise
 Movie rows fill `DetailURL` the same way pack rows do — the description pane needs it.
 `PackFileRange` still takes an absolute URL plus the AniList entry total (isolated `total+1`);
 daemon callers that only have an id use `ViewURL`.
+
+**`megapack.go` — names that propose, file lists kept forever.** `MegapackSignals` reads a name
+(season range, "Complete Series", "+ Movies"); it only drives the picker's chip. A torrent's file
+list is kept in `nyaa-files/<nyaa id>.json` in the data folder once read (`SetFileListCacheDir`,
+set in `cmd/daemon/main.go`; unset in tests and the debug run, which then read Nyaa every time).
+`FetchTorrentDetail` and `PackFileRange` write it, `PackFileRange` reads it; an empty list is never
+kept.
+The cache is keyed by Nyaa id only, so a sandbox pointed at a mock Nyaa must use its own data folder
+(it does). The mapping of files onto entries is **not** here: `daemon/megapack.go` (`MapMegapack`)
+needs AniList's group and the series axis
+([decisions/163](decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)). The pass
+reads none of it: the pack-path season filter still drops a season-range pack for a later season
+(decisions/083).
 
 **Sorting** (`priorities.go`): the `health` criterion compares the **band** (`healthTier`, floors
 `10/50` seeders), not the raw score (decisions/055 and decisions/107). `SortTorrentResults` omits

@@ -28,6 +28,13 @@ download fills all those seasons instead of being weighed against one season's p
 [megapack spec](../superpowers/specs/2026-11-23-megapack-downloads-design.md) (recognition, franchise
 groups, mapping files to entries, file selection); this note goes when it lands.
 
+## Progress (2026-11-27)
+
+Megapack step 1 is built ([decisions/163](../agents/decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)):
+the picker shows the Trix pack's mapping table (which season each file belongs to). The pass still
+downloads the whole pack for a season-1 entry; that ends with file selection (spec step 2,
+qBittorrent's file priorities).
+
 ## What to check
 
 - Whether "covers the window" should prefer, all else close, the pack whose span is nearest the

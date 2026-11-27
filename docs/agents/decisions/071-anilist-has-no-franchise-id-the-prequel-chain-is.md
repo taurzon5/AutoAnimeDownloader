@@ -61,6 +61,11 @@ coherently.
 numbering, which a good part of the groups use. A wrong offset sends the search to an episode that
 does not exist. Every doubt in the walk resolves to 0.
 
+**Amendment (see #163):** this entry is about the **series axis** (`anilist/series.go`). The
+megapack franchise group (`anilist/franchise.go`) walks seven relation types, movies and OVAs
+included, and keeps an entry only when its name is also similar to the seed's; it never feeds the
+episode axis.
+
 **Don't "fix" by:** looking for a franchise id in the schema "that must exist somewhere"; using
 `idMal` as series identity; replacing the walk with `search:` and the franchise name; treating
 `edges: []` as root; assuming depth 2 as a contract; including `MOVIE`/`OVA`/`ONA` in the walk

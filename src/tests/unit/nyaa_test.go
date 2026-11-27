@@ -1909,6 +1909,31 @@ func TestScrapNyaaForAnime_FiltersBySeason(t *testing.T) {
 	}
 }
 
+// A later season's entry still drops a multi-season pack: until unwanted files can be skipped,
+// taking it would download the whole franchise for one season (decisions/083).
+func TestScrapNyaaForAnime_LaterSeasonStillDropsASeasonRangePack(t *testing.T) {
+	restore := mockHttpGet(mockHtml([]string{
+		"[Trix] Kimetsu no Yaiba S01-05 [Dual Audio] (BD 1080p AV1) (Batch)",
+		"[Group] Kimetsu no Yaiba (Season 1+2+3+4+5+Movie) [BD 1080p] (Batch)",
+		"[Group] Kimetsu no Yaiba S3 Batch [1080p]",
+	}))
+	defer restore()
+
+	season := 3
+	results, err := nyaa.ScrapNyaaForAnime("Kimetsu no Yaiba", nil, &season, nil)
+	if err != nil {
+		t.Fatalf("ScrapNyaaForAnime error: %v", err)
+	}
+	packs, _ := packsAndSingles(results)
+	var names []string
+	for _, p := range packs {
+		names = append(names, p.Name)
+	}
+	if len(names) != 1 || names[0] != "[Group] Kimetsu no Yaiba S3 Batch [1080p]" {
+		t.Errorf("packs = %q, want the season-3 pack only", names)
+	}
+}
+
 func TestScrapNyaaForMovie_FindsMovieTorrents(t *testing.T) {
 	correct := []string{
 		"[SubsPlease] Suzume no Tojimari Movie (1080p)",
@@ -2635,6 +2660,10 @@ func TestExtractSeasonRange(t *testing.T) {
 		{"[Group] Anime S01E01-12 [1080p]", 0, 0, false},
 		{"[Group] Anime S03 [1080p] (Batch)", 0, 0, false},
 		{"[Group] Anime S05-01 [1080p]", 0, 0, false},
+		{"[Group] Anime S01+S02+S03 [BD 1080p]", 1, 3, true},
+		{"[Group] Kimetsu no Yaiba (Season 1+2+3+4+5+Movie) [BD 1080p]", 1, 5, true},
+		{"[Group] Anime Season 01+02 [1080p]", 1, 2, true},
+		{"[Group] Anime (Season 4 Part 03+04) [1080p]", 0, 0, false},
 	}
 	for _, tc := range cases {
 		lo, hi, ok := nyaa.ExtractSeasonRange(tc.name)

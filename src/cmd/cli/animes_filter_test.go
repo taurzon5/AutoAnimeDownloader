@@ -204,6 +204,35 @@ func TestAnimesCandidateHitsDetail(t *testing.T) {
 	}
 }
 
+func TestAnimesCandidatePrintsTheMegapackMapping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.SuccessResponse{Success: true, Data: api.TorrentCandidateDetail{
+			NyaaURL: "https://nyaa.si/view/123",
+			Files:   []api.TorrentFile{{Name: "S1/ep01.mkv", SizeBytes: 1}},
+			Mapping: &api.MegapackMapping{
+				Megapack: true,
+				Entries: []api.MegapackEntry{
+					{ID: 1, Title: "Kimetsu no Yaiba", Format: "TV", Year: 2019, EntryEpisodes: 26, Episodes: []int{1, 2, 3}, Files: []api.MegapackFile{{Name: "S1/ep01.mkv"}}},
+					{ID: 2, Title: "Yuukaku-hen", Format: "TV", Episodes: []int{1}, Seed: true},
+				},
+				Unmapped: []api.MegapackFile{{Name: "NCOP/op.mkv", Reason: "creditless"}},
+			},
+		}})
+	}))
+	defer srv.Close()
+
+	stdout, _, err := runCLI(t, "--endpoint", srv.URL, "animes", "candidate", "21", "123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Megapack: 2 entries", "1-3 of 26", "Yuukaku-hen (this anime)", "NCOP/op.mkv", "creditless opening/ending"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestResolveAccountsIgnoresUsernameCase(t *testing.T) {
 	configured := []string{"anilist:Alice", "mal:Bob"}
 	got, err := resolveAccounts([]string{"alice", "MAL:bob"}, configured)

@@ -174,3 +174,4 @@ do not edit by hand.
 - [**#160** — A manual episode download ignores the size and seeder limits, and only the disk guard applies](160-a-manual-episode-download-ignores-the-size-and.md)
 - [**#161** — Priorities and notifications save only their part, merged into the saved one, and skip the full save's checks](161-priorities-and-notifications-save-only-their-part.md)
 - [**#162** — A download custom list brings its anime whatever their list status, read from MediaListCollection, and vetoes status deletion](162-a-download-custom-list-brings-its-anime-whatever.md)
+- [**#163** — A megapack is a torrent whose files map onto two entries of a franchise group, and a group entry needs both an AniList relation and a similar name](163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)

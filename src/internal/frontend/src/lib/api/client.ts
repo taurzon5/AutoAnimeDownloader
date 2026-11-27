@@ -987,6 +987,8 @@ export interface TorrentCandidate {
   range_start: number
   range_end: number
   nyaa_id: number
+  /** What the name says about holding several AniList entries; the detail's mapping confirms it. */
+  megapack_signals?: string[]
 }
 
 export interface TorrentCandidateMedia {
@@ -1006,6 +1008,36 @@ export interface TorrentCandidateDetail {
   description_html: string
   files: { name: string; size_bytes: number }[]
   nyaa_url: string
+  /** Where each video goes among the anime's franchise entries; absent with fewer than two videos. */
+  mapping?: MegapackMapping
+}
+
+export interface MegapackFile {
+  name: string
+  size_bytes: number
+  episode?: number
+  /** Why an unmapped file has no entry: creditless, no_entry, past_series, no_number. */
+  reason?: string
+}
+
+export interface MegapackEntry {
+  id: number
+  title: string
+  format: string
+  year?: number
+  entry_episodes?: number
+  episodes: number[]
+  files: MegapackFile[]
+  bytes: number
+  seed?: boolean
+}
+
+export interface MegapackMapping {
+  megapack: boolean
+  entries: MegapackEntry[]
+  unmapped: MegapackFile[]
+  total_bytes: number
+  mapped_bytes: number
 }
 
 /**
