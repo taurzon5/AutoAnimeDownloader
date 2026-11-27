@@ -72,3 +72,6 @@ it when direct mode is turned off while placements exist; renaming `.part` files
 runs; deleting the `Open` fallback to the final name.
 
 **Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** a placement in a download root other than the library stores a second absolute path, `RootPath` (and `RootName`). A placement in the library keeps it empty, so the moved-library rule above still holds for it; a moved root is followed by name (`followMovedRoots`).
+
+**Amendment (see #154, 2026-11-27):** `followMovedRoots` re-points a moved root's placements only
+when the torrent's files are at the new folder (`placedFilesAt`); without them the torrent waits.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"AutoAnimeDownloader/src/internal/anilist"
@@ -420,6 +421,17 @@ func followMovedRoots(configs *files.Config, backend torrents.TorrentBackend) {
 		if !ok || r.Path == p.RootPath || !dirExists(r.Path) {
 			continue
 		}
+		// A name pointed at another folder isn't proof the files moved with it: re-pointed with no
+		// files there, the torrent would download everything again into the new folder. It waits for
+		// its own folder instead, like adoptMovedStaging.
+		if !placedFilesAt(p, r.Path) {
+			if _, logged := rootsWaiting.LoadOrStore(p.Hash, true); !logged {
+				logger.Logger.Warn().Str("hash", p.Hash).Str("download_folder", p.RootName).Str("path", p.RootPath).
+					Msg("The download folder this torrent was placed in is gone, and its files are not in the folder the name points at now; it waits for it to come back")
+			}
+			continue
+		}
+		rootsWaiting.Delete(p.Hash)
 		to := r.Path
 		if to == configs.CompletedAnimePath {
 			to = "" // the library stays implicit (decisions/136)
@@ -430,6 +442,40 @@ func followMovedRoots(configs *files.Config, backend torrents.TorrentBackend) {
 		}
 		logger.Logger.Info().Str("hash", p.Hash).Str("path", r.Path).Msg("Followed a moved download folder")
 	}
+}
+
+// rootsWaiting holds the hashes followMovedRoots already said are waiting, so the log says it once
+// per run, not once per pass.
+var rootsWaiting sync.Map
+
+// placedFilesAt reports whether a placement's files are under root, the folder its download root's
+// name points at now. A placement with no files yet, or still downloading into the incomplete
+// folder, has nothing in any root, so there is nothing to check and it may follow. Otherwise one
+// file the daemon wants, at its final name or (still downloading with part files) its ".part"
+// name, is enough. p comes resolved, its paths under its old RootPath.
+func placedFilesAt(p torrents.Placement, root string) bool {
+	if len(p.Files) == 0 || (p.IncompleteRoot != "" && !p.Completed) {
+		return true
+	}
+	for _, f := range p.Files {
+		if f.Skipped {
+			continue
+		}
+		rel, err := filepath.Rel(p.RootPath, f.Path)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		path := filepath.Join(root, rel)
+		if fileExists(path) || (p.PartFiles && !p.Completed && fileExists(path+".part")) {
+			return true
+		}
+	}
+	return false
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // adoptMovedStaging follows a moved incomplete folder (decisions/141): an unfinished staging

@@ -38,3 +38,6 @@ in hardlink mode are re-downloaded as described above, and `library_missing` say
 **Don't "fix" by:** returning the flag from `Ensure` instead of the latch (see above); replacing the markers with inode comparison (`syscall.Stat_t.Ino` does not exist on Windows); treating a marker-read error as "it vanished" (a permission failure would start wiping library records — that is why `readRootID` only swallows `IsNotExist`); cleaning `LibraryPaths` on every pass instead of only on a swap (that really would be the #29 violation); ~~dropping the marker rename in `MigrateSavePath`~~ (the migration was removed on 2026-08-24 — see #31; if it comes back, the marker rename becomes mandatory again for the same reason).
 
 **Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** the marker and the moved-library rule cover the library and the placements in it (no `RootPath`). A placement in another download root stores that root's absolute path; when the user moves such a root and edits `download_roots`, `followMovedRoots` re-points it by its `RootName` once its old folder is gone. There is no swap marker per root yet.
+
+**Amendment (see #154, 2026-11-27):** `followMovedRoots` re-points a moved root's placements only
+when the torrent's files are at the new folder (`placedFilesAt`); without them the torrent waits.

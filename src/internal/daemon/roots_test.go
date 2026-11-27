@@ -213,6 +213,46 @@ func TestFollowMovedRoots(t *testing.T) {
 	}
 }
 
+// A renamed download folder is followed only when the torrent's files are at the new path: with
+// nothing there, re-pointing it would download everything again into the wrong folder.
+func TestFollowMovedRoots_OnlyWithTheFilesThere(t *testing.T) {
+	lib := t.TempDir()
+	configs := directConfig(lib)
+	newer := t.TempDir()
+	configs.DownloadRoots = []files.DownloadRoot{{Name: "ssd", Path: newer}}
+	backend := torrents.NewFakeBackend()
+	backend.LibraryRoot = lib
+	old := filepath.Join(lib, "unplugged")
+	const hash = "3333333333333333333333333333333333333333"
+	if err := backend.SetPlacement(torrents.PlacementRequest{Hash: hash, SeriesDir: "Show", Kind: torrents.PlacementPack, RootPath: old, RootName: "ssd"}); err != nil {
+		t.Fatal(err)
+	}
+	placed, err := backend.PlaceFiles(hash, []string{"Show - 01 [1080p].mkv"})
+	if err != nil || len(placed.Files) != 1 {
+		t.Fatalf("place files: %+v, %v", placed.Files, err)
+	}
+	rel, err := filepath.Rel(old, placed.Files[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	followMovedRoots(configs, backend)
+	if p, _ := backend.Placement(hash); p.RootPath != old {
+		t.Fatalf("files not in the new folder: placement re-pointed to %q", p.RootPath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(newer, rel)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newer, rel), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	followMovedRoots(configs, backend)
+	if p, _ := backend.Placement(hash); p.RootPath != newer {
+		t.Errorf("files moved with the folder: placement at %q, want %q", p.RootPath, newer)
+	}
+}
+
 // A torrent added again keeps the root of the placement it already has (register keeps the first,
 // decisions/136): the budget counts it there, whatever the order says.
 func TestPlacedOrderKeepsTheTorrentsRoot(t *testing.T) {

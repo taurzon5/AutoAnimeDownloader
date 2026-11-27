@@ -87,7 +87,13 @@ Pinned by:
 - **A moved root is followed by name.** A placement outside the library stores its root's absolute
   path, unlike one in the library. When the user moves such a root and edits `download_roots`, the
   pass re-points its placements by `RootName` once the old folder is gone and the new one is there
-  (`followMovedRoots`). A root that is merely gone is left alone: its drive may be unmounted.
+  (`followMovedRoots`). A root that is merely gone is left alone: its drive may be unmounted. The
+  name is followed only when the torrent's files are at the new folder (`placedFilesAt`: one wanted
+  file at its final or `.part` name; a placement with no files yet, or still staging, has nothing to
+  check): two rows edited in place so `ssd` points at another existing folder, then the old drive
+  unplugged, used to re-add every torrent there and download it all again. Without the files it
+  waits for its folder, as `adoptMovedStaging` does, and says so once per run (`rootsWaiting`;
+  `adoptMovedStaging` says it every pass) (2026-11-27, `TestFollowMovedRoots_OnlyWithTheFilesThere`).
   qBittorrent keeps the save path it was given, so a root moved under qBittorrent is moved there
   too.
 - **A root must exist, always.** Validation requires it, `availableRoots` leaves out one that is
@@ -131,6 +137,8 @@ library that is not one of the listed roots is no longer watched by it. Naming t
 needs the pass to say which root refused, which it doesn't today.
 
 **Don't "fix" by:**
+- Following a moved root by name alone, without looking for the files at the new path: a renamed
+  row would download every torrent placed on it again.
 - Storing the library as a root path in new placements: a moved library would strand them.
 - Choosing the root outside the budget: a pack's reservation and its add could pick different roots.
 - Counting each root's free space on its own when roots share a drive.

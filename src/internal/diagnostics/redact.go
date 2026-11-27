@@ -36,7 +36,7 @@ var keyClasses = map[string]keyClass{
 	// Nyaa URLs: their query is the search term.
 	"url": title,
 	// Library paths end in the anime's folder and file names.
-	"path": title, "folder_path": title, "source": title, "destination": title, "series_dir": title,
+	"path": title, "folder_path": title, "source": title, "destination": title, "series_dir": title, "download_folder": title,
 	"anilist_response": title,
 	// An AniList/MAL id is a title by lookup.
 	"anime_id": title, "media_id": title, "mal_id": title, "owner_anime_id": title, "nyaa_id": title,
