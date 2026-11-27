@@ -20,9 +20,10 @@ which is exactly SubsPlease's pattern (`[SubsPlease] Anime - 07 (1080p) [HASH].m
 H264 anywhere). With `codec` before `fansub` in the default order, turning the raw criterion on
 would make every untagged release lose to any tagged x265: the **opposite** of what the codec list
 configures. That is why `codecCompare` returns a tie when either of the two names has no tag,
-leaving the next criterion to decide. It is the same rule `sizeCompare`/`resCompare` already apply
-for missing data, and the same as `filterBySize` (`nyaa.go`): data that could not be read is not a
-reason to punish the release.
+leaving the next criterion to decide. It is the same rule `sizeCompare` applies (it compares sizes
+only between two releases of the same known resolution), and the same as `filterBySize`
+(`nyaa.go`): data that could not be read is not a reason to punish the release. A missing
+**resolution** is the exception: `resCompare` ranks a release that shows none after one that does.
 
 **Canonical tokens.** `ExtractCodec` only returns `HEVC`, `AV1`, `H.264` and `XviD`
 (`reCodecPatterns` maps `x265`→`HEVC`, and `x264` and `AVC`→`H.264`). The `"x265"` and `"x264"`
