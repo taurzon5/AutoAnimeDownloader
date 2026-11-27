@@ -26,7 +26,13 @@ slug() {
 	printf '%s' "${s%-}"
 }
 
-entries() { find "$DIR" -maxdepth 1 -name '[0-9][0-9][0-9]-*.md' -printf '%f\n' | sort; }
+# A glob, not find -printf (GNU only). An empty folder lists nothing instead of the raw pattern.
+entries() {
+	local f
+	for f in "$DIR"/[0-9][0-9][0-9]-*.md; do
+		[ -e "$f" ] && printf '%s\n' "${f##*/}"
+	done | sort
+}
 num_of() { echo "$((10#${1:0:3}))"; }
 title_of() { head -1 "$DIR/$1" | sed -E 's/^# [0-9]+\. //'; }
 file_of() {
@@ -62,7 +68,7 @@ EOF
 case "${1:-}" in
 next)
 	last="$(entries | tail -1)"
-	echo "$(($(num_of "$last") + 1))"
+	if [ -z "$last" ]; then echo 1; else echo "$(($(num_of "$last") + 1))"; fi
 	;;
 new)
 	title="${2:?usage: decision.sh new \"<title>\"}"
@@ -78,8 +84,9 @@ refs)
 	n="${2:?usage: decision.sh refs <N>}"
 	p="$(printf '%03d' "$n")"
 	cd "$ROOT"
-	# From code and other docs: decisions/NNN; between entries: the filename, or a bare #N.
-	git grep -nE "decisions/$p\b" -- ':!docs/agents/decisions/index.md' || true
+	# From code and other docs: decisions/NNN, or the "decisions #N" some older notes use; between
+	# entries: the filename, or a bare #N.
+	git grep -nE "decisions/$p\b|decisions #$n\b" -- ':!docs/agents/decisions/index.md' || true
 	git grep -nE "\]\($p-|#$n\b" -- 'docs/agents/decisions/' ':!docs/agents/decisions/index.md' \
 		":!docs/agents/decisions/$p-*" || true
 	;;
@@ -114,6 +121,9 @@ check)
 		n="$(num_of "$f")"
 		head -1 "$DIR/$f" | grep -qE "^# $n\. " || { echo "$f: first line is not '# $n. <title>'" >&2; bad=1; }
 	done < <(entries)
+	# Two worktrees can each run `new` and get the same number; file_of would then print both.
+	dup="$(entries | cut -c1-3 | uniq -d)"
+	if [ -n "$dup" ]; then echo "two entries share a number: $(echo "$dup" | tr '\n' ' ')" >&2; bad=1; fi
 	diff -q <(render_index) "$INDEX" >/dev/null || { echo "index.md is stale: run decision.sh index" >&2; bad=1; }
 	# Every link to a decision file, anywhere in the repo, must resolve.
 	cd "$ROOT"
@@ -121,8 +131,9 @@ check)
 		dir="$(dirname "$src")"
 		[ -e "$dir/$target" ] || { echo "$src: broken link $target" >&2; bad=1; }
 	done < <(git ls-files -co --exclude-standard -- '*.md' | grep -v node_modules | while IFS= read -r f; do
-		# Inline code is an example, not a link: drop it before looking.
-		sed 's/`[^`]*`//g' "$f" | grep -oE '\]\([^)#[:space:]]*[0-9]{3}-[a-z0-9-]+\.md' | sed -E "s|^\]\(|$f:|"
+		# Inline code is an example, not a link: drop it before looking. A file with no decision link
+		# makes grep exit 1; under pipefail that ended the whole loop, so no later file was read.
+		sed 's/`[^`]*`//g' "$f" | { grep -oE '\]\([^)#[:space:]]*[0-9]{3}-[a-z0-9-]+\.md' || true; } | sed -E "s|^\]\(|$f:|"
 	done)
 	[ "$bad" = 0 ] && echo "ok: $(entries | wc -l) entries, index current, links resolve"
 	exit "$bad"
