@@ -42,6 +42,8 @@ minutes, with a peak of 11 req/min in a bucket of 30. The only two failures were
 account of empty `customLists`. 2 tabs + 100 orphans + 1 account = 7.8/min (measured). 4 tabs +
 200 orphans + 2 accounts ≈ 50/min, and then the gate starts refusing for real.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** add, per account with a download custom list, ceil(N/500) every 5 minutes for the membership and ceil(K/50) per minute for the media of its K anime outside the download statuses (cached 60 seconds per id); tabs share both caches.
+
 **Don't "fix" by:** raising `frontendListTTL` thinking a tab is the problem — the measurement says
 it is not. If the budget tightens again, the target is putting a TTL on `GetAnimeInfoByIDs`, the
 only path with no cache, and then looking at `customListsEmptyTTL`.

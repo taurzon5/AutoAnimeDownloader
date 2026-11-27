@@ -36,6 +36,8 @@ That is why `mergeFailed` skips the refresh (`handleAnimes`, `endpoint_animes.go
 
 `errors[].validation` only exists on mutation; the app is read-only and ignores it.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** an account with a download custom list adds ceil(N/500) requests per 5 minutes (`GetCustomListMembers`) plus ceil(K/50) per pass for the media of the K anime outside the download statuses (cached 60 seconds per id); none for an account without one.
+
 **Don't "fix" by:**
 - Optimizing the daemon pass "because it talks to AniList" — it costs 0.3 req/min; the gain is zero and the risk is not.
 - Making `refreshOrphanAnimes` run even with the list failed, "so the screen doesn't go stale" — that is the feedback loop that produced the original 429.

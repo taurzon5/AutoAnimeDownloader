@@ -94,6 +94,10 @@ func resolveAnimeDetails(fm FileManagerInterface, animeId int, configs *files.Co
 	if ml == nil {
 		return nil, fmt.Errorf("anime %d does not exist on AniList", animeId)
 	}
+	if ml.Status == anilist.MediaListStatusCompleted && completedCustomListMember(configs, animeId) {
+		// The pass downloads it whole (decisions/162); the debug run must select the same.
+		ml.Progress = 0
+	}
 
 	title := ""
 	if ml.Media.Title.English != nil && *ml.Media.Title.English != "" {

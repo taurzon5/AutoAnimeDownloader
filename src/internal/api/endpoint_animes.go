@@ -245,7 +245,7 @@ func handleAnimes(server *Server) http.HandlerFunc {
 		fromCache := false
 		for _, username := range config.AnilistUsernames {
 			// nil (not an empty list) means the fetch failed — see fetchAniListEntries.
-			list, cached := fetchAniListEntries(username, config.DownloadStatuses, config.DownloadMediaStatuses)
+			list, cached := fetchAniListEntries(username, config.DownloadStatuses, config.DownloadMediaStatuses, config.CustomListsOf(username))
 			if list == nil {
 				failedAccounts = append(failedAccounts, anilist.AccountSourceAniList+":"+username)
 				continue
@@ -286,10 +286,10 @@ func handleAnimes(server *Server) http.HandlerFunc {
 		if len(failedAccounts) > 0 {
 			logger.Logger.Warn().Msg("Skipping orphan refresh: AniList list fetch failed, coverage unknown")
 		} else if fromCache {
-			// Coverage is known (the list came whole, from the cache), but AniList is down: every uncovered
-			// anime would become a GetAnimeInfoByIDs doomed to fail, on every 30s poll per tab. It's the
-			// same burst as decisions/065, now without even a chance of working.
-			logger.Logger.Warn().Msg("Skipping orphan refresh: the AniList list came from the local cache")
+			// The list came from the cache (AniList is down: every uncovered anime would become a
+			// GetAnimeInfoByIDs doomed to fail, on every 30s poll per tab, the burst of decisions/065), or
+			// an account's download custom lists couldn't be read (coverage partial, decisions/162).
+			logger.Logger.Warn().Msg("Skipping orphan refresh: the AniList list came from the local cache or a download custom list could not be read")
 		} else {
 			refreshOrphanAnimes(server.FileManager, animeMap, covered, config.ExcludedLists, config.DownloadStatuses, config.AnilistUsernames, config.MALUsernames, standaloneSet)
 		}
@@ -532,10 +532,11 @@ func computeAnimeFields(title anilist.Title, status anilist.MediaStatus, episode
 // fetchAniListEntries returns one account's AniList entries, filtered by both list status
 // (server-side) and media status (here), with customLists overlaid. It returns nil — not an empty
 // list — when the fetch fails, so the caller can tell "no anime covered" from "coverage unknown";
-// the orphan refresh depends on that. The second return says the list came from the local cache.
+// the orphan refresh depends on that. The second return says the list came from the local cache,
+// or that the account's download custom lists couldn't be read (coverage partial, decisions/162).
 // It's not a logging detail: it's what keeps the orphan refresh from running against an AniList
 // that doesn't answer — see the call site.
-func fetchAniListEntries(username string, statuses []string, mediaStatuses []string) ([]anilist.MediaList, bool) {
+func fetchAniListEntries(username string, statuses []string, mediaStatuses []string, customLists []string) ([]anilist.MediaList, bool) {
 	// Fetch customLists via cached minimal query before the complex query that may null it out.
 	clMap := anilist.GetCustomListsMap(username, statuses, anilist.PriorityDisposable)
 
@@ -557,7 +558,61 @@ func fetchAniListEntries(username string, statuses []string, mediaStatuses []str
 		}
 		filtered = append(filtered, *ml)
 	}
-	return filtered, fromCache
+	extra, failed, extraCached := customListEntries(username, statuses, mediaStatuses, customLists)
+	if failed {
+		// Coverage unknown: the account stays on screen with its main list, marked as from the cache so
+		// the orphan refresh stays off (decisions/072, decisions/162).
+		return filtered, true
+	}
+	return append(filtered, extra...), fromCache || extraCached
+}
+
+// customListEntries is the pass's customListExtras for the Status page (decisions/162): the
+// entries of the account's download custom lists in the list statuses the download statuses leave
+// out, so they show and count as covered. failed says the coverage is unknown (the membership or
+// one of the anime could not be read), which keeps the orphan refresh off like a failed list;
+// fromCache says a cached read stood in.
+func customListEntries(username string, statuses, mediaStatuses, lists []string) (entries []anilist.MediaList, failed, fromCache bool) {
+	if len(lists) == 0 {
+		return nil, false, false
+	}
+	got, err := anilist.GetCustomListMembers(username, lists, anilist.PriorityDisposable)
+	fromCache = errors.Is(err, anilist.ErrFromCache)
+	if err != nil && !fromCache {
+		return nil, true, false
+	}
+	byMedia := map[int]anilist.CustomListMember{}
+	var ids []int
+	for _, m := range got {
+		if _, dup := byMedia[m.MediaID]; dup || slices.Contains(statuses, string(m.Status)) {
+			continue
+		}
+		byMedia[m.MediaID] = m
+		ids = append(ids, m.MediaID)
+	}
+	if len(ids) == 0 {
+		return nil, false, fromCache
+	}
+	media, err := anilist.GetMediaByIDs(ids, anilist.PriorityDisposable)
+	if err != nil {
+		fromCache = true
+	}
+	for _, id := range ids {
+		found, fetched := media[id]
+		if !fetched {
+			return nil, true, false
+		}
+		if found == nil {
+			continue // AniList doesn't know this id
+		}
+		ml := *found
+		m := byMedia[id]
+		ml.Id, ml.Status, ml.Progress, ml.CustomLists = m.EntryID, m.Status, m.Progress, m.AsCustomLists()
+		if anilist.MediaStatusAllowed(mediaStatuses, ml.Media.Status) {
+			entries = append(entries, ml)
+		}
+	}
+	return entries, false, fromCache
 }
 
 // fetchMALEntries is fetchAniListEntries for a MyAnimeList account, with the same contract: nil

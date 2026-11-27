@@ -171,15 +171,20 @@ type Config struct {
 	// CheckForUpdates lets the daemon ask GitHub once a day for the latest release (the update badge
 	// and update_available). false = no request ever leaves; whoever installs from a container image
 	// already hears about updates from there.
-	CheckForUpdates        bool     `json:"check_for_updates"`
-	DeleteWatchedEpisodes  bool     `json:"delete_watched_episodes"`
-	WatchedEpisodesToKeep  int      `json:"watched_episodes_to_keep"`
-	ExcludedList           string   `json:"excluded_list,omitempty"`
-	ExcludedLists          []string `json:"excluded_lists"`
-	RenameFilesForJellyfin bool     `json:"rename_files_for_jellyfin"`
-	DownloadStatuses       []string `json:"download_statuses"`
-	DownloadMediaStatuses  []string `json:"download_media_statuses"`
-	DeleteStatuses         []string `json:"delete_statuses"`
+	CheckForUpdates       bool     `json:"check_for_updates"`
+	DeleteWatchedEpisodes bool     `json:"delete_watched_episodes"`
+	WatchedEpisodesToKeep int      `json:"watched_episodes_to_keep"`
+	ExcludedList          string   `json:"excluded_list,omitempty"`
+	ExcludedLists         []string `json:"excluded_lists"`
+	// DownloadCustomLists makes every anime in these AniList custom lists download, whatever its list
+	// status: Planning, Paused, Completed and Dropped too (the user's choice, 2026-11-26). An
+	// excluded list still wins, and being in the list keeps the anime out of status deletion.
+	// AniList only: MyAnimeList has no custom lists (decisions/162).
+	DownloadCustomLists    []CustomListSource `json:"download_custom_lists"`
+	RenameFilesForJellyfin bool               `json:"rename_files_for_jellyfin"`
+	DownloadStatuses       []string           `json:"download_statuses"`
+	DownloadMediaStatuses  []string           `json:"download_media_statuses"`
+	DeleteStatuses         []string           `json:"delete_statuses"`
 	// AnimeIDsAreMediaIDs marks that daemon.MigrateAnimeIDsToMedia already converted the saved
 	// AnimeIDs from ENTRY id (MediaList, per account) to MEDIA id (see decisions/043). The default
 	// is false on purpose: a config.json older than this field deserializes on top of the default and
@@ -315,6 +320,26 @@ const (
 // GET /config returns. A PUT that sends it back keeps the saved value (KeepSecrets), so the web UI
 // and `config set` never need the secret itself to save the rest of the config.
 const SecretPlaceholder = "__saved__"
+
+// CustomListSource is one AniList custom list whose anime download: the account as
+// "anilist:<username>" (the key the webhook sources and the dashboard filter use) and the list's
+// name. The name belongs to one account, so a bare name would match a list of the same name on
+// every account.
+type CustomListSource struct {
+	Account    string `json:"account"`
+	CustomList string `json:"custom_list"`
+}
+
+// CustomListsOf returns the names of the custom lists included for an AniList username.
+func (c *Config) CustomListsOf(username string) []string {
+	var lists []string
+	for _, s := range c.DownloadCustomLists {
+		if s.Account == "anilist:"+username && strings.TrimSpace(s.CustomList) != "" {
+			lists = append(lists, strings.TrimSpace(s.CustomList))
+		}
+	}
+	return lists
+}
 
 // IsDirectMode reports whether torrents are written straight to their library path.
 func (c *Config) IsDirectMode() bool {
@@ -654,6 +679,7 @@ func DefaultConfig() *Config {
 		// marked watched. Two forgive "I marked it by mistake" and "I wanted to rewatch".
 		WatchedEpisodesToKeep:              2,
 		ExcludedLists:                      []string{},
+		DownloadCustomLists:                []CustomListSource{},
 		DownloadStatuses:                   []string{"CURRENT", "REPEATING"},
 		DownloadMediaStatuses:              []string{"RELEASING", "FINISHED"},
 		DeleteStatuses:                     []string{},
@@ -774,6 +800,9 @@ func (m *FileManager) LoadConfigs() (*Config, error) {
 		}
 	}
 
+	if config.DownloadCustomLists == nil {
+		config.DownloadCustomLists = []CustomListSource{}
+	}
 	if config.ExcludedLists == nil {
 		config.ExcludedLists = []string{}
 	}

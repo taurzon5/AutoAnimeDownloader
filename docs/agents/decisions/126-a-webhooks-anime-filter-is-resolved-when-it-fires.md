@@ -41,6 +41,8 @@ The trade-offs, accepted:
   sources like `bdremux`) already exists in the same file.
 - The Test button (`FireTestWebhook`) ignores the filter: it is a delivery check.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** the account's download custom list counts too: its members enter the source map before the media-status cut, as the download-status list does.
+
 **Don't "fix" by:**
 - Storing the owners on `EpisodeStruct`: old records, and the adoption/manual/API paths that create
   records without a list in hand, would have no owner.

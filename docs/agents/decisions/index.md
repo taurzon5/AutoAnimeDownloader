@@ -173,3 +173,4 @@ do not edit by hand.
 - [**#159** — Direct is the default library mode, and an empty mode becomes direct only where config comes in](159-direct-is-the-default-library-mode-and-an-empty.md)
 - [**#160** — A manual episode download ignores the size and seeder limits, and only the disk guard applies](160-a-manual-episode-download-ignores-the-size-and.md)
 - [**#161** — Priorities and notifications save only their part, merged into the saved one, and skip the full save's checks](161-priorities-and-notifications-save-only-their-part.md)
+- [**#162** — A download custom list brings its anime whatever their list status, read from MediaListCollection, and vetoes status deletion](162-a-download-custom-list-brings-its-anime-whatever.md)

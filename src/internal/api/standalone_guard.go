@@ -95,7 +95,7 @@ func newStandaloneGuard(fm FileManagerInterface, config *files.Config) (standalo
 		// right behavior here: the front is best-effort and the POST refuses again with the next call's
 		// snapshot. The second return (came from the cache) changes nothing here: the guard wants to know
 		// what the account tracks, and the local cache's answer is better than none.
-		tracked, _ := fetchAniListEntries(username, config.DownloadStatuses, config.DownloadMediaStatuses)
+		tracked, _ := fetchAniListEntries(username, config.DownloadStatuses, config.DownloadMediaStatuses, config.CustomListsOf(username))
 		for _, ml := range tracked {
 			guard.tracked[ml.Media.Id] = true
 		}

@@ -121,4 +121,31 @@ describe('Config — layout', () => {
     await open({}, /^Torrent Client/)
     expect(screen.queryByTestId('client-restart-line')).toBeNull()
   })
+  it('adds a download custom list for an AniList account and saves it', async () => {
+    await open({ anilist_usernames: ['me'] }, /^Lists/)
+    await fireEvent.click(screen.getByRole('button', { name: '+ Add a custom list' }))
+    await flush()
+    await fireEvent.input(byId('custom_list_name_0') as HTMLInputElement, { target: { value: 'To download' } })
+    await flush()
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      download_custom_lists: [{ account: 'anilist:me', custom_list: 'To download' }],
+    }))
+  })
+
+  it('a custom list without a name blocks Save', async () => {
+    await open({ anilist_usernames: ['me'] }, /^Lists/)
+    await fireEvent.click(screen.getByRole('button', { name: '+ Add a custom list' }))
+    await flush()
+    await fireEvent.submit(document.querySelector('form') as HTMLFormElement)
+    await flush()
+    expect(client.updateConfig).not.toHaveBeenCalled()
+  })
+
+  it('with no AniList account it says to add one instead of offering a custom list', async () => {
+    await open({}, /^Lists/)
+    expect(screen.queryByRole('button', { name: '+ Add a custom list' })).toBeNull()
+    expect(screen.getByText(/add an anilist username above first/i)).toBeTruthy()
+  })
 })

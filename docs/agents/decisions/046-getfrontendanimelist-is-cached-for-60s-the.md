@@ -10,6 +10,8 @@ The 60s TTL is safe because this list only changes when the user edits AniList; 
 
 **A copy, not the stored slice:** `fetchAniListEntries` overwrites `ml.CustomLists` on the entries it receives. Returning the cache slice would make two concurrent `/api/v1/animes` requests write the same memory (real race, caught by `-race`) and leak one caller's overlay into the next.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** an account with a download custom list adds `GetCustomListMembers` (ceil(N/500) requests, cached 5 minutes) and `GetMediaByIDs` for its anime outside the download statuses (cached 60 seconds per id): per account, not per tab.
+
 **Don't "fix" by:**
 - Caching `GetAllCurrentAnime` too — that is the daemon cycle, which runs every 10 min and **needs** fresh data to decide download/deletion.
 - Increasing the frontend poll interval instead of the cache — does not solve F5, multiple tabs, or multiple devices on the LAN.

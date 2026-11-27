@@ -194,6 +194,16 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
+		// A download custom list names its AniList account: a bare list name would match a list of
+		// the same name on every account.
+		for _, src := range config.DownloadCustomLists {
+			user, ok := strings.CutPrefix(src.Account, "anilist:")
+			if !ok || strings.TrimSpace(user) == "" || strings.TrimSpace(src.CustomList) == "" {
+				JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Each download custom list needs an AniList account ("anilist:<username>") and a custom_list name`)
+				return
+			}
+		}
+
 		if config.MinFreeDiskGB < 0 {
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", "Min free disk space must be non-negative")
 			return

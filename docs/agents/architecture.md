@@ -489,6 +489,15 @@ after the per-account fetch and before the dedup) and `fetchAniListEntries` (`ap
 the frontend listing). **Neither filter hides an anime that already has a downloaded episode**,
 whatever its current status — see `endpoint_animes.go` above.
 
+**A download custom list bypasses the list-status filter, not the media-status one.** For an AniList
+account with `download_custom_lists`, membership comes from `anilist.GetCustomListMembers`
+(`MediaListCollection` in chunks of 500, ids, status and progress only, cached 5 minutes), and the
+anime in a status outside `download_statuses` get their media from `GetMediaByIDs`: `customListExtras`
+in the pass, `customListEntries` for the frontend listing and the standalone guard (through
+`fetchAniListEntries`; a failed read there makes coverage unknown). Being in the list also vetoes
+status deletion (`withoutCustomListed`). Not `status_in` over the other statuses: that is a full
+paginated fetch per pass and per poll ([decisions/162](decisions/162-a-download-custom-list-brings-its-anime-whatever.md)).
+
 **Every query declares a `Priority`, and there is no default on purpose**: a new query does not
 compile until someone decides the criticality. The budget gate (`health.go`) refuses
 `PriorityDisposable` with `ErrBudgetLow` when AniList quota is low — nothing goes out, and the

@@ -70,3 +70,5 @@ link (the offset keeps working with AniList down) **and** fetches it once more t
 unlike episode counts and prequel links, are not immutable: AniList edits them, and the full-TTL
 restore can keep a stale one for a while. Direct mode does not depend on that freshness — a series
 keeps the folder its first torrent got ([#138](138-direct-mode-numbers-seasons-along-the-tv-prequel.md)).
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** "from the cache" also covers an account whose download custom lists couldn't be read: its coverage is partial, not whole, and the orphan refresh stays off for that reason too.
+

@@ -71,8 +71,8 @@ and the 400 count. `budgetAllows` is the gate, at the top of `sendAnilistRequest
 passes; disposable passes if the read is expired (60s) or if `remaining >= budgetFloor` (10 of
 30). The refusal is `ErrBudgetLow` immediately — it never waits.
 
-`Priority` is a **required parameter** of `sendAnilistRequest` and rises to the four mixed-caller
-public functions (`GetCustomListsMap`, `GetAnimeInfo`, `GetMediaByID`, `GetMediaByIDs`), which the
+`Priority` is a **required parameter** of `sendAnilistRequest` and rises to the five mixed-caller
+public functions (`GetCustomListsMap`, `GetCustomListMembers`, `GetAnimeInfo`, `GetMediaByID`, `GetMediaByIDs`), which the
 daemon and the frontend call with opposite criticalities. The others pin theirs in the body. There
 is no implicit default, and that is the feature: a new query does not compile without someone
 deciding. The discarded alternative was a wrapper with `sendAnilistRequest` becoming "normal
@@ -80,8 +80,8 @@ priority" — smaller diff, but it creates exactly #69's inert-config class.
 
 **The dividing line is not "daemon vs. frontend", it is "repeats on its own vs. someone is
 waiting".** Disposable is recurring traffic with a fallback: the `/animes` poll
-(`GetFrontendAnimeList`, `GetCustomListsMap`, `GetAnimeInfoByIDs`, and the `GetMediaByIDs` of
-`appendStandaloneEntries` and `refreshStandaloneOrphans`) and the per-keystroke search
+(`GetFrontendAnimeList`, `GetCustomListsMap`, `GetAnimeInfoByIDs`, `GetCustomListMembers`, and the
+`GetMediaByIDs` of `appendStandaloneEntries`, `refreshStandaloneOrphans` and `customListEntries`) and the per-keystroke search
 (`SearchMedia`). Critical is the daemon pass **and** every click action — opening the detail
 screen, adding a standalone, downloading an episode by hand: they are rare requests and expensive
 to refuse, and sacrificing them returns no budget. A refused `GetFrontendAnimeList` serves the

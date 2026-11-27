@@ -56,6 +56,8 @@ an `ActionMenu` in `multiple` mode on every width, whatever the number of accoun
 chips were tried and took too much of the toolbar). The selection lives in the URL as repeated
 `account=<source>:<username>`.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** membership also counts an anime in the account's download custom list, whatever its list status. A Completed member enters the pass with progress 0, and that 0 wins the dedupe on purpose: the list asks for the whole anime.
+
 **Don't "fix" by:**
 - Filtering by membership only: "Unwatched" would answer for an account the user didn't pick.
 - Replacing the top-level pair with one account's progress on the server, or adding `?account=`:

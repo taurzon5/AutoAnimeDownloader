@@ -29,6 +29,8 @@ about the blacklist is about `excluded_lists`, and still holds. The app's own bl
 is not a block reason either, but the add asks first: the search marks the anime `blacklisted` and
 the `POST` answers 409 `BLACKLISTED` until the body carries `unblacklist`, which lifts it.
 
+**Amendment (2026-11-26, see [#162](162-a-download-custom-list-brings-its-anime-whatever.md)):** "tracked" also covers an anime in one of the account's download custom lists, whatever its list status: the standalone guard reads it through `fetchAniListEntries`.
+
 **Don't "fix" by:**
 - Appending standalones before `DedupeByMedia` "because the merge is one" (see (a)).
 - Swapping `tracked` for "an AniList entry exists" to avoid depending on `fetchAniListEntries` — that breaks the `PLANNING` case, which is the feature's use case.

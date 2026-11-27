@@ -280,6 +280,7 @@
     delete_watched_episodes: true,
     watched_episodes_to_keep: 2,
     excluded_lists: [],
+    download_custom_lists: [],
     rename_files_for_jellyfin: false,
     library_mode: "direct",
     auto_delete_downloads: false,
@@ -381,6 +382,16 @@
     config.download_roots = roots;
   }
   $: anyRootInShoko = shokoRoots.some((r) => r.in_shoko);
+
+  // Download custom lists: an AniList account and one of its custom lists (decisions in the
+  // Config.DownloadCustomLists comment). A new row takes the first account.
+  function addCustomList() {
+    const first = config.anilist_usernames?.[0] ?? "";
+    config.download_custom_lists = [...(config.download_custom_lists ?? []), { account: first ? `anilist:${first}` : "", custom_list: "" }];
+  }
+  function removeCustomList(index: number) {
+    config.download_custom_lists = (config.download_custom_lists ?? []).filter((_, k) => k !== index);
+  }
 
   function addShokoPathMapping() {
     config.shoko_path_map = [...(config.shoko_path_map ?? []), { app: "", shoko: "" }];
@@ -582,6 +593,7 @@
       if (!config.notifications) config.notifications = { webhooks: [], batch_window_seconds: 0 };
       if (!Array.isArray(config.qbittorrent_path_map)) config.qbittorrent_path_map = [];
       if (!Array.isArray(config.shoko_path_map)) config.shoko_path_map = [];
+      if (!Array.isArray(config.download_custom_lists)) config.download_custom_lists = [];
       if (!Array.isArray(config.notifications.webhooks)) config.notifications.webhooks = [];
       findLibraryRow();
       // Before the snapshot: the row may carry the path with a trailing slash the field didn't have,
@@ -709,6 +721,13 @@
       group: "client" as GroupId,
       ok: config.torrent_client !== "qbittorrent" || !!config.qbittorrent_url?.trim(),
       message: m.config_val_qbittorrent_url,
+    },
+    // A download custom list needs one of the AniList accounts above and a list name; the server
+    // refuses a bare name.
+    {
+      group: "anilist" as GroupId,
+      ok: (config.download_custom_lists ?? []).every((s) => !!s.custom_list?.trim() && (config.anilist_usernames ?? []).some((u) => s.account === `anilist:${u}`)),
+      message: m.config_val_custom_list,
     },
     // The server refuses Use Shoko without a sign-in; say it here, in the switch's words, first.
     {
@@ -940,6 +959,34 @@
                 placeholder={(T && T.chipsPlaceholder) || ""}
                 removeLabel={(item) => m.config_chips_remove({ item })}
               />
+            </div>
+
+            <div class="space-y-3 p-4.5" data-testid="download-custom-lists">
+              <div class="space-y-1">
+                <p class="text-[14.5px] font-bold text-heading">{$locale && m.config_label_download_custom_lists()}</p>
+                <p class="text-caption text-subtle">{$locale && m.config_hint_download_custom_lists()}</p>
+              </div>
+              {#each config.download_custom_lists ?? [] as source, k (k)}
+                <div class="flex flex-col gap-2 md:flex-row md:items-end">
+                  <div class="flex-1 space-y-1.5">
+                    <label for={`custom_list_account_${k}`} class="text-label text-subtle">{$locale && m.config_custom_list_account()}</label>
+                    <select id={`custom_list_account_${k}`} class="w-full rounded-field border border-default bg-control px-3 py-2 text-copy text-body" bind:value={source.account}>
+                      {#each config.anilist_usernames ?? [] as user (user)}
+                        <option value={`anilist:${user}`}>{user}</option>
+                      {/each}
+                    </select>
+                  </div>
+                  <div class="flex-1">
+                    <Input id={`custom_list_name_${k}`} label={$locale && m.config_custom_list_name()} bind:value={source.custom_list} placeholder="To download" />
+                  </div>
+                  <Button variant="ghost" ariaLabel={$locale && m.config_custom_list_remove()} on:click={() => removeCustomList(k)}>✕</Button>
+                </div>
+              {/each}
+              {#if (config.anilist_usernames ?? []).length > 0}
+                <Button variant="ghost" on:click={addCustomList}>{$locale && m.config_custom_list_add()}</Button>
+              {:else}
+                <p class="text-caption text-subtle">{$locale && m.config_custom_list_needs_account()}</p>
+              {/if}
             </div>
 
             <fieldset class="p-4.5">

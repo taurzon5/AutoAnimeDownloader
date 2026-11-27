@@ -237,6 +237,8 @@ func MockAniListDo(fn func(*http.Request) (*http.Response, error)) (restore func
 
 func clearCaches() {
 	customListsCache.clear()
+	customListMembersCache.clear()
+	customListMembersFailed.clear()
 	frontendListCache.clear()
 	passListCache.clear()
 	mediaEntryCache.clear()

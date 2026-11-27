@@ -289,7 +289,8 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	// Status deletion rule: EVERY account that has the anime must have it in some delete status (not
 	// necessarily the same one). The download rule is the opposite — ONE account is enough —, and it's
 	// already applied in searchAnilist through the union of the lists.
-	deletableMedia := deletableMediaIDs(configs, listStatuses, onDisk)
+	customListed, customListsKnown := customListedMedia(configs)
+	deletableMedia := withoutCustomListed(deletableMediaIDs(configs, listStatuses, onDisk), customListed, customListsKnown)
 
 	var keysToDelete []files.EpisodeKey
 
@@ -375,6 +376,8 @@ outer:
 		newEpisodes:     newEpisodes,
 		watching:        watching,
 		blacklisted:     blacklisted,
+		customListed:    customListed,
+		customListsGone: !customListsKnown,
 	})
 
 	state.SetLastCheck(time.Now())
@@ -678,6 +681,120 @@ func logAccount(e *zerolog.Event, account string) *zerolog.Event {
 	return e.Str("username", account)
 }
 
+// customListExtras returns an AniList account's entries that are in one of its download custom
+// lists and in a list status the download statuses leave out (decisions/162): membership from
+// GetCustomListMembers, the media from GetMediaByIDs (batched, cached per id), the media-status
+// filter applied. members is every media id in those lists, before the media-status cut, for the
+// webhook source filter. An excluded list still wins, per episode (animeIsInExcludedList).
+func customListExtras(username string, configs *files.Config) (extras []anilist.MediaList, members []int) {
+	lists := configs.CustomListsOf(username)
+	if len(lists) == 0 {
+		return nil, nil
+	}
+	got, err := anilist.GetCustomListMembers(username, lists, anilist.PriorityCritical)
+	if err != nil && !errors.Is(err, anilist.ErrFromCache) {
+		logger.Logger.Warn().Err(err).Str("username", username).Msg("Failed to read the download custom lists; the rest of the pass goes on")
+		return nil, nil
+	}
+	byMedia := map[int]anilist.CustomListMember{}
+	var ids []int
+	for _, m := range got {
+		members = append(members, m.MediaID)
+		// In a download status, the main fetch has it already.
+		if _, dup := byMedia[m.MediaID]; dup || slices.Contains(configs.DownloadStatuses, string(m.Status)) {
+			continue
+		}
+		byMedia[m.MediaID] = m
+		ids = append(ids, m.MediaID)
+	}
+	if len(ids) == 0 {
+		return nil, members
+	}
+	media, err := anilist.GetMediaByIDs(ids, anilist.PriorityCritical)
+	if err != nil {
+		logger.Logger.Warn().Err(err).Str("username", username).Msg("Failed to fetch some anime of the download custom lists")
+	}
+	for _, id := range ids {
+		found := media[id]
+		if found == nil {
+			continue // unknown to AniList, or not fetched this time
+		}
+		ml := *found
+		m := byMedia[id]
+		ml.Id, ml.Status, ml.Progress, ml.CustomLists = m.EntryID, m.Status, m.Progress, m.AsCustomLists()
+		// A Completed entry is in the list to be downloaded whole: its progress (the total) would read
+		// every episode as watched. Its 0 wins the dedupe on purpose (decisions/162).
+		if m.Status == anilist.MediaListStatusCompleted {
+			ml.Progress = 0
+		}
+		if anilist.MediaStatusAllowed(configs.DownloadMediaStatuses, ml.Media.Status) {
+			extras = append(extras, ml)
+		}
+	}
+	return extras, members
+}
+
+// customListedMedia is every media id in a download custom list of any account, and whether every
+// such account's lists could be read (decisions/162). It reads what searchAnilist read: the cached
+// membership, or the failure GetCustomListMembers remembers for a minute.
+func customListedMedia(configs *files.Config) (listed map[int]bool, known bool) {
+	listed = map[int]bool{}
+	for _, user := range configs.AnilistUsernames {
+		lists := configs.CustomListsOf(user)
+		if len(lists) == 0 {
+			continue
+		}
+		got, err := anilist.GetCustomListMembers(user, lists, anilist.PriorityCritical)
+		if err != nil && !errors.Is(err, anilist.ErrFromCache) {
+			logger.Logger.Debug().Str("username", user).Msg("Download custom lists unavailable: automatic deletion waits for the next pass")
+			return nil, false
+		}
+		for _, m := range got {
+			listed[m.MediaID] = true
+		}
+	}
+	return listed, true
+}
+
+// completedCustomListMember reports whether the pass counts an anime's progress as 0: a Completed
+// entry of a download custom list, outside the download statuses (decisions/162). resolveAnimeDetails
+// asks, so the debug run selects what the pass downloads (decisions/058).
+func completedCustomListMember(configs *files.Config, mediaID int) bool {
+	if slices.Contains(configs.DownloadStatuses, string(anilist.MediaListStatusCompleted)) {
+		return false
+	}
+	for _, user := range configs.AnilistUsernames {
+		lists := configs.CustomListsOf(user)
+		if len(lists) == 0 {
+			continue
+		}
+		got, err := anilist.GetCustomListMembers(user, lists, anilist.PriorityCritical)
+		if err != nil && !errors.Is(err, anilist.ErrFromCache) {
+			continue
+		}
+		for _, m := range got {
+			if m.MediaID == mediaID && m.Status == anilist.MediaListStatusCompleted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// withoutCustomListed takes the anime in a download custom list out of status deletion: being in
+// the list is the user's choice to have it, so it vetoes like an account holding it in a neutral
+// status (decisions/043, decisions/162). With an account's lists unreadable, status deletion
+// waits for the next pass, as with an account whose list failed.
+func withoutCustomListed(deletable map[int]bool, listed map[int]bool, known bool) map[int]bool {
+	if !known {
+		return nil
+	}
+	for id := range listed {
+		delete(deletable, id)
+	}
+	return deletable
+}
+
 // searchAnilist builds the pass's anime universe: the union of the configured accounts' lists
 // (AniList and MyAnimeList) plus the standalone animes (§ standalone).
 //
@@ -715,11 +832,17 @@ func searchAnilist(fileManager FileManagerInterface, configs *files.Config, stan
 			continue
 		}
 
-		// Before the media-status cut: the account still has the anime in a download status, and that
-		// is what the webhook source filter asks.
-		owned := make(map[int]bool, len(resp.Data.Page.MediaList))
+		// The account's download custom lists, whatever the entries' list status (decisions/162).
+		extras, members := customListExtras(username, configs)
+
+		// Before the media-status cut: the account still has the anime in a download status or a
+		// download custom list, and that is what the webhook source filter asks (decisions/126).
+		owned := make(map[int]bool, len(resp.Data.Page.MediaList)+len(members))
 		for _, ml := range resp.Data.Page.MediaList {
 			owned[ml.Media.Id] = true
+		}
+		for _, id := range members {
+			owned[id] = true
 		}
 		passLists.record(listDownload, notifications.AccountSource(anilist.AccountSourceAniList, username), owned)
 
@@ -738,7 +861,7 @@ func searchAnilist(fileManager FileManagerInterface, configs *files.Config, stan
 			}
 			filtered = append(filtered, *ml)
 		}
-		resp.Data.Page.MediaList = filtered
+		resp.Data.Page.MediaList = append(filtered, extras...)
 
 		count := len(resp.Data.Page.MediaList)
 		logger.Logger.Debug().

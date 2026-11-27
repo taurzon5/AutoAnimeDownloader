@@ -36,6 +36,9 @@ type snapshot struct {
 	// anime the user put in an excluded list looks non-excluded again while AniList is down — and the
 	// pass downloads what the user said to ignore.
 	CustomLists map[string]map[int]CustomLists `json:"custom_lists,omitempty"`
+	// CustomListMembers keeps the download custom lists answering with AniList down, restart included:
+	// without it the pass loses their anime and status deletion stays off (decisions/162).
+	CustomListMembers map[string][]CustomListMember `json:"custom_list_members,omitempty"`
 	// MediaByID covers the standalone animes, which show up in no account's list: without it the
 	// screen's list keeps shrinking — the standalone part of it — with AniList down.
 	MediaByID map[string]*MediaList `json:"media_by_id,omitempty"`
@@ -90,6 +93,7 @@ func EnablePersistence(load func() ([]byte, error), save func([]byte) error) {
 	mediaEntryCache.restore(snap.MediaEntries, 0)
 	listStatusCache.restore(snap.ListStatuses, 0)
 	customListsCache.restore(snap.CustomLists, 0)
+	customListMembersCache.restore(snap.CustomListMembers, 0)
 	mediaByIDCache.restore(snap.MediaByID, 0)
 	seriesCache.restore(snap.Series, seriesTTL)
 	malListCache.restore(snap.MALLists, 0)
@@ -136,16 +140,17 @@ func flushCache() {
 
 	now := time.Now()
 	data, err := json.Marshal(snapshot{
-		SavedAt:      now,
-		FrontendList: frontendListCache.snapshot(),
-		PassList:     passListCache.snapshot(),
-		MediaEntries: mediaEntryCache.snapshot(),
-		ListStatuses: listStatusCache.snapshot(),
-		CustomLists:  customListsCache.snapshot(),
-		MediaByID:    mediaByIDCache.snapshot(),
-		Series:       seriesCache.snapshot(),
-		MALLists:     malListCache.snapshot(),
-		MALIDMap:     malIDMapCache.snapshot(),
+		SavedAt:           now,
+		FrontendList:      frontendListCache.snapshot(),
+		PassList:          passListCache.snapshot(),
+		MediaEntries:      mediaEntryCache.snapshot(),
+		ListStatuses:      listStatusCache.snapshot(),
+		CustomLists:       customListsCache.snapshot(),
+		CustomListMembers: customListMembersCache.snapshot(),
+		MediaByID:         mediaByIDCache.snapshot(),
+		Series:            seriesCache.snapshot(),
+		MALLists:          malListCache.snapshot(),
+		MALIDMap:          malIDMapCache.snapshot(),
 	})
 	if err != nil {
 		logger.Logger.Warn().Err(err).Msg("Failed to marshal the AniList cache snapshot")

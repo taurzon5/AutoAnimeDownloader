@@ -236,6 +236,8 @@ export interface Config {
   watched_episodes_to_keep: number
   excluded_list?: string
   excluded_lists: string[]
+  /** AniList custom lists whose anime download whatever their status: account is "anilist:<username>". */
+  download_custom_lists?: { account: string; custom_list: string }[]
   rename_files_for_jellyfin: boolean
   /** "hardlink" (default) or "direct": write torrents straight to <Series>/Season NN/, no hardlinks. */
   library_mode: "hardlink" | "direct"

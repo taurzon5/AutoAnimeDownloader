@@ -840,3 +840,27 @@ func TestUpdateConfigParts(t *testing.T) {
 		}
 	})
 }
+
+// A download custom list names its AniList account and a list.
+func TestSaveConfig_DownloadCustomListsNeedAccountAndName(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  files.CustomListSource
+		want int
+	}{
+		{"valid", files.CustomListSource{Account: "anilist:me", CustomList: "To download"}, http.StatusOK},
+		{"bare name", files.CustomListSource{Account: "me", CustomList: "To download"}, http.StatusBadRequest},
+		{"no list", files.CustomListSource{Account: "anilist:me", CustomList: " "}, http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := handleUpdateConfig(&Server{State: daemon.NewState(), FileManager: &mockFileManager{}})
+			config := files.Config{CompletedAnimePath: "/tmp/completed", CheckInterval: 10, EpisodeRetryLimit: 5, DownloadCustomLists: []files.CustomListSource{tc.src}}
+			jsonData, _ := json.Marshal(config)
+			w := httptest.NewRecorder()
+			handler(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+			if w.Code != tc.want {
+				t.Fatalf("got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
