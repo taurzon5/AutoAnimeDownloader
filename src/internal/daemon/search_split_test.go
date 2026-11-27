@@ -47,7 +47,7 @@ func TestSearchSingleEpisode_SplitEntryUsesBaseTitleAndPrequelOffset(t *testing.
 	defer mockNyaaListing(t, steelBallRunRows(), nil)()
 
 	titles, synonyms, relations := steelBallRunMedia("JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE", anilist.MediaFormatONA)
-	results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, titles, synonyms, relations, anilist.MediaFormatONA, 11)
+	results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, anilist.Media{Title: titles, Synonyms: synonyms, Relations: relations, Format: anilist.MediaFormatONA}, 11)
 
 	if len(results) != 1 || !strings.Contains(results[0].Name, "Steel Ball Run - 02") {
 		t.Fatalf("episode 1 must resolve to the base title's episode 02, got %v", torrentNames(results))
@@ -59,7 +59,7 @@ func TestSearchSingleEpisode_SplitEntryNeedsTheSameBaseTitle(t *testing.T) {
 
 	// A prequel with another base is a different show: no base-title search, no offset.
 	titles, synonyms, relations := steelBallRunMedia("JoJo no Kimyou na Bouken: Ougon no Kaze - Part 1", anilist.MediaFormatONA)
-	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, titles, synonyms, relations, anilist.MediaFormatONA, 11); len(results) != 0 {
+	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, anilist.Media{Title: titles, Synonyms: synonyms, Relations: relations, Format: anilist.MediaFormatONA}, 11); len(results) != 0 {
 		t.Fatalf("a prequel with another base title must not trigger the fallback, got %v", torrentNames(results))
 	}
 }
@@ -68,7 +68,7 @@ func TestSearchSingleEpisode_SplitEntryIgnoresMoviePrequel(t *testing.T) {
 	defer mockNyaaListing(t, steelBallRunRows(), nil)()
 
 	titles, synonyms, relations := steelBallRunMedia("JoJo no Kimyou na Bouken: Steel Ball Run - 1st STAGE", anilist.MediaFormatMovie)
-	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, titles, synonyms, relations, anilist.MediaFormatONA, 11); len(results) != 0 {
+	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, anilist.Media{Title: titles, Synonyms: synonyms, Relations: relations, Format: anilist.MediaFormatONA}, 11); len(results) != 0 {
 		t.Fatalf("a movie prequel is not part of the episode count, got %v", torrentNames(results))
 	}
 }
@@ -99,7 +99,7 @@ func TestSearchSingleEpisode_SplitEntryRefusesAPrequelThatIsNotTheFirst(t *testi
 	), nil)()
 
 	titles, relations := splitEntry("Base Show - 3rd STAGE", "Base Show - 2nd STAGE", 12)
-	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, titles, nil, relations, anilist.MediaFormatONA, 12); len(results) != 0 {
+	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, anilist.Media{Title: titles, Relations: relations, Format: anilist.MediaFormatONA}, 12); len(results) != 0 {
 		t.Fatalf("3rd STAGE ep 1 must not resolve to the 2nd STAGE's episode, got %v", torrentNames(results))
 	}
 }
@@ -112,7 +112,7 @@ func TestSearchSingleEpisode_SplitEntryRefusesSuffixesWithoutAnOrdinal(t *testin
 	), nil)()
 
 	titles, relations := splitEntry("Base Show - Arc B-hen", "Base Show - Arc A-hen", 11)
-	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 3}, titles, nil, relations, anilist.MediaFormatONA, 12); len(results) != 0 {
+	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 3}, anilist.Media{Title: titles, Relations: relations, Format: anilist.MediaFormatONA}, 12); len(results) != 0 {
 		t.Fatalf("arc suffixes without an ordinal must not trigger the fallback, got %v", torrentNames(results))
 	}
 }

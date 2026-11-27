@@ -266,7 +266,7 @@ func searcherFor(batch, multiple, single, movie []nyaa.TorrentResult) nyaaSearch
 
     return nyaaSearcher{
         searchAnime: func(anilist.Title, []string, []int) []nyaa.TorrentResult { return anime },
-        searchSingleEpisode: func(anilist.AiringNode, anilist.Title, []string, anilist.MediaRelations, int) []nyaa.TorrentResult {
+        searchSingleEpisode: func(anilist.AiringNode, anilist.Media, int) []nyaa.TorrentResult {
             return single
         },
         searchMovie: func(anilist.Title, bool) []nyaa.TorrentResult { return movie },

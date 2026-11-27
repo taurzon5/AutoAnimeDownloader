@@ -28,8 +28,10 @@ type dropStats struct {
 type nyaaSearchFunc func(title string) ([]nyaa.TorrentResult, error)
 
 type nyaaSearcher struct {
-	searchAnime         func(titles anilist.Title, synonyms []string, episodes []int) []nyaa.TorrentResult
-	searchSingleEpisode func(ep anilist.AiringNode, titles anilist.Title, synonyms []string, relations anilist.MediaRelations, format anilist.MediaFormat, totalEpisodes int) []nyaa.TorrentResult
+	searchAnime func(titles anilist.Title, synonyms []string, episodes []int) []nyaa.TorrentResult
+	// searchSingleEpisode takes the whole Media, so no caller can pass the synonyms or relations
+	// empty and silently skip the offset and split-entry fallbacks.
+	searchSingleEpisode func(ep anilist.AiringNode, media anilist.Media, totalEpisodes int) []nyaa.TorrentResult
 	searchMovie         func(titles anilist.Title, isFormatMovie bool) []nyaa.TorrentResult
 	// packRange reads a pack's REAL range from the Nyaa detail page. Separate from the searches
 	// because it isn't one: it runs after the filter and the sorting, only for the pack the name
@@ -229,9 +231,11 @@ func searchNyaaWithVariants(titles anilist.Title, searchFn nyaaSearchFunc, logLa
 	return nil
 }
 
-// totalEpisodes goes to nyaa only to decide the query's zero-padding (0 = unknown).
-func searchNyaaForSingleEpisode(ep anilist.AiringNode, titles anilist.Title, synonyms []string, relations anilist.MediaRelations, format anilist.MediaFormat, totalEpisodes int) []nyaa.TorrentResult {
-	season, part := ExtractAnimeSeasonPart(titles, synonyms)
+// totalEpisodes goes to nyaa only to decide the query's zero-padding (0 = unknown). It comes from
+// the list entry (anilist.LastAiredEpisode), not from Media, so it stays its own argument.
+func searchNyaaForSingleEpisode(ep anilist.AiringNode, media anilist.Media, totalEpisodes int) []nyaa.TorrentResult {
+	titles, relations, format := media.Title, media.Relations, media.Format
+	season, part := seasonPartOf(media)
 
 	results := searchNyaaWithVariants(titles, func(title string) ([]nyaa.TorrentResult, error) {
 		return nyaa.ScrapNyaa(title, ep.Episode, season, part, totalEpisodes)

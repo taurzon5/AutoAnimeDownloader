@@ -344,7 +344,7 @@ func processAnimeEpisodes(
 					Bool("earlier_episode_missing", stuck).
 					Msg("Skipping per-episode search: a recent search came back empty")
 			} else {
-				candidates, searchStats = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media.Title, synonyms, anime.Media.Relations, anime.Media.Format, seriesLength), finished), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+				candidates, searchStats = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), finished), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
 				if len(candidates) == 0 && searcher.misses != nil {
 					searcher.misses.record(missKey, time.Now(), searchStats)
 				}

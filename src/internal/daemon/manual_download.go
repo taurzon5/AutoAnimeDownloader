@@ -237,10 +237,9 @@ func ManualDownloadEpisode(fm FileManagerInterface, backend torrents.TorrentBack
 		return files.EpisodeStruct{}, err
 	}
 
-	// Same synonyms and relations as the scheduled pass (episodes.go): without them the offset and
-	// split-entry fallbacks never run, and an episode the pass finds is "not found" here.
+	// The same search as the scheduled pass (episodes.go), offset and split-entry fallbacks included.
 	media := details.mediaList.Media
-	results := rankSeriesResults(searchNyaaForSingleEpisode(*targetNode, media.Title, media.OwnSynonyms(), media.Relations, media.Format, anilist.LastAiredEpisode(details.mediaList)), details.isFinished)
+	results := rankSeriesResults(searchNyaaForSingleEpisode(*targetNode, media, anilist.LastAiredEpisode(details.mediaList)), details.isFinished)
 	if len(results) == 0 {
 		return files.EpisodeStruct{}, fmt.Errorf("no torrents found for episode %d", targetNode.Episode)
 	}

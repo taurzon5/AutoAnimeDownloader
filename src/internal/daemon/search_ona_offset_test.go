@@ -41,7 +41,7 @@ func TestSearchSingleEpisode_ONASplitCountsTheONAPrequel(t *testing.T) {
 
 	titles, relations := stoneOceanMedia()
 	for ep, want := range map[int]string{1: "Stone Ocean 13 v2", 2: "Stone Ocean 14", 26: "Stone Ocean 38 v2"} {
-		results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: ep}, titles, nil, relations, anilist.MediaFormatONA, 26)
+		results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: ep}, anilist.Media{Title: titles, Relations: relations, Format: anilist.MediaFormatONA}, 26)
 		if len(results) != 1 || !strings.Contains(results[0].Name, want) {
 			t.Errorf("episode %d must resolve to %q, got %v", ep, want, torrentNames(results))
 		}
@@ -53,7 +53,7 @@ func TestSearchSingleEpisode_TVEntryIgnoresTheONAPrequel(t *testing.T) {
 
 	// An ONA before a TV entry is a side story, not part of the count.
 	titles, relations := stoneOceanMedia()
-	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, titles, nil, relations, anilist.MediaFormatTV, 26); len(results) != 0 {
+	if results := searchNyaaForSingleEpisode(anilist.AiringNode{Episode: 1}, anilist.Media{Title: titles, Relations: relations, Format: anilist.MediaFormatTV}, 26); len(results) != 0 {
 		t.Fatalf("a TV entry must not add an ONA prequel's episodes, got %v", torrentNames(results))
 	}
 }

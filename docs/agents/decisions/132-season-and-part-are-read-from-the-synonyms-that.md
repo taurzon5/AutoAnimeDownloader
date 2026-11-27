@@ -2,10 +2,10 @@
 
 **Location:** `internal/anilist/anilist.go` — `Media.OwnSynonyms`; in `internal/daemon`,
 `seasonPartOf` (`helpers.go`) for the season/part reads. `processAnimeEpisodes` and `RunAnimeDebug`
-compute `OwnSynonyms()` once, read season and part from it once, and hand them to the anime and
-episode searches, `adoptCoveredEpisodes`, `partitionSearchResults` and `newPackAxis`; the preview
-reads them once with `seasonPartOf`; `ManualDownloadEpisode` (`manual_download.go`) passes `OwnSynonyms()`
-and the relations to `searchNyaaForSingleEpisode`, which reads season and part from them; pinned by
+compute `OwnSynonyms()` once, read season and part from it once, and hand them to the anime search, `adoptCoveredEpisodes`, `partitionSearchResults` and `newPackAxis`; the preview
+reads them once with `seasonPartOf`; `searchNyaaForSingleEpisode` (the pass, the debug run and
+`ManualDownloadEpisode`) takes the whole `Media` and reads season and part with `seasonPartOf`, so no
+caller can hand it raw synonyms; pinned by
 `TestExtractAnimeSeasonPart_SteelBallRun_SourceTitleSynonymIsNotAPart` and
 `TestOwnSynonyms_KeepsSynonymWithoutMatchingSource` in `src/tests/unit/season_part_test.go`.
 
