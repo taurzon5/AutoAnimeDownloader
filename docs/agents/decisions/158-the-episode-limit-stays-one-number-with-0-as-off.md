@@ -3,7 +3,8 @@
 **Location:** `internal/files/filemanager.go` — `DefaultConfig` (`MaxEpisodesPerAnime: 0`) and the
 `MaxEpisodesPerAnime` field; `frontend/src/routes/Config.svelte` — `episodeLimitOn`,
 `toggleEpisodeLimit`, `episodeLimitLifted` and the "Limit Episodes per Anime" switch in the
-Downloads group; `internal/daemon/golden_test.go` — `runGoldenPass` pins `12`. Pinned by
+Downloads group; `docker/entrypoint.sh` (`MAX_EPISODES_PER_ANIME` defaults to `0` in a first
+`config.json`, 2026-11-27); `internal/daemon/golden_test.go` — `runGoldenPass` pins `12`. Pinned by
 `tests/component/Config.episodeLimit.test.ts`.
 
 **What it looks like:** Delete Watched Episodes Automatically (in Library's Cleanup block since

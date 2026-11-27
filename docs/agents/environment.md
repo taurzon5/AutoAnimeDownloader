@@ -38,13 +38,14 @@ start. They are not read by the Go code, and they do nothing after the file exis
 | `EXCLUDED_LISTS` | `""` | `excluded_lists` (array) | Comma-separated, same conversion |
 | `EXCLUDED_LIST` | `""` | — | **Legacy** fallback for `EXCLUDED_LISTS`, same as above |
 | `CHECK_INTERVAL` | `10` | `check_interval` | |
-| `MAX_EPISODES_PER_ANIME` | `12` | `max_episodes_per_anime` | |
+| `MAX_EPISODES_PER_ANIME` | `0` | `max_episodes_per_anime` | `0` = no limit, the app's own default |
 | `EPISODE_RETRY_LIMIT` | `5` | `episode_retry_limit` | |
 | `DELETE_WATCHED_EPISODES` | `true` | `delete_watched_episodes` | `true`/`1` → `true`, anything else → `false` |
 | `QBITTORRENT_URL` | `""` | `library_mode`, `torrent_client`, `qbittorrent_url`, `qbittorrent_manage_settings` | Set (the compose file's `qbittorrent` profile passes `AAD_QBITTORRENT_URL`): `"direct"`, `"qbittorrent"`, the URL and `true`. That qBittorrent is the app's alone, so the app manages its settings (decisions/144). Empty writes none of the four: the built-in client |
 | `FORCE_CONFIG_UPDATE` | — (unset) | — | When non-empty, overwrites an existing `config.json` |
 
-> The generated file carries **8 of the ~25 fields** in `Config` (12 with `QBITTORRENT_URL`). That is safe on creation —
+> The generated file carries **8 of `Config`'s fields** (12 with `QBITTORRENT_URL`); every other
+> key comes from the defaults. That is safe on creation —
 > `LoadConfigs` unmarshals over `DefaultConfig()`, so the absent fields keep their defaults —
 > but `FORCE_CONFIG_UPDATE` rewrites the *whole* file, discarding everything the user set
 > through the UI or CLI.

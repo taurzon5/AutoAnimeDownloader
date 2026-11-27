@@ -52,8 +52,8 @@ services:
       ENVIRONMENT: prod
       PORT: ":8091"
       TZ: ${TZ:-UTC}
-      # Read by entrypoint.sh only when it writes the first config.json. The download folder is
-      # derived from it (<library>/.torrents), so both sit on the same mount and hardlinks work.
+      # Read by entrypoint.sh only when it writes the first config.json: the library folder. In
+      # direct mode, the default, torrents download straight into it and seed from there.
       COMPLETED_ANIME_PATH: /library
       # Also first config.json only: set, the app starts on qBittorrent in direct mode and manages
       # it (the qbittorrent profile below).

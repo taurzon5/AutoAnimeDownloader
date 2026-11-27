@@ -34,7 +34,8 @@ type StatusResponse struct {
 	IncompleteDiskFree  uint64 `json:"incomplete_disk_free,omitempty" example:"266287972352"`
 	// Anilist is AniList's last known state, written by ANY call (the daemon's pass or the
 	// frontend's poll). It travels here, and not in its own endpoint, because /status is already
-	// polled and is already the payload the WebSocket pushes — see decisions/066.
+	// polled for the app-wide banner (decisions/066). The WebSocket doesn't carry it: its status
+	// push holds only status, last_check and has_error (StatusUpdateData).
 	Anilist anilist.Health `json:"anilist"`
 	// PendingCrashAt is when the daemon last crashed, while nobody has handled the report yet; null
 	// otherwise. The UI opens the report screen (fresh page load) or toasts (tab already open).

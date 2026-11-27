@@ -1149,14 +1149,14 @@ loses everything set in the web UI or the CLI.
 | `MAL_USERNAMES` | empty | `mal_usernames` (comma-separated) |
 | `EXCLUDED_LISTS` | empty | `excluded_lists` (comma-separated) |
 | `CHECK_INTERVAL` | `10` | `check_interval` |
-| `MAX_EPISODES_PER_ANIME` | `12` | `max_episodes_per_anime` |
+| `MAX_EPISODES_PER_ANIME` | `0` (no limit) | `max_episodes_per_anime` |
 | `EPISODE_RETRY_LIMIT` | `5` | `episode_retry_limit` |
 | `DELETE_WATCHED_EPISODES` | `true` | `delete_watched_episodes` |
 | `QBITTORRENT_URL` | empty | when set: `torrent_client` qBittorrent, direct mode, `qbittorrent_url`, and the app manages that qBittorrent's settings |
 | `FORCE_CONFIG_UPDATE` | unset | rewrites an existing `config.json` |
 
-`MAX_EPISODES_PER_ANIME` defaults to `12` here, unlike the app's own default (off). In direct mode
-it only acts once Delete Downloads Automatically is on. `ANILIST_USERNAME` and `EXCLUDED_LIST`
+`MAX_EPISODES_PER_ANIME` defaults to `0` (no limit), like the app. In direct mode a limit only
+acts once Delete Downloads Automatically is on. `ANILIST_USERNAME` and `EXCLUDED_LIST`
 (singular) are still read as fallbacks. The compose file already sets `COMPLETED_ANIME_PATH` to
 `/library`, its mounted library.
 
