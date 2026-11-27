@@ -17,7 +17,8 @@ section ([manga-and-novel-downloads.md](manga-and-novel-downloads.md)).
 - **It has to work in LXC.** The user runs the app in an LXC container, so the browser can't depend
   on Docker: it is Firefox installed in that container and served to a page of the app over the web
   (Xpra's HTML5 client, KasmVNC, or noVNC with a virtual display), with uBlock Origin installed by
-  Firefox policy. See [headless-lxc-setup.md](headless-lxc-setup.md).
+  Firefox policy. The app itself installs in LXC as a system service (`install.sh --system`, the
+  README's "Headless server or LXC container").
 
 ## What to check
 

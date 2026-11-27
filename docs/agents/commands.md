@@ -46,9 +46,14 @@ make release PLATFORM=linuxamd64    # build + package in one step
 `make release` packages locally. Shipping a version is tagging: the [release skill](../../.claude/skills/release/SKILL.md).
 
 The Linux install targets are **not** in this Makefile — they ship inside the release zip
-(`infra/linux/Makefile`): `make install-user` / `sudo make install-global`, and the matching
-`uninstall-user` / `uninstall-global`. `install.sh` at the repo root is the `curl | bash` wrapper:
-it downloads the latest release zip, checks its `.sha256` and runs `install-user`.
+(`infra/linux/Makefile`): `make install-user` / `sudo make install-global`, `sudo make
+install-system` (a headless server or LXC container: a system service from
+`infra/linux/autoanimedownloader-system.service`, running as `SERVICE_USER`, created when missing),
+and the matching `uninstall-*`. `install.sh` at the repo root is the `curl | bash` wrapper: it
+downloads the latest release zip, checks its `.sha256` and runs `install-user`, or
+`install-system` with `--system` (as root). The daemon opens a browser (first start, incomplete
+config) and shows the tray only where `daemon.HasDisplay` finds a desktop (`DISPLAY` on Linux);
+without one it logs the address instead.
 
 ## Running the Daemon
 

@@ -11,6 +11,12 @@ GLOBAL_INSTALL_DIR := /usr/local/bin
 SERVICE_DIR := $(HOME)/.config/systemd/user
 APPLICATIONS_DIR := $(HOME)/.local/share/applications
 ICONS_DIR := $(HOME)/.local/share/icons
+SYSTEM_SERVICE_FILE := autoanimedownloader-system.service
+SYSTEM_SERVICE_DIR := /etc/systemd/system
+# The account the system service runs as (install-system). Created as a system user, home
+# SERVICE_HOME, when it doesn't exist; an existing one is used as it is.
+SERVICE_USER ?= autoanimedownloader
+SERVICE_HOME ?= /var/lib/autoanimedownloader
 
 # When running as root via sudo, user-level ops (systemctl --user, desktop entries)
 # must run as the real user. These macros detect the case and delegate accordingly.
@@ -96,12 +102,13 @@ define do-uninstall-desktop
 	@echo "Desktop entry removed."
 endef
 
-.PHONY: install-user install-global uninstall-user uninstall-global
+.PHONY: install-user install-global install-system uninstall-user uninstall-global uninstall-system
 
 default:
 	@echo "Run 'make install-user' to install for current user (~/.local/bin)"
 	@echo "Run 'sudo make install-global' to install system-wide (/usr/local/bin)"
-	@echo "Run 'make uninstall-user' or 'sudo make uninstall-global' to uninstall"
+	@echo "Run 'sudo make install-system' on a headless server or LXC container (a system service)"
+	@echo "Run 'make uninstall-user', 'sudo make uninstall-global' or 'sudo make uninstall-system' to uninstall"
 
 install-user:
 	$(call do-install-binaries,$(USER_INSTALL_DIR))
@@ -132,9 +139,41 @@ uninstall-user:
 	$(call do-uninstall-desktop)
 	@echo "Uninstallation complete!"
 
+# install-system is for a machine with no desktop and no logged-in user (a headless server, an LXC
+# container): a system service started at boot without lingering, and no desktop entry. Library
+# folders bind-mounted from the host must be writable by SERVICE_USER's uid (with LXC, mind the
+# idmap).
+install-system:
+	@if [ "$$(id -u)" != "0" ]; then echo "Error: root required. Run: sudo make install-system"; exit 1; fi
+	@if ! id -u "$(SERVICE_USER)" >/dev/null 2>&1; then \
+		echo "Creating system user $(SERVICE_USER) (home $(SERVICE_HOME))..."; \
+		useradd --system --home-dir "$(SERVICE_HOME)" --create-home --shell /usr/sbin/nologin "$(SERVICE_USER)"; \
+	fi
+	systemctl stop $(SERVICE_NAME) 2>/dev/null || true
+	$(call do-install-binaries,$(GLOBAL_INSTALL_DIR))
+	@_GROUP=$$(id -gn "$(SERVICE_USER)"); \
+		sed -e 's|@USER@|$(SERVICE_USER)|' -e "s|@GROUP@|$$_GROUP|" -e 's|@BINDIR@|$(GLOBAL_INSTALL_DIR)|' \
+			$(SYSTEM_SERVICE_FILE) > "$(SYSTEM_SERVICE_DIR)/$(SERVICE_NAME)"
+	chmod 644 "$(SYSTEM_SERVICE_DIR)/$(SERVICE_NAME)"
+	systemctl daemon-reload
+	systemctl enable --now $(SERVICE_NAME)
+	@echo ""
+	@echo "Installation complete!"
+	@echo "Daemon installed in $(GLOBAL_INSTALL_DIR)/$(DAEMON_BINARY), running as $(SERVICE_USER)"
+	@echo "Data folder: .autoAnimeDownloader in the home of $(SERVICE_USER)"
+	@echo "Open the web UI from another machine: http://<this machine's address>:8091"
+
 uninstall-global:
 	@if [ "$$(id -u)" != "0" ]; then echo "Error: sudo required. Run: sudo make uninstall-global"; exit 1; fi
 	$(call do-uninstall-service)
 	$(call do-uninstall-binaries,$(GLOBAL_INSTALL_DIR))
 	$(call do-uninstall-desktop)
 	@echo "Uninstallation complete!"
+
+uninstall-system:
+	@if [ "$$(id -u)" != "0" ]; then echo "Error: root required. Run: sudo make uninstall-system"; exit 1; fi
+	-systemctl disable --now $(SERVICE_NAME)
+	-rm -f "$(SYSTEM_SERVICE_DIR)/$(SERVICE_NAME)"
+	systemctl daemon-reload
+	$(call do-uninstall-binaries,$(GLOBAL_INSTALL_DIR))
+	@echo "Uninstallation complete! The user $(SERVICE_USER) and its data folder were kept."

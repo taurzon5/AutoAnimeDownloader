@@ -1,0 +1,20 @@
+# System-wide service for a headless machine or LXC container: `sudo make install-system` (or
+# install.sh --system) fills in User, Group and the binary folder. The data folder is that user's
+# ~/.autoAnimeDownloader (/var/lib/autoanimedownloader/.autoAnimeDownloader for the default user).
+[Unit]
+Description=Auto Anime Downloader Daemon
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+ExecStart=@BINDIR@/autoanimedownloader-daemon
+Restart=on-failure
+RestartSec=10
+Environment="ENVIRONMENT=prod"
+Environment="PORT=:8091"
+
+[Install]
+WantedBy=multi-user.target

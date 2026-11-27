@@ -276,6 +276,22 @@ func isConfigComplete(config *files.Config) bool {
 	return config.DownloadPath() != ""
 }
 
+// errNoDisplay is OpenBrowser's answer on a machine with no desktop.
+var errNoDisplay = errors.New("no display to open a browser on")
+
+// HasDisplay reports whether there is a desktop to open a browser or show the tray on: on Linux a
+// DISPLAY (a Wayland session sets it through XWayland), and always on Windows and macOS. A headless
+// server or LXC container has none (install-system), so the app never tries xdg-open there.
+func HasDisplay() bool {
+	switch runtime.GOOS {
+	case "linux":
+		return os.Getenv("DISPLAY") != ""
+	case "windows", "darwin":
+		return true
+	}
+	return false
+}
+
 // OpenBrowser opens the URL in the user's browser. Used by the verification pass (incomplete
 // config), the boot (first run, see main.go), the tray and the CLI's `open` command.
 //
@@ -284,6 +300,9 @@ func isConfigComplete(config *files.Config) bool {
 func OpenBrowser(webUIURL string) error {
 	if testing.Testing() {
 		return nil
+	}
+	if !HasDisplay() {
+		return errNoDisplay
 	}
 
 	var cmd *exec.Cmd

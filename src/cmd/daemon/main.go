@@ -38,7 +38,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -119,14 +118,9 @@ func removePIDFile() error {
 	return nil
 }
 
+// shouldShowTray: the tray needs a desktop, the same test the browser opens use (daemon.HasDisplay).
 func shouldShowTray() bool {
-	// Check if we're in a graphical environment
-	// On Linux, check for DISPLAY variable
-	if runtime.GOOS == "linux" {
-		return os.Getenv("DISPLAY") != ""
-	}
-	// Windows and macOS always have GUI
-	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	return daemon.HasDisplay()
 }
 
 // runDebugAnime runs a one-shot debug pass for a single anime (AniList
@@ -407,7 +401,13 @@ func main() {
 	// Waits for the port to accept connections before opening: Start() above runs in a goroutine
 	// and the log right below it comes out BEFORE the socket is bound, so opening right away is a
 	// race whose losing side is a tab with ERR_CONNECTION_REFUSED.
-	if firstBoot {
+	// A headless machine (a server, an LXC container) has no browser to open: the address goes to
+	// the log, for a browser on another machine.
+	if firstBoot && !daemon.HasDisplay() {
+		logger.Logger.Info().Str("url", daemon.WebUIURL(apiPort, "/#/status")).
+			Msg("First start with no display: open the web UI from another machine, at this machine's address on the same port")
+	}
+	if firstBoot && daemon.HasDisplay() {
 		go func() {
 			if err := daemon.WaitForListener(apiPort, 10*time.Second); err != nil {
 				logger.Logger.Warn().Err(err).Msg("Web UI did not come up in time; not opening the browser")

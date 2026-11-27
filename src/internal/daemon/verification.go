@@ -65,6 +65,12 @@ func AnimeVerification(ctx context.Context, fileManager FileManagerInterface, st
 	}
 
 	if !isConfigComplete(configs) {
+		if !HasDisplay() {
+			// Headless (install-system): no browser here, the Config page is opened from another machine.
+			logger.Logger.Warn().Str("url", getWebUiURL()).Msg("Missing required configuration: set the library folder on the web UI's Config page")
+			state.SetLastCheckError(fmt.Errorf("%w: library folder is missing", errCauseSetup))
+			return
+		}
 		logger.Logger.Warn().Msg("Missing required configuration, opening browser to config page")
 		go func() {
 			time.Sleep(500 * time.Millisecond)

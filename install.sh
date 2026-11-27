@@ -4,6 +4,12 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | bash
 #
+# On a headless server or LXC container (no desktop, no logged-in user), --system, as root, installs
+# a system service instead (`make install-system`): binaries in /usr/local/bin and a service started
+# at boot, running as SERVICE_USER (default autoanimedownloader, created when missing):
+#
+#   curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | sudo bash -s -- --system
+#
 # Running it again updates: install-user stops the service, replaces the binaries and starts it.
 # The asset is picked by its suffix, not by its full name, so the project prefix in the zip name can
 # change without breaking this script. The checksum check is mandatory: this is curl into bash.
@@ -16,7 +22,17 @@ die() {
 	exit 1
 }
 
+TARGET=install-user
+case "${1:-}" in
+"") ;;
+--system) TARGET=install-system ;;
+*) die "unknown option: $1 (the only option is --system)" ;;
+esac
+
 [ "$(uname -s)" = "Linux" ] || die "only Linux is supported by this script (Windows: download the .exe from the releases page)"
+if [ "$TARGET" = install-system ] && [ "$(id -u)" != "0" ]; then
+	die "--system needs root: run it with sudo"
+fi
 
 for bin in curl unzip sha256sum make; do
 	command -v "$bin" >/dev/null 2>&1 || die "'$bin' is required but not installed"
@@ -49,9 +65,14 @@ unzip -q "$TMP/$ZIP" -d "$TMP"
 PKG_DIR="$TMP/${ZIP%.zip}"
 [ -f "$PKG_DIR/Makefile" ] || die "unexpected zip layout: $PKG_DIR/Makefile not found"
 
-make --no-print-directory -C "$PKG_DIR" install-user
+if [ "$TARGET" = install-system ] && [ ! -f "$PKG_DIR/autoanimedownloader-system.service" ]; then
+	die "the latest release has no system service yet; install without --system, or wait for the next release"
+fi
+make --no-print-directory -C "$PKG_DIR" "$TARGET"
 
-case ":$PATH:" in
-*":$HOME/.local/bin:"*) ;;
-*) echo "note: $HOME/.local/bin is not in your PATH; add it to use the CLI" ;;
-esac
+if [ "$TARGET" = install-user ]; then
+	case ":$PATH:" in
+	*":$HOME/.local/bin:"*) ;;
+	*) echo "note: $HOME/.local/bin is not in your PATH; add it to use the CLI" ;;
+	esac
+fi

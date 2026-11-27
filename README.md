@@ -138,6 +138,27 @@ make uninstall-user
 sudo make uninstall-global
 ```
 
+### Headless server or LXC container
+
+A machine with no desktop and no logged-in user (a Proxmox LXC container, a home server) can't run
+the user service: install a system service instead, as root. It runs as its own system user
+(`autoanimedownloader`, home `/var/lib/autoanimedownloader`, created if missing; set
+`SERVICE_USER=<name>` to use an existing account), starts at boot, and opens no browser: the first
+start logs the address, and you open `http://<the machine's address>:8091` from another computer.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/taurzon5/Nyaanchiver/master/install.sh | sudo bash -s -- --system
+# or, from the extracted zip:
+sudo make install-system
+sudo make uninstall-system   # keeps the user and its data folder
+```
+
+The data folder is `.autoAnimeDownloader` in that user's home. A library on a folder bind-mounted
+from the host must be writable by the service user's uid inside the container; with an
+unprivileged LXC container the uid is shifted (the idmap), so give the host folder to the shifted
+uid or map it. Direct library mode, the default, writes into the library in place and needs no
+hardlinks, so a network or FUSE mount works as the library.
+
 ### Windows
 
 Download `AutoAnimeDownloader_Windows_v*.exe` from the [latest release](https://github.com/taurzon5/Nyaanchiver/releases/latest) and run it — no installation needed.
