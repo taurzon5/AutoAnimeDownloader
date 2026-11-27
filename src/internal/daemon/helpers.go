@@ -376,18 +376,29 @@ func getAnimeTitleSafe(anime anilist.MediaList) string {
 // Priority: english → romaji → synonyms. Each field is read independently — english can give the
 // season and a synonym the part.
 func ExtractAnimeSeasonPart(title anilist.Title, synonyms []string) (season, part *int) {
-	candidates := make([]string, 0, 2+len(synonyms))
+	titles := make([]string, 0, 2)
 	if title.English != nil {
-		candidates = append(candidates, *title.English)
+		titles = append(titles, *title.English)
 	}
 	if title.Romaji != nil {
-		candidates = append(candidates, *title.Romaji)
+		titles = append(titles, *title.Romaji)
 	}
-	candidates = append(candidates, synonyms...)
+	var titlePart *int
+	for _, t := range titles {
+		if titlePart = nyaa.ExtractPart(t); titlePart != nil {
+			break
+		}
+	}
 
-	for _, s := range candidates {
+	for i, s := range append(titles, synonyms...) {
 		if season == nil {
 			season = nyaa.ExtractSeason(s)
+			// A synonym's "Season N" equal to the titles' "Part N", in a synonym that names no part
+			// itself, is the same cour said another way: BAKI-DOU Part 2's "… Season 2" dropped every
+			// pack as season 2. A synonym that says both ("BEASTARS Season 3 Part 2") keeps its season.
+			if season != nil && i >= len(titles) && titlePart != nil && *season == *titlePart && nyaa.ExtractPart(s) == nil {
+				season = nil
+			}
 		}
 		if part == nil {
 			part = nyaa.ExtractPart(s)
