@@ -31,7 +31,12 @@ describe('ShokoMatchPanel', () => {
   it('offers "not in Shoko" for an automatic match, and no way back to automatic', async () => {
     render(ShokoMatchPanel, { props: { animeId: 42, shoko: { status: 'matched', series_id: 1, series_name: 'Frieren', offset: 12 } } })
     expect(screen.getByTestId('shoko-panel-status').textContent).toContain("series' episode 13")
+    // A clean match keeps the manual form behind "Correct the match".
+    expect(screen.queryByTestId('shoko-match-form')).toBeNull()
+    await fireEvent.click(screen.getByRole('button', { name: 'Correct the match' }))
+    await flush()
     expect((document.getElementById('shoko_offset') as HTMLInputElement).value).toBe('12')
+    expect(screen.getByText(/minus 1/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Back to automatic' })).toBeNull()
     await fireEvent.click(screen.getByRole('button', { name: 'Not in Shoko' }))
     await flush()

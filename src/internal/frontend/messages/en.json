@@ -533,6 +533,8 @@
   "detail_shoko_by_hand": "Set by hand.",
   "detail_shoko_series_id": "Shoko series id",
   "detail_shoko_offset_label": "Offset",
+  "detail_shoko_offset_hint": "The Shoko episode number of this anime's episode 1, minus 1: 0 when they line up.",
+  "detail_shoko_correct": "Correct the match",
   "detail_shoko_confirm": "Confirm match",
   "detail_shoko_not_in": "Not in Shoko",
   "detail_shoko_auto": "Back to automatic",

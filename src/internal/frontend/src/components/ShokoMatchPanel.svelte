@@ -21,6 +21,11 @@
   let seriesId = 0;
   let offset = 0;
   let saving = false;
+  // The manual form stays behind "Correct the match" for a clean match: it pushed the episode list
+  // down on every anime (UI review of 2026-11-25). A partial match to confirm, or none to set by
+  // hand, shows it right away.
+  let correcting = false;
+  $: formOpen = correcting || shoko?.status === "partial" || shoko?.status === "none";
   $: if (shoko) {
     seriesId = shoko.series_id ?? 0;
     offset = shoko.offset ?? 0;
@@ -88,9 +93,10 @@
         {$locale && m.detail_shoko_by_hand()}
       {/if}
     </p>
-    <!-- Always offered: a partial match to confirm, a wrong one to correct, or no match at all to set
-         by hand (a series that shares no MAL id with the anime). -->
-    <div class="flex flex-col gap-2 md:flex-row md:items-end">
+    <!-- A partial match to confirm, a wrong one to correct, or no match at all to set by hand (a
+         series that shares no MAL id with the anime). -->
+    {#if formOpen}
+    <div class="flex flex-col gap-2 md:flex-row md:items-end" data-testid="shoko-match-form">
         <div class="flex-1">
           <Input id="shoko_series_id" type="number" min="1" label={$locale && m.detail_shoko_series_id()} bind:value={seriesId} />
         </div>
@@ -101,7 +107,14 @@
           {$locale && m.detail_shoko_confirm()}
         </Button>
       </div>
+    <!-- Under the row, not as the Offset field's subtitle: a taller column would move the row's
+         bottom-aligned fields off the inputs. -->
+    <p class="text-caption text-subtle">{$locale && m.detail_shoko_offset_hint()}</p>
+    {/if}
     <div class="flex flex-wrap gap-2">
+      {#if !formOpen}
+        <Button variant="ghost" on:click={() => (correcting = true)}>{$locale && m.detail_shoko_correct()}</Button>
+      {/if}
       {#if !(shoko.status === "none" && shoko.by_hand)}
         <Button variant="ghost" disabled={saving} on:click={() => save({ none: true })}>{$locale && m.detail_shoko_not_in()}</Button>
       {/if}
