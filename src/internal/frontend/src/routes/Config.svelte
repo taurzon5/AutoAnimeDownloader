@@ -16,6 +16,7 @@
     testTorrentClient,
     shokoLogin,
     getShokoStatus,
+    getStatus,
     shokoSync,
     SECRET_PLACEHOLDER,
     type Config,
@@ -34,6 +35,7 @@
   import * as m from "../lib/i18n/messages.js";
   import { locale } from "../lib/stores/locale.js";
   import { setUnsaved, snapshot } from "../lib/stores/unsavedChanges.js";
+  import { wsConnectionState } from "../lib/stores/wsState.js";
   import {
     ONBOARDING_STEP_IDS,
     onboardingDismissed,
@@ -772,6 +774,7 @@
       // Saved and valid: the "missing configurations" banner from the first run has done its job.
       showMissingConfigBanner = false;
       toast.success(result?.restart_required ? m.config_restart_required() : m.config_saved());
+      loadRunningClient();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : m.config_error_save());
     } finally {
@@ -779,9 +782,34 @@
     }
   }
 
+  // The client the daemon runs: a saved switch takes a restart, and until then the line under the
+  // switch says so (GET /status torrent_client_restart).
+  let clientRestart = false;
+  let runningClient = "";
+  async function loadRunningClient() {
+    try {
+      const s = await getStatus({ silent: true });
+      clientRestart = !!s.torrent_client_restart;
+      runningClient = s.torrent_client ?? "";
+    } catch {
+      // A status that can't be read only hides the line.
+    }
+  }
+
+  // After a daemon restart the socket reconnects: read the running client again, so the line goes
+  // away without a reload (decisions/066).
+  let lastWsState = "";
+  onDestroy(
+    wsConnectionState.subscribe((state) => {
+      if (state === "connected" && lastWsState !== "" && lastWsState !== "connected") loadRunningClient();
+      lastWsState = state;
+    }),
+  );
+
   onMount(() => {
     checkQueryParams();
     loadConfig();
+    loadRunningClient();
   });
 </script>
 
@@ -1643,6 +1671,9 @@
               <p id="use_qbittorrent-hint" class="text-caption text-subtle">{T && T.hintUseQBittorrent}</p>
               {#if config.torrent_client === "qbittorrent" && config.library_mode !== "direct"}
                 <p class="text-caption text-danger">{T && T.qbittorrentNeedsDirect}</p>
+              {/if}
+              {#if clientRestart}
+                <p class="text-caption text-warn" data-testid="client-restart-line">{$locale && m.client_restart_needed({ client: runningClient === "qbittorrent" ? m.client_name_qbittorrent() : m.client_name_builtin() })}</p>
               {/if}
             </div>
 

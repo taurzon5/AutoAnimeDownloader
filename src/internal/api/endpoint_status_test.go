@@ -209,3 +209,37 @@ func TestHandleDownloadEpisode_DiskFullReturns409(t *testing.T) {
 		t.Errorf("want INSUFFICIENT_DISK_SPACE, got %+v", response.Error)
 	}
 }
+
+// The client is picked once at start: status names the running one, and flags a saved switch to
+// the other until the restart.
+func TestHandleStatus_TorrentClientRestart(t *testing.T) {
+	cases := []struct {
+		name        string
+		backend     torrents.TorrentBackend
+		saved       string
+		wantRunning string
+		wantRestart bool
+	}{
+		{"built-in, saved built-in", torrents.NewFakeBackend(), "", "builtin", false},
+		{"built-in, saved qbittorrent", torrents.NewFakeBackend(), files.TorrentClientQBittorrent, "builtin", true},
+		{"qbittorrent, saved qbittorrent", &torrents.QBitBackend{}, files.TorrentClientQBittorrent, "qbittorrent", false},
+		{"qbittorrent, saved built-in", &torrents.QBitBackend{}, files.TorrentClientBuiltin, "qbittorrent", true},
+		{"no backend", nil, files.TorrentClientQBittorrent, "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &Server{State: daemon.NewState(), Torrents: tc.backend, FileManager: &mockFileManager{configs: &files.Config{TorrentClient: tc.saved}}}
+			w := httptest.NewRecorder()
+			handleStatus(server)(w, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+			var response SuccessResponse
+			if err := json.NewDecoder(w.Body).Decode(&response); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			data := response.Data.(map[string]interface{})
+			running, _ := data["torrent_client"].(string)
+			if running != tc.wantRunning || data["torrent_client_restart"].(bool) != tc.wantRestart {
+				t.Errorf("torrent_client=%q restart=%v, want %q %v", running, data["torrent_client_restart"], tc.wantRunning, tc.wantRestart)
+			}
+		})
+	}
+}

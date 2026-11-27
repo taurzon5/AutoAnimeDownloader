@@ -44,6 +44,11 @@ type StatusResponse struct {
 	// build is "dev". Here because /status is what the shell already polls for the version.
 	LatestVersion    string `json:"latest_version" example:"2.11.0"`
 	LatestVersionURL string `json:"latest_version_url" example:"https://github.com/taurzon5/Nyaanchiver/releases/tag/v2.11.0"`
+	// TorrentClient is the client the daemon runs, "builtin" or "qbittorrent": picked once at start
+	// (newTorrentBackend in cmd/daemon), so a saved change takes a restart. TorrentClientRestart is
+	// true while the saved torrent_client differs from it; the Settings page and `status` say so.
+	TorrentClient        string `json:"torrent_client,omitempty" example:"builtin"`
+	TorrentClientRestart bool   `json:"torrent_client_restart" example:"false"`
 }
 
 // StatusDisk is one download root's volume in GET /status.
@@ -70,11 +75,17 @@ func handleStatus(server *Server) http.HandlerFunc {
 		status, lastCheck, hasError := server.State.GetAll()
 
 		var diskTotal, diskFree, incompleteTotal, incompleteFree uint64
+		running := runningTorrentClient(server.Torrents)
+		restart := false
+		cfg, cfgErr := server.FileManager.LoadConfigs()
+		if cfgErr == nil && cfg != nil && running != "" {
+			restart = running != savedTorrentClient(cfg)
+		}
 		diskLow := false
 		var disks []StatusDisk
 		// The library volume holds the download directory by construction (Config.DownloadPath); the
 		// incomplete folder, when set on another drive, is reported on its own (decisions/141).
-		if cfg, err := server.FileManager.LoadConfigs(); err == nil && cfg.CompletedAnimePath != "" {
+		if cfgErr == nil && cfg != nil && cfg.CompletedAnimePath != "" {
 			diskTotal, diskFree, _ = files.DiskSpace(cfg.CompletedAnimePath)
 			var session []torrents.TorrentInfo
 			if server.Torrents != nil {
@@ -94,15 +105,17 @@ func handleStatus(server *Server) http.HandlerFunc {
 		}
 
 		response := StatusResponse{
-			Status:    string(status),
-			LastCheck: lastCheck,
-			HasError:  hasError,
-			Version:   version.Version,
-			DiskTotal: diskTotal,
-			DiskFree:  diskFree,
-			DiskLow:   diskLow,
-			Disks:     disks,
-			Anilist:   anilist.CurrentHealth(),
+			TorrentClient:        running,
+			TorrentClientRestart: restart,
+			Status:               string(status),
+			LastCheck:            lastCheck,
+			HasError:             hasError,
+			Version:              version.Version,
+			DiskTotal:            diskTotal,
+			DiskFree:             diskFree,
+			DiskLow:              diskLow,
+			Disks:                disks,
+			Anilist:              anilist.CurrentHealth(),
 
 			IncompleteDiskTotal: incompleteTotal,
 			IncompleteDiskFree:  incompleteFree,
@@ -114,4 +127,26 @@ func handleStatus(server *Server) http.HandlerFunc {
 
 		JSONSuccess(w, http.StatusOK, response)
 	}
+}
+
+// runningTorrentClient names the client the daemon started with, from the backend it runs. "" when
+// there is none (tests that build a Server without one).
+func runningTorrentClient(b torrents.TorrentBackend) string {
+	switch b.(type) {
+	case nil:
+		return ""
+	case *torrents.QBitBackend:
+		return files.TorrentClientQBittorrent
+	default:
+		return files.TorrentClientBuiltin
+	}
+}
+
+// savedTorrentClient is the client the saved config asks for; an empty torrent_client is the
+// built-in one.
+func savedTorrentClient(c *files.Config) string {
+	if c.UsesQBittorrent() {
+		return files.TorrentClientQBittorrent
+	}
+	return files.TorrentClientBuiltin
 }

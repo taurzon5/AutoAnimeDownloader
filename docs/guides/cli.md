@@ -54,7 +54,10 @@ autoanimedownloader check
 `status` prints the full payload: daemon state, last check, disk, AniList health, pending crash,
 and the newer version the daemon's update check found (`latest_version`, `latest_version_url`;
 empty when there is none or `check_for_updates` is off). When there is one, the table is followed
-by `Update available: v2.11.0 (<release page>)`; `--json` carries just the two fields.
+by `Update available: v2.11.0 (<release page>)`; `--json` carries just the two fields. It also
+names the torrent client the daemon runs (`torrent_client`): the client is picked when the daemon
+starts, so after `config set torrent_client …` `torrent_client_restart` is true and the table is
+followed by `Restart needed: the daemon still runs the builtin client; restart it to switch`.
 `last-check` is why the last automatic pass did not download. `check` triggers a pass now.
 
 ## Configuration

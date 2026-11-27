@@ -24,6 +24,7 @@
     type TorrentInfo,
   } from "../lib/api/client.js";
   import { ensureWsConnected, onDaemonStatus } from "../lib/websocket/shared.js";
+  import { wsConnectionState } from "../lib/stores/wsState.js";
   import Loading from "../components/Loading.svelte";
   import ActionMenu from "../components/ui/ActionMenu.svelte";
   import Button from "../components/ui/Button.svelte";
@@ -519,6 +520,18 @@
   }
 
   let offDaemonStatus: (() => void) | null = null;
+  // A daemon restart drops the socket: when it comes back, /status is read again, so a banner about
+  // the old process (a pending client restart) goes away without a reload (decisions/066).
+  let offWsState: (() => void) | null = null;
+  let lastWsState = "";
+  async function refreshStatus() {
+    try {
+      const fresh = await getStatus({ silent: true });
+      status = { ...status, ...fresh };
+    } catch {
+      // The next poll or reconnect tries again.
+    }
+  }
   let animesPollInterval: ReturnType<typeof setInterval> | null = null;
   let tickInterval: ReturnType<typeof setInterval> | null = null;
   let torrentsPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -697,6 +710,10 @@
     loadTorrents();
     torrentsPollInterval = setInterval(loadTorrents, TORRENTS_POLL_MS);
     offDaemonStatus = onDaemonStatus(handleWebSocketStatus);
+    offWsState = wsConnectionState.subscribe((state) => {
+      if (state === "connected" && lastWsState !== "" && lastWsState !== "connected") refreshStatus();
+      lastWsState = state;
+    });
     ensureWsConnected();
     animesPollInterval = setInterval(loadAnimes, 30000);
     tickInterval = setInterval(() => { now = Date.now(); }, 1000);
@@ -705,6 +722,8 @@
   onDestroy(() => {
     offDaemonStatus?.();
     offDaemonStatus = null;
+    offWsState?.();
+    offWsState = null;
     if (animesPollInterval) clearInterval(animesPollInterval);
     if (tickInterval) clearInterval(tickInterval);
     if (torrentsPollInterval) clearInterval(torrentsPollInterval);
@@ -824,6 +843,17 @@
         class="flex items-center gap-2 rounded-field border border-danger-tint/32 bg-danger-tint/12 px-3.5 py-2.5 text-copy text-danger"
       >
         {$locale && m.status_disk_low_alert()}
+      </div>
+    {/if}
+
+    <!-- A saved torrent-client switch takes a restart; until then the daemon runs the old one. -->
+    {#if status.torrent_client_restart}
+      <div
+        role="status"
+        data-testid="client-restart-banner"
+        class="rounded-field border border-warn-tint/32 bg-warn-tint/12 px-3.5 py-2.5 text-copy text-warn"
+      >
+        {$locale && m.client_restart_needed({ client: status.torrent_client === "qbittorrent" ? m.client_name_qbittorrent() : m.client_name_builtin() })}
       </div>
     {/if}
 

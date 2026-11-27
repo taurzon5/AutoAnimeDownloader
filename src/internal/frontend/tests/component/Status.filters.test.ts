@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/svelte'
 import { tick } from 'svelte'
+import { wsConnectionState } from '../../src/lib/stores/wsState.js'
 import Status from '../../src/routes/Status.svelte'
 import * as client from '../../src/lib/api/client.js'
 import type { AnimeInfo, StatusResponse } from '../../src/lib/api/client.js'
@@ -346,5 +347,29 @@ describe('Status — review fixes (20, 21, 22)', () => {
     const names = lines[0].querySelectorAll('span.font-semibold')
     expect(names[0].className).not.toContain('text-danger')
     expect(names[1].className).toContain('text-danger')
+  })
+  it('5: a saved torrent-client switch shows a restart banner until the restart', async () => {
+    vi.mocked(client.getAnimes).mockResolvedValue(library)
+    vi.mocked(client.getConfig).mockResolvedValue({ check_interval: 60 } as never)
+    vi.mocked(client.getTorrents).mockResolvedValue([])
+    vi.mocked(client.getLastCheck).mockResolvedValue({ finished_at: '0001-01-01T00:00:00Z', pass_error: '', problems: [], limits: [] })
+    vi.mocked(client.getStatus).mockResolvedValue({
+      status: 'running', last_check: '2026-08-19T12:00:00Z', has_error: false, version: '1.0.0',
+      disk_total: 100, disk_free: 90, disk_low: false, torrent_client: 'builtin', torrent_client_restart: true,
+    } as StatusResponse)
+    const view = render(Status)
+    for (let i = 0; i < 6; i++) await tick()
+    expect((await view.findByTestId('client-restart-banner')).textContent).toContain('the built-in client')
+
+    // The restart drops the socket; when it reconnects, /status is read again and the banner goes.
+    vi.mocked(client.getStatus).mockResolvedValue({
+      status: 'running', last_check: '2026-08-19T12:00:00Z', has_error: false, version: '1.0.0',
+      disk_total: 100, disk_free: 90, disk_low: false, torrent_client: 'qbittorrent', torrent_client_restart: false,
+    } as StatusResponse)
+    wsConnectionState.set('connected')
+    wsConnectionState.set('reconnecting')
+    wsConnectionState.set('connected')
+    for (let i = 0; i < 6; i++) await tick()
+    expect(view.queryByTestId('client-restart-banner')).toBeNull()
   })
 })

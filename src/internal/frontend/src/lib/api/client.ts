@@ -163,6 +163,9 @@ export interface StatusResponse {
   /** A newer release the daemon's update check found, and its page; "" when none. Absent on the WebSocket push. */
   latest_version?: string
   latest_version_url?: string
+  /** The torrent client the daemon runs, picked at start; restart is true while the saved one differs. */
+  torrent_client?: "builtin" | "qbittorrent" | ""
+  torrent_client_restart?: boolean
 }
 
 /**

@@ -14,6 +14,7 @@ vi.mock('../../src/lib/api/client.js', () => ({
   testTorrentClient: vi.fn(),
   shokoLogin: vi.fn(),
   getShokoStatus: vi.fn(),
+  getStatus: vi.fn(),
   shokoSync: vi.fn(),
   SECRET_PLACEHOLDER: '__saved__',
 }))
@@ -41,6 +42,7 @@ const saved = {
 beforeEach(() => {
   vi.mocked(client.updateConfig).mockReset().mockResolvedValue({ message: 'ok' } as never)
   vi.mocked(client.getShokoStatus).mockReset().mockResolvedValue({ enabled: false, signed_in: false, series: 0, owned_episodes: 0 } as never)
+  vi.mocked(client.getStatus).mockReset().mockResolvedValue({ torrent_client: 'builtin', torrent_client_restart: false } as never)
 })
 
 async function open(overrides: Record<string, unknown> = {}, group?: RegExp) {
@@ -108,5 +110,15 @@ describe('Config — layout', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Change in Downloads' }))
     await flush()
     expect(byId('max_concurrent_downloads')).not.toBeNull()
+  })
+  it('the client switch says a restart is needed while the saved client differs from the running one', async () => {
+    vi.mocked(client.getStatus).mockResolvedValue({ torrent_client: 'builtin', torrent_client_restart: true } as never)
+    await open({ torrent_client: 'qbittorrent', qbittorrent_url: 'http://q:8080' }, /^Torrent Client/)
+    expect(screen.getByTestId('client-restart-line').textContent).toContain('the built-in client')
+  })
+
+  it('no restart line while the running client is the saved one', async () => {
+    await open({}, /^Torrent Client/)
+    expect(screen.queryByTestId('client-restart-line')).toBeNull()
   })
 })

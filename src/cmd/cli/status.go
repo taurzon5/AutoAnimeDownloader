@@ -49,6 +49,10 @@ func handleStatus() error {
 	if !outputJSON && status.LatestVersion != "" {
 		fmt.Printf("Update available: v%s (%s)\n", status.LatestVersion, status.LatestVersionURL)
 	}
+	// A saved torrent_client takes a restart; until then the daemon runs the old one.
+	if !outputJSON && status.TorrentClientRestart {
+		fmt.Printf("Restart needed: the daemon still runs the %s client; restart it to switch\n", status.TorrentClient)
+	}
 	return nil
 }
 
