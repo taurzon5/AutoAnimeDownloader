@@ -74,8 +74,12 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
+		// An empty library_mode means direct, as in config.json (decisions/159).
+		if config.LibraryMode == "" {
+			config.LibraryMode = files.LibraryModeDirect
+		}
 		switch config.LibraryMode {
-		case "", files.LibraryModeHardlink, files.LibraryModeDirect:
+		case files.LibraryModeHardlink, files.LibraryModeDirect:
 		default:
 			JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", `Library mode must be "hardlink" or "direct"`)
 			return

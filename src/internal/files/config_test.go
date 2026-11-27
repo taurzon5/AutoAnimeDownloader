@@ -125,3 +125,25 @@ func TestRetryLimitZeroBecomesOne(t *testing.T) {
 		t.Errorf("the 1 was not written back: %s", saved)
 	}
 }
+
+// An empty library_mode in config.json means direct, the default (decisions/159), and a config
+// with the mode saved keeps it.
+func TestEmptyLibraryModeLoadsAsDirect(t *testing.T) {
+	for _, tc := range []struct{ json, want string }{
+		{`{"check_interval": 10}`, LibraryModeDirect},
+		{`{"check_interval": 10, "library_mode": ""}`, LibraryModeDirect},
+		{`{"check_interval": 10, "library_mode": "hardlink"}`, LibraryModeHardlink},
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(tc.json), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c, err := newTestManagerIn(t, dir).LoadConfigs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.LibraryMode != tc.want {
+			t.Errorf("%s: LibraryMode = %q, want %q", tc.json, c.LibraryMode, tc.want)
+		}
+	}
+}

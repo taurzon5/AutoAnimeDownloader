@@ -274,7 +274,7 @@
     watched_episodes_to_keep: 2,
     excluded_lists: [],
     rename_files_for_jellyfin: false,
-    library_mode: "hardlink",
+    library_mode: "direct",
     auto_delete_downloads: false,
     keep_removed_release_cards: true,
     incomplete_files: "part",

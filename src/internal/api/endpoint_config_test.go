@@ -761,3 +761,20 @@ func TestHandleUpdateConfig_NoAniListAccount(t *testing.T) {
 		}
 	})
 }
+
+// A PUT with no library_mode saves direct, the default, as an empty value in config.json loads
+// (decisions/159).
+func TestSaveConfig_EmptyLibraryModeSavesDirect(t *testing.T) {
+	mockFM := &mockFileManager{}
+	handler := handleUpdateConfig(&Server{State: daemon.NewState(), FileManager: mockFM})
+	config := files.Config{CompletedAnimePath: "/tmp/completed", CheckInterval: 10, EpisodeRetryLimit: 5}
+	jsonData, _ := json.Marshal(config)
+	w := httptest.NewRecorder()
+	handler(w, httptest.NewRequest(http.MethodPut, "/api/v1/config", bytes.NewBuffer(jsonData)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("got %d: %s", w.Code, w.Body.String())
+	}
+	if mockFM.configs == nil || mockFM.configs.LibraryMode != files.LibraryModeDirect {
+		t.Fatalf("saved library_mode = %+v, want direct", mockFM.configs)
+	}
+}

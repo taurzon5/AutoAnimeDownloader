@@ -11,8 +11,10 @@
 
 Torrent logic sits behind the `TorrentBackend` interface (`Add`/`List`/`Get`/`Remove`/`Ensure`/`SetCallbacks`/`Close`) so the daemon injects one uniform backend — rain-backed `SessionManager` in production, in-memory `FakeBackend` in tests (the qBittorrent mock server is gone). Resume data lives in a bbolt DB at `~/.autoAnimeDownloader/session.db`, deliberately **outside** `save_path` so it survives a `save_path` change. rain listens on a default port range (20000–30000) with no UPnP/NAT-PMP; inbound peers may need manual forwarding, but DHT+PEX work without it.
 
-**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md), [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** the hardlink-into-library model is now the default,
-`library_mode: "hardlink"`. With `"direct"`, rain writes each torrent through a custom storage
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md), [#137](137-direct-mode-deletes-through-the-torrent-and-keep.md)):** the hardlink-into-library model is
+`library_mode: "hardlink"`, the default until 2026-11-26; direct is the default since
+([#159](159-direct-is-the-default-library-mode-and-an-empty.md)), and hardlink still applies to configs that saved it and to torrents
+added in it. With `"direct"`, rain writes each torrent through a custom storage
 straight to its library path and seeds from there: no second directory, no hardlink. Everything
 above still holds for every torrent added in hardlink mode, whatever the mode is later.
 

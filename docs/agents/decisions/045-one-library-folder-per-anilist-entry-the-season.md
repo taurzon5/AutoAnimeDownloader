@@ -12,7 +12,8 @@ A franchise layout with `Season NN/` cannot work here either: the franchise `tvs
 
 Because the two sanitization functions became identical after removing the regex, they became one: `sanitizeName`.
 
-**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** holds in hardlink mode, which stays the default. Direct mode
+**Amendment (see [#136](136-direct-mode-places-a-torrent-before-the-add-and.md)):** holds in hardlink mode, the default until 2026-11-26; a new install is in direct mode now
+([#159](159-direct-is-the-default-library-mode-and-an-empty.md)), one folder per series with `Season NN/`. Direct mode
 deliberately uses one folder per **series**, named after the PREQUEL chain's root, with `Season NN/`
 inside: the user's choice, for metadata providers that number by season (TVDB/TMDB). It accepts
 the `jellyfin-plugin-anilist` limitation this entry describes, and the settings hint says so. Not a

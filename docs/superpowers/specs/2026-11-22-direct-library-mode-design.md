@@ -36,8 +36,9 @@ four consequences this user does not want:
 
 ## What this is not
 
-- **Not a replacement.** The hardlink mode stays the default and keeps every current decision.
-  Direct mode is opt-in and only changes torrents added while it is on.
+- **Not a replacement.** The hardlink mode stays and keeps every current decision. Direct mode only
+  changes torrents added while it is on. (Written when direct mode was opt-in; since 2026-11-26 it
+  is the default: decisions/159.)
 - **Not a mover.** A torrent's place is fixed when it is added and frozen while it seeds. Changing a
   rule, a root or the mode later only affects new torrents. Moving existing torrents is a separate
   feature.

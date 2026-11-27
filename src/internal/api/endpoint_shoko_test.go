@@ -276,6 +276,8 @@ func TestWithShokoOwnedCountsShokoEpisodesAsThere(t *testing.T) {
 // and which download folders are Shoko's (decisions/152).
 func TestShokoStatusCarriesShokosFolders(t *testing.T) {
 	configs := files.DefaultConfig()
+	// Hardlink mode first: direct mode always lists the download folders (decisions/159).
+	configs.LibraryMode = files.LibraryModeHardlink
 	var st ShokoStatus
 	st.setImport(configs, nil, daemon.ImportStatus{})
 	if body, _ := json.Marshal(st); strings.Contains(string(body), "import") || strings.Contains(string(body), "download_roots") {

@@ -3,7 +3,10 @@
 **Location:** `files/filemanager.go` — `LoadConfigs` (the two legacy-field migrations and the
 `episode_retry_limit` floor, ~30 lines). Negative fact: **there is no** `config_version` field, migration chain, or lock that
 blocks the app with an old config. And the migration lives in **one** place —
-`api/endpoint_config.go` deliberately does not repeat it on `PUT`.
+`api/endpoint_config.go` deliberately does not repeat it on `PUT`. One exception: an empty
+`library_mode` becomes `"direct"` in both `LoadConfigs` and `handleUpdateConfig`
+([#159](159-direct-is-the-default-library-mode-and-an-empty.md)), because the handler validates and applies the decoded body before
+anything reloads it.
 
 **What it looks like:** a lack of robustness. The project is distributed (GitHub releases) and an
 old-version `config.json` loading wrong is a silent failure. The natural way out looks like

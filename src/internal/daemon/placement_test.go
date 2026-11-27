@@ -144,6 +144,7 @@ func TestPlacementRequest_PackAndMovieKinds(t *testing.T) {
 func TestRegisterPlacement_OnlyInDirectMode(t *testing.T) {
 	backend := torrents.NewFakeBackend()
 	hardlink := files.DefaultConfig()
+	hardlink.LibraryMode = files.LibraryModeHardlink // direct is the default (decisions/159)
 	hardlink.CompletedAnimePath = "/lib"
 	if err := registerPlacement(hardlink, backend, directMagnet, torrentTarget{anime: titledAnime(1, "A", anilist.MediaFormatTV), episode: 1}, files.DownloadRoot{}); err != nil {
 		t.Fatal(err)

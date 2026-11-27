@@ -146,6 +146,8 @@ func runGoldenPass(t *testing.T, animeID int) *DebugSummary {
 	// The set was recorded with the old default limit of 12; the default is off now, which opens
 	// the pack window and would move the picks (decisions/158).
 	cfg.MaxEpisodesPerAnime = 12
+	// Recorded in hardlink mode, the default then; direct mode would lift the limit (decisions/159).
+	cfg.LibraryMode = files.LibraryModeHardlink
 	defer files.ApplyNyaaSettings(cfg)()
 
 	summary, err := RunAnimeDebug(animeID, cfg, &debugMockFileManager{}, nil)

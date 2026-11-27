@@ -188,10 +188,12 @@ type Config struct {
 	AnimeIDsAreMediaIDs bool                `json:"anime_ids_are_media_ids"`
 	Notifications       NotificationsConfig `json:"notifications"`
 	Priorities          nyaa.Priorities     `json:"priorities"`
-	// LibraryMode picks how torrents reach the library. "hardlink" (the default, and what an
-	// empty value means) downloads into DownloadPath() and hardlinks into CompletedAnimePath.
-	// "direct" writes each torrent straight to its final <Series>/Season NN/ path through the
-	// torrents placement storage and seeds from there: no hardlink, no download copy.
+	// LibraryMode picks how torrents reach the library. "direct" (the default) writes each torrent
+	// straight to its final <Series>/Season NN/ path through the torrents placement storage and
+	// seeds from there: no hardlink, no download copy. "hardlink" downloads into DownloadPath() and
+	// hardlinks into CompletedAnimePath. An empty value in config.json or a PUT /config becomes
+	// "direct" on the way in; the zero value of a Config built in code stays hardlink, since
+	// IsDirectMode tests for "direct" only (decisions/159).
 	LibraryMode string `json:"library_mode"`
 	// AutoDeleteDownloads governs torrents ADDED in direct mode, whatever the mode is now: false =
 	// keep forever, no automatic path deletes them (and, while direct mode is on,
@@ -657,7 +659,7 @@ func DefaultConfig() *Config {
 		DeleteStatuses:                     []string{},
 		Notifications:                      NotificationsConfig{Webhooks: []WebhookPreset{}, BatchWindowSeconds: 60},
 		Priorities:                         nyaa.DefaultPriorities(),
-		LibraryMode:                        LibraryModeHardlink,
+		LibraryMode:                        LibraryModeDirect,
 		DownloadRoots:                      []DownloadRoot{},
 		IncompleteFiles:                    IncompleteFilesPart,
 		IncompleteMinFreeDiskGB:            10,
@@ -800,6 +802,11 @@ func (m *FileManager) LoadConfigs() (*Config, error) {
 		if err := m.saveConfigsLocked(config); err != nil {
 			logger.Logger.Warn().Err(err).Msg("Failed to save migrated config")
 		}
+	}
+	// An empty library_mode in config.json means direct (decisions/159). IsDirectMode tests for
+	// "direct" only, so the value is filled in here, where the file comes in.
+	if config.LibraryMode == "" {
+		config.LibraryMode = LibraryModeDirect
 	}
 
 	ApplyNyaaSettings(config)
