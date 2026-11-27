@@ -21,6 +21,13 @@ the window is accepted on purpose (it holds the next cours —
 then the ranking decides on seeders and quality, where Trix (435 seeders) wins. Nothing in the
 choice weighs how much of the pack is outside the anime.
 
+## Decided (2026-11-26)
+
+The user's answer: identify a franchise pack and map its episodes to every entry it carries, so one
+download fills all those seasons instead of being weighed against one season's pack. That is the
+[megapack spec](../superpowers/specs/2026-11-23-megapack-downloads-design.md) (recognition, franchise
+groups, mapping files to entries, file selection); this note goes when it lands.
+
 ## What to check
 
 - Whether "covers the window" should prefer, all else close, the pack whose span is nearest the

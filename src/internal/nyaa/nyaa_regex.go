@@ -48,6 +48,16 @@ var (
 	// "S2 01-12" and "S01E01-12" (an episode range after the marker) still count.
 	reSeasonRangePrefix = regexp.MustCompile(`(?i)(?:\bS|\bseasons?\s*)$`)
 
+	// reSeasonRanges read a pack that carries several seasons: "S01-05" and "S01-S05", "Season 1-3"
+	// (singular: no spaces, since "Season 2 - 07" is season 2, episode 7) and "Seasons 1 ~ 3"
+	// (plural: any spacing). "S2 01-12" and "S01E01-12" are an episode range after the marker and
+	// match none of them.
+	reSeasonRanges = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\bS(\d{1,2})-S?(\d{1,2})\b`),
+		regexp.MustCompile(`(?i)\bSeason\s*(\d{1,2})[-~](\d{1,2})\b`),
+		regexp.MustCompile(`(?i)\bSeasons\s*(\d{1,2})\s*(?:-|~|to|&)\s*(\d{1,2})\b`),
+	}
+
 	// Movie keyword patterns
 	reMovieKeywords = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)\(movie\)|\[movie\]|\smovie\s`),

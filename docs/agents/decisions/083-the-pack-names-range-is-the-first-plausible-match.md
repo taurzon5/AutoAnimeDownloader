@@ -1,6 +1,6 @@
 # 83. The pack name's range is the first plausible match, not the first match
 
-**Location:** `nyaa/nyaa.go` — `batchRange`, called by `ExtractBatchInfo`; `nyaa/nyaa_regex.go` — `reBatchRange`, `reSeasonRangePrefix`.
+**Location:** `nyaa/nyaa.go` — `batchRange`, called by `ExtractBatchInfo`; `nyaa/nyaa_regex.go` — `reBatchRange`, `reSeasonRangePrefix`; and, for the seasons a pack carries, `ExtractSeasonRange` with `reSeasonRanges`.
 
 **What it looks like:** a `FindAll` with `continue` on four guards where a `FindString` with an `if` would fit, and a band of magic numbers (1900..2100) in the middle. Looks like speculative defence against cases that do not happen.
 
@@ -26,6 +26,19 @@ golden case `kimetsu-season-range-pack` (`daemon/testdata/golden/`). **Known gap
 season-1 entry benefits — `ExtractSeason` still reads `S01-05` as season 1, so under a season 2-5
 entry the pack path drops the pack before any range is read
 (`docs/backlog/season-range-in-a-pack-name-reads-as-one-season.md`).
+
+**Amendment (2026-11-26):** that gap is now held **on purpose**. `ExtractSeasonRange` reads the
+seasons a pack carries (`S01-05`, `S01-S05`, `Season 1-3`, `Seasons 1 ~ 3`), but nothing filters
+on it yet: the user decided that a franchise pack's episodes should be mapped to every entry it
+carries (the megapack spec, `docs/superpowers/specs/2026-11-23-megapack-downloads-design.md`), and
+until that mapping exists a later-season entry keeps dropping franchise packs instead of
+downloading a whole franchise for one season. The golden case `kimetsu-season2-range-pack`
+(129874) pins it; it also showed that the app's season-2 queries never return `[Trix] … S01-05`
+at all. The two readers differ on purpose: `reSeasonRangePrefix` rejects `Season 1 - 3` as an
+episode range (safe: it only keeps a pack from being read as five episodes), while
+`reSeasonRanges` doesn't read the singular with spaces as seasons, since `Season 2 - 07` is season
+2, episode 7. Don't wire `ExtractSeasonRange` into the pack-path season filter before files map to
+entries, and don't merge the two patterns.
 
 **`FindAll` and not `FindString`** because a rejected match must not end the search: in `[Group] Anime (2021-2022) 01-24 [BD]` the real range comes **after** the year.
 

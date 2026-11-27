@@ -1463,6 +1463,25 @@ func ExtractSeason(name string) *int {
 	return nil
 }
 
+// ExtractSeasonRange reads the seasons a multi-season pack carries ("[Trix] Kimetsu no Yaiba S01-05":
+// 1..5). ok is false for a name with no season range, or a range that isn't increasing. Megapack
+// recognition, step 1 of the megapack spec; the pack-path season filter doesn't use it yet, so a
+// later-season entry still drops a franchise pack until its files can be mapped to entries.
+func ExtractSeasonRange(name string) (lo, hi int, ok bool) {
+	for _, re := range reSeasonRanges {
+		m := re.FindStringSubmatch(name)
+		if m == nil {
+			continue
+		}
+		lo, errLo := strconv.Atoi(m[1])
+		hi, errHi := strconv.Atoi(m[2])
+		if errLo == nil && errHi == nil && lo >= 1 && lo < hi && hi < 100 {
+			return lo, hi, true
+		}
+	}
+	return 0, 0, false
+}
+
 // ExtractPart extracts the part/cour number from the torrent name or the AniList title, trying the
 // patterns in priority order (most specific first).
 //

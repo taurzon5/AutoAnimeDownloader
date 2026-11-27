@@ -2616,3 +2616,30 @@ func TestGenerateSearchTitleVariants_RomajiBaseEnglishSubtitleLast(t *testing.T)
 		t.Errorf("want the 4 usual variants, got %v", got)
 	}
 }
+
+// A multi-season pack names its seasons as a range; an episode range after a season marker is not
+// one, and neither is "Season 2 - 07" (season 2, episode 7).
+func TestExtractSeasonRange(t *testing.T) {
+	cases := []struct {
+		name   string
+		lo, hi int
+		ok     bool
+	}{
+		{"[Trix] Kimetsu no Yaiba S01-05 [Dual Audio] [Multi Subs] (BD 1080p AV1) (Batch)", 1, 5, true},
+		{"[Group] Anime S01-S03 [BD 1080p]", 1, 3, true},
+		{"[Group] Anime Season 1-3 [BD 1080p] (Batch)", 1, 3, true},
+		{"[Group] Anime Seasons 1 ~ 3 [BD 1080p]", 1, 3, true},
+		{"[Group] Anime Seasons 2 & 3 [BD 1080p]", 2, 3, true},
+		{"[Group] Anime Season 2 - 07 [1080p]", 0, 0, false},
+		{"[Group] Anime S2 01-12 [1080p]", 0, 0, false},
+		{"[Group] Anime S01E01-12 [1080p]", 0, 0, false},
+		{"[Group] Anime S03 [1080p] (Batch)", 0, 0, false},
+		{"[Group] Anime S05-01 [1080p]", 0, 0, false},
+	}
+	for _, tc := range cases {
+		lo, hi, ok := nyaa.ExtractSeasonRange(tc.name)
+		if lo != tc.lo || hi != tc.hi || ok != tc.ok {
+			t.Errorf("%q: got %d-%d %v, want %d-%d %v", tc.name, lo, hi, ok, tc.lo, tc.hi, tc.ok)
+		}
+	}
+}

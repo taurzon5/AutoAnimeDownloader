@@ -23,6 +23,21 @@ measured live. It is inferred from the filter, and the golden case only covers s
 `reSeasonPatterns` (`nyaa/nyaa_regex.go`) takes the first number after `S` / `Season`. `Season\s*`
 also misses the plural `Seasons`. `BatchInfo` has one `Season int`, so the range has nowhere to go.
 
+## Progress (2026-11-26)
+
+- **Read:** `nyaa.ExtractSeasonRange` reads `S01-05`, `S01-S05`, `Season 1-3` and `Seasons 1 ~ 3`
+  (`TestExtractSeasonRange`). `ExtractSeason` is unchanged: teaching it the plural would make
+  `Seasons N` a title cut point and `Seasons 2 & 3` a season-2 pack, letting franchise packs in early
+  ([decisions/083](../agents/decisions/083-the-pack-names-range-is-the-first-plausible-match.md)).
+- **Not used yet:** the pack-path filter still drops a franchise pack for a later season. The user
+  decided (2026-11-26) that a franchise pack should have its episodes mapped to every entry it
+  carries, which is the [megapack spec](../superpowers/specs/2026-11-23-megapack-downloads-design.md):
+  the filter changes with its step 1, not before, so a later season can't start downloading a whole
+  franchise for one season's episodes.
+- **Live:** the golden case `kimetsu-season2-range-pack` (AniList 129874) showed the app's season-2
+  queries never surface `[Trix] … S01-05`; a franchise pack named `(Season 1+2+3+4+5+Movie)` does
+  show up, and the spec's `S01+S02+…` shape covers it.
+
 ## What to check
 
 - Whether `ExtractSeason` (or a new `ExtractSeasonRange`) should return lo..hi, with the pack-path
