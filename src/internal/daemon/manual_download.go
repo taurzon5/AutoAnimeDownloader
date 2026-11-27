@@ -237,7 +237,9 @@ func ManualDownloadEpisode(fm FileManagerInterface, backend torrents.TorrentBack
 		return files.EpisodeStruct{}, err
 	}
 
-	// The same search as the scheduled pass (episodes.go), offset and split-entry fallbacks included.
+	// The same search as the scheduled pass (episodes.go), offset and split-entry fallbacks included,
+	// but not its size and seeder filters: a click is the user's pick, and only the disk guard in
+	// addAndPrioritize applies (decisions/160).
 	media := details.mediaList.Media
 	results := rankSeriesResults(searchNyaaForSingleEpisode(*targetNode, media, anilist.LastAiredEpisode(details.mediaList)), details.isFinished)
 	if len(results) == 0 {

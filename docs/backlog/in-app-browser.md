@@ -12,6 +12,13 @@ Added later the same day: the app **gathers every title and link on the pages th
 that browser**, so what was browsed can be sent to the app: to an anime, or to the manga and novel
 section ([manga-and-novel-downloads.md](manga-and-novel-downloads.md)).
 
+## Decided (2026-11-26)
+
+- **It has to work in LXC.** The user runs the app in an LXC container, so the browser can't depend
+  on Docker: it is Firefox installed in that container and served to a page of the app over the web
+  (Xpra's HTML5 client, KasmVNC, or noVNC with a virtual display), with uBlock Origin installed by
+  Firefox policy. See [headless-lxc-setup.md](headless-lxc-setup.md).
+
 ## What to check
 
 - **Where it runs.** A web page can't host a real Firefox. The usual way is a container that runs

@@ -171,3 +171,4 @@ do not edit by hand.
 - [**#157** — The smoke tests and the sandbox's browser checks run on Firefox only, never on Chrome or Chromium](157-the-smoke-tests-run-on-firefox-only-never-on.md)
 - [**#158** — The episode limit stays one number with 0 as off, drawn as a switch, and is off by default](158-the-episode-limit-stays-one-number-with-0-as-off.md)
 - [**#159** — Direct is the default library mode, and an empty mode becomes direct only where config comes in](159-direct-is-the-default-library-mode-and-an-empty.md)
+- [**#160** — A manual episode download ignores the size and seeder limits, and only the disk guard applies](160-a-manual-episode-download-ignores-the-size-and.md)

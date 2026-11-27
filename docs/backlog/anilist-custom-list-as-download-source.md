@@ -25,6 +25,11 @@ whatever its status on AniList. Not tied to a release yet.
   its lists take an AniList custom list as a source, but "a source only brings anime the app
   downloads at all", so it doesn't change what downloads.
 
+## Decided (2026-11-26)
+
+- **Status doesn't matter.** An anime in the included custom list downloads whatever its AniList
+  status, Completed and Dropped included. An excluded list still wins over it.
+
 ## What to check
 
 - **The setting.** Custom list names belong to one account, so pair the name with its account

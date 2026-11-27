@@ -368,7 +368,7 @@ loose episode matching different tiers: the higher tier wins the episode.
 candidate appears under its best filter. A last group, **Rejected**, holds the ones no filter
 accepts, each with the field that failed. Every candidate stays selectable: a hand pick overrides
 the filters, as it already overrides the size and seeder limits
-([backlog](../../backlog/manual-download-skips-size-and-seeder-filters.md)). `debug-anime` prints
+([decisions/160](../../agents/decisions/160-a-manual-episode-download-ignores-the-size-and.md)). `debug-anime` prints
 the same per-field verdicts.
 
 ### 6. Following a release

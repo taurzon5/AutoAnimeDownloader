@@ -44,6 +44,13 @@ lists. What differs:
 Decide whether queues are the spec's lists plus an order and a default, or a separate thing,
 before either is built.
 
+## Decided (2026-11-26)
+
+- **One shared download limit.** All queues share `max_concurrent_downloads`; there is no limit per
+  queue.
+- **The order holds back searching, not downloading.** The searches of a later queue wait for the
+  earlier queues' searches; once found, downloads start as slots free up, whatever their queue.
+
 ## What to check
 
 - **What "first" means.** Torrents of an earlier queue start before those of a later one: the app
