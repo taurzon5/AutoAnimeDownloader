@@ -178,10 +178,14 @@ var (
 		{regexp.MustCompile(`(?i)FLAC`), "FLAC"},
 		{regexp.MustCompile(`(?i)DTS-HD`), "DTS-HD"},
 		{regexp.MustCompile(`(?i)TrueHD`), "TrueHD"},
-		{regexp.MustCompile(`(?i)DDP|Dolby\s*Digital\s*Plus`), "DDP"},
+		// E-AC-3 is Dolby Digital Plus: before AC3, which would read "EAC3" as plain AC3.
+		{regexp.MustCompile(`(?i)DDP|Dolby\s*Digital\s*Plus|\bE-?AC-?3`), "DDP"},
 		{regexp.MustCompile(`(?i)AAC`), "AAC"},
 		{regexp.MustCompile(`(?i)AC3|Dolby\s*Digital`), "AC3"},
 		{regexp.MustCompile(`(?i)MP3`), "MP3"},
+		// Plain DTS only when the name has no other codec: "DTS + AAC" keeps ranking as AAC, as it
+		// did before DTS was read.
+		{regexp.MustCompile(`(?i)\bDTS\b`), "DTS"},
 		// Last: a name with Opus and another codec ranks by the other one, as before Opus was read.
 		{regexp.MustCompile(`(?i)\bOpus\b`), "Opus"},
 	}

@@ -102,9 +102,9 @@ var canonicalSources = map[string]string{
 }
 
 // releaseAudioCodecs reads the audio codec in the filters' vocabulary. It is its own list, not
-// extractAudio's, because the ranking reads extractAudio: there E-AC-3 still matches "AC3" and DTS
-// isn't read, and changing that would move picks (decisions/150). Here E-AC-3 is Dolby Digital Plus
-// (eac3) and DTS-HD a DTS track. First match wins, in this order.
+// extractAudio's: the ranking's tokens are the Priorities page's (ddp, dts-hd), and its order keeps
+// "DTS + AAC" ranking as AAC, while here a DTS track is a DTS track whatever else the name says.
+// E-AC-3 is Dolby Digital Plus (eac3) and DTS-HD a DTS track. First match wins, in this order.
 var releaseAudioCodecs = []struct {
 	re    *regexp.Regexp
 	codec string

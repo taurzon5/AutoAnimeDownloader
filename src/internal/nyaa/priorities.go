@@ -47,7 +47,7 @@ func DefaultPriorities() Priorities {
 		// because ExtractCodec already canonicalizes them to "hevc"/"h.264" — they would
 		// be inert tokens.
 		Codecs:     []string{"h.264", "hevc", "av1", "xvid"},
-		Audio:      []string{"flac", "dts-hd", "truehd", "ddp", "aac", "ac3", "mp3"},
+		Audio:      []string{"flac", "dts-hd", "truehd", "ddp", "dts", "aac", "ac3", "mp3"},
 		IgnoreList: []string{"[dub]", "[raw]", "[hardcoded]", "[hc]", "re-encode"},
 	}
 }

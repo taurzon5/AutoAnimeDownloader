@@ -95,9 +95,13 @@ func TestExtractorFixes(t *testing.T) {
 	for name, want := range map[string]string{
 		"[Group] Show - 01 [1080p Opus]":   "Opus",
 		"[Group] Show - 01 [Opus][AAC]":    "AAC",
-		"[Group] Show - 01 [EAC3 5.1]":     "AC3",
+		"[Group] Show - 01 [EAC3 5.1]":     "DDP",
+		"[Group] Show - 01 [E-AC-3]":       "DDP",
+		"[Group] Show - 01 [E-AC3 2.0]":    "DDP",
 		"[Group] Show - 01 [AC3]":          "AC3",
 		"[Group] Show - 01 [DTS][AAC 2.0]": "AAC",
+		"[Group] Show - 01 [DTS 5.1]":      "DTS",
+		"[Group] Show - 01 [DTS-HD MA]":    "DTS-HD",
 	} {
 		if got := extractAudio(name); got != want {
 			t.Errorf("%s: ranking audio %q, want %q", name, got, want)

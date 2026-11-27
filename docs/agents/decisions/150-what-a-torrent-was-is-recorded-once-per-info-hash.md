@@ -72,11 +72,8 @@ Pinned by:
   a pick** the same way: such a name no longer ranks last on resolution, and a `_BD_` name of a
   finished series ranks as BD instead of the assumed WEB-DL. The golden set still picks the same
   torrents, which again shows no regression, not that nothing moves.
-- **What stays out of the ranking.** E-AC-3 and plain DTS are read only by `ParseRelease`, through its
-  own audio list. In the ranking, `EAC3` and `E-AC3` still read as AC3, while `E-AC-3` and plain DTS read as nothing. Reading DTS there
-  would turn a "DTS + AAC" name into DTS, which isn't in the default audio list, so it would rank
-  below MP3. Reading E-AC-3 as DDP would lift those releases above AAC. Both are ranking changes
-  for their own step ([backlog](../../backlog/eac3-and-dts-in-the-ranking.md)).
+- **What stayed out of the ranking, then came in.** At step 1, E-AC-3 and plain DTS were read only
+  by `ParseRelease`. On 2026-11-27 the ranking read them too (amendment below).
 - **A pick or a paste.** The torrent picker and a pasted magnet reach the same add paths (the
   anime replace, the standalone add). A request that carries the picker's Nyaa id is recorded as a
   pick, with its Nyaa page and size (`PickedRelease`). Without one it is a pasted magnet named by
@@ -84,10 +81,17 @@ Pinned by:
 
 **Amendment (2026-11-26):** `POST /animes/{id}/episodes/{n}/replace` takes the picker's row too (`ManualDownloadEpisodeWithMagnet` with a `PickedRelease`), so an episode picked from the single-episode picker is recorded as a pick; a pasted magnet still records its dn.
 
+**Amendment (2026-11-27):** the ranking reads E-AC-3 as Dolby Digital Plus (`EAC3`, `E-AC3`,
+`E-AC-3` → `DDP`, so above AAC) and a plain `DTS`, but only when the name names no other codec: the
+DTS pattern is the last but Opus, so "DTS + AAC" still ranks as AAC. `dts` joins the default audio
+list after `ddp`; a saved list without it ranks a DTS-only name last, as before, when it read as
+nothing. The audio criterion only sorts movies, and the golden set picks the same torrents.
+`ParseRelease` keeps its own list (a DTS track is DTS there whatever else the name says).
+
 **Don't "fix" by:**
 - Moving the release details into `episodes.json`.
 - Updating a record when the same hash is added again.
 - Failing an add because the record could not be written.
 - Recording from the client's torrent name after the add: the Nyaa row is gone by then.
-- Reading DTS or E-AC-3 in `reAudioPatterns` to match `ParseRelease`: it moves picks.
+- Moving the DTS pattern ahead of AAC to match `ParseRelease`: "DTS + AAC" names would rank as DTS.
 - Deleting records when `keep_removed_release_cards` is off.

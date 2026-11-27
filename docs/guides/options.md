@@ -825,7 +825,7 @@ queue's lists you edit. **Reset this list** and **Reset all** bring back the def
 | **Resolutions** (`resolutions`) | `1080p`, `720p`, `1440p`, `2160p`, `480p` | every release (`4k` reads as `2160p`) |
 | **Source** (`sources`) | `bdremux`, `bd`, `bdrip`, `web-dl`, `webrip`, `tv`, `dvd`, `hdtv` | movies and finished series only; a name with no source counts as `web-dl` |
 | **Codec** (`codecs`) | `h.264`, `hevc`, `av1`, `xvid` | every release; a name with no codec ties |
-| **Audio** (`audio`) | `flac`, `dts-hd`, `truehd`, `ddp`, `aac`, `ac3`, `mp3` | movies only |
+| **Audio** (`audio`) | `flac`, `dts-hd`, `truehd`, `ddp`, `dts`, `aac`, `ac3`, `mp3` | movies only |
 | **Block list** (`ignore_list`) | `[dub]`, `[raw]`, `[hardcoded]`, `[hc]`, `re-encode` | a release whose name contains one is dropped, never ranked |
 
 The other criteria: **uncensored** prefers an uncensored release, **health** compares seeders in
