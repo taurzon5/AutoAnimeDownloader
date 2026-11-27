@@ -291,6 +291,7 @@
     delete: m.detail_btn_delete,
     release: m.detail_btn_release,
     replace: m.detail_btn_replace,
+    choose: m.detail_btn_choose_torrent,
     watchedHere: m.detail_btn_watched_here,
   };
 
@@ -314,6 +315,7 @@
       case "delete": return handleDelete(ep);
       case "release": return handleRelease(ep);
       case "replace": return handleReplace(ep);
+      case "choose": return push(`/status/${animeId}/episodes/${ep.episode_number}/torrents`);
       case "watchedHere": return saveProgress(ep.episode_number);
     }
   }

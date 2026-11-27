@@ -56,3 +56,20 @@ func TestConfigPartsSetRefusesInvalidJSON(t *testing.T) {
 		t.Fatalf("want an invalid JSON error, got %v", err)
 	}
 }
+
+// `animes episode-candidates` asks the episode's own endpoint, with the query when given.
+func TestAnimesEpisodeCandidatesHitsTheEpisodeEndpoint(t *testing.T) {
+	var path, query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, query = r.URL.Path, r.URL.Query().Get("q")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.SuccessResponse{Success: true, Data: api.TorrentCandidatesResponse{}})
+	}))
+	defer srv.Close()
+	if _, _, err := runCLI(t, "--endpoint", srv.URL, "animes", "episode-candidates", "21", "3", "--query", "Frieren 03"); err != nil {
+		t.Fatalf("episode-candidates: %v", err)
+	}
+	if path != "/api/v1/animes/21/episodes/3/torrent-candidates" || query != "Frieren 03" {
+		t.Errorf("request = %s q=%q", path, query)
+	}
+}

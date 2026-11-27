@@ -1,7 +1,7 @@
 import type { AnimeEpisodeInfo, TorrentInfo } from '../api/client.js'
 
 /**
- * `episodeActions` (spec §7, Fase 2) — the action model for one episode row, as DATA. Desktop
+ * `episodeActions` (spec §7, Phase 2) — the action model for one episode row, as DATA. Desktop
  * (icon buttons) and mobile (bottom sheet / ActionMenu) both render from the same
  * `{ principal, menu }` shape instead of each screen re-deriving "which of the five endpoints
  * apply here" on its own, which is how the pre-redesign AnimeDetail.svelte ended up with the
@@ -9,10 +9,10 @@ import type { AnimeEpisodeInfo, TorrentInfo } from '../api/client.js'
  * conditions written out twice (desktop table + mobile card list).
  *
  * `labelKey` is an identifier, not a resolved string or a Paraglide function reference — same
- * i18n boundary as `animeState.ts`. The five ids below (`download`, `redownload`, `delete`,
+ * i18n boundary as `animeState.ts`. Five of the ids below (`download`, `redownload`, `delete`,
  * `release`, `replace`) map 1:1 to the five actions in `lib/api/client.ts`
  * (downloadEpisode / redownloadEpisode / deleteEpisode / releaseEpisode /
- * replaceEpisodeWithMagnet); `labelKey` mirrors `id` today, but is a separate field so a
+ * replaceEpisodeWithMagnet); `choose` opens the episode picker and `watchedHere` saves progress; `labelKey` mirrors `id` today, but is a separate field so a
  * future context (e.g. bulk vs. per-row) can pick a different label for the same action
  * without changing its identity.
  *
@@ -22,7 +22,7 @@ import type { AnimeEpisodeInfo, TorrentInfo } from '../api/client.js'
  * step; this module only flags that requirement, it doesn't enforce it.
  */
 
-export type EpisodeActionId = 'download' | 'redownload' | 'delete' | 'release' | 'replace' | 'watchedHere'
+export type EpisodeActionId = 'download' | 'redownload' | 'delete' | 'release' | 'replace' | 'choose' | 'watchedHere'
 
 export interface Action {
   id: EpisodeActionId
@@ -43,6 +43,9 @@ const REDOWNLOAD: Action = { id: 'redownload', labelKey: 'redownload', variant: 
 const DELETE: Action = { id: 'delete', labelKey: 'delete', variant: 'warn', destructive: true }
 const RELEASE: Action = { id: 'release', labelKey: 'release', variant: 'ghost' }
 const REPLACE: Action = { id: 'replace', labelKey: 'replace', variant: 'ghost' }
+// The single-episode picker (v0.2.0): the episode's releases to choose from, next to Replace's
+// pasted magnet.
+const CHOOSE: Action = { id: 'choose', labelKey: 'choose', variant: 'ghost' }
 const WATCHED_HERE: Action = { id: 'watchedHere', labelKey: 'watchedHere', variant: 'ghost' }
 
 export interface EpisodeActionOptions {
@@ -71,23 +74,23 @@ function classify(ep: AnimeEpisodeInfo, torrent: TorrentInfo | undefined): Episo
 
   if (torrent && !torrent.completed && torrent.status === 'downloading') {
     // Row: "Active torrent (downloading)"
-    return { principal: undefined, menu: [REPLACE, DELETE] }
+    return { principal: undefined, menu: [CHOOSE, REPLACE, DELETE] }
   }
 
   if (ep.is_downloaded) {
     // Row: "Downloaded"
-    return { principal: REDOWNLOAD, menu: [REPLACE, DELETE] }
+    return { principal: REDOWNLOAD, menu: [CHOOSE, REPLACE, DELETE] }
   }
 
   if (ep.in_shoko) {
     // Already in the user's Shoko library: the app doesn't download it on its own, and Download
     // stays in the menu only, for a copy the user really wants (the Shoko spec §3).
-    return { principal: undefined, menu: [DOWNLOAD] }
+    return { principal: undefined, menu: [DOWNLOAD, CHOOSE] }
   }
 
   if (ep.is_aired) {
     // Row: "Aired and not downloaded"
-    return { principal: DOWNLOAD, menu: [REPLACE] }
+    return { principal: DOWNLOAD, menu: [CHOOSE, REPLACE] }
   }
 
   // Row: "Not yet released"

@@ -129,7 +129,8 @@ func findEpisodeNode(ml anilist.MediaList, episodeNumber int) *anilist.AiringNod
 
 // ManualDownloadEpisodeWithMagnet downloads a specific episode using a user-supplied magnet link.
 // Skips Nyaa search entirely. Returns the saved EpisodeStruct with ManuallyManaged=true on success.
-func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, animeId int, episodeNumber int, magnet string, configs *files.Config) (files.EpisodeStruct, error) {
+// picked is the Nyaa row the episode picker chose it from; empty for a pasted magnet.
+func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, animeId int, episodeNumber int, magnet string, configs *files.Config, picked PickedRelease) (files.EpisodeStruct, error) {
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return files.EpisodeStruct{}, err
 	}
@@ -151,7 +152,7 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 	if err != nil || hash == "" {
 		return files.EpisodeStruct{}, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
-	recordMagnet(hash, magnet, files.ReleaseOriginMagnet, animeId, targetNode.Episode)
+	picked.record(hash, magnet, animeId, targetNode.Episode)
 
 	return files.EpisodeStruct{
 		AnimeID:         animeId,

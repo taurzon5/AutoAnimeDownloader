@@ -40,6 +40,8 @@ and organize slicing for every ONA chain, and the singles bug didn't need it. Th
 taught the ` 05 (` episode pattern (`nyaa_regex.go`) to allow a `vN` before the `(`, because
 `Stone Ocean 13 v2 (1080p)` had no episode number.
 
+**Amendment (2026-11-26):** the single-episode picker (`PreviewEpisodeTorrents`) reaches `searchNyaaForSingleEpisode` too.
+
 **Don't "fix" by:**
 - Counting an ONA prequel for every entry: an ONA side story of a TV season would shift that
   season's search to an episode that doesn't exist ([#9](009-prequel-offset-gate-requires-part-2.md)).

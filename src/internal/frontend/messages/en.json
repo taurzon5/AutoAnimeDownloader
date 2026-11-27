@@ -290,6 +290,7 @@
   "detail_bulk_toast_redl_done": "{success} episode(s) requeued for download",
   "detail_bulk_toast_partial": "{failed} failed",
   "detail_btn_replace": "Replace",
+  "detail_btn_choose_torrent": "Choose torrent",
   "detail_replace_ep_title": "Replace Episode {number}",
   "detail_replace_magnet_placeholder": "magnet:?xt=urn:btih:...",
   "detail_replace_ep_done": "Episode {number} queued for replacement",
@@ -721,6 +722,12 @@
   "picker_replace_confirm_title": "Replace every downloaded episode?",
   "picker_replace_confirm_msg": "Every downloaded episode of {title} is deleted with its files (files handed to Shoko stay), then this torrent downloads in their place.",
   "picker_replace_confirm": "Delete and replace",
+  "picker_episode_caption": "Choose a torrent for episode {number}",
+  "picker_episode_hint": "This episode's releases, best first, and all of them: a hand pick ignores the size and seeder limits.",
+  "picker_episode_confirm_title": "Download this for episode {number}?",
+  "picker_episode_confirm_msg": "If episode {number} is downloaded, its file is deleted first (a file handed to Shoko stays) and this torrent replaces it.",
+  "picker_episode_confirm": "Download",
+  "picker_episode_done": "Episode {number} is downloading",
   "picker_pack_count": [
     {
       "declarations": [

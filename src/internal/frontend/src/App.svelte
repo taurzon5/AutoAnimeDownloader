@@ -25,6 +25,7 @@
   const routes: Record<string, unknown> = {
     "/": Status,
     "/status/:id/torrents": TorrentPicker,
+    "/status/:id/episodes/:episode/torrents": TorrentPicker,
     "/status/:id": AnimeDetail,
     "/status": Status,
     "/add/:id/torrents": TorrentPicker,

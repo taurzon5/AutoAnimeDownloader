@@ -227,6 +227,21 @@ func (c *Client) SearchAniList(term string, includeUnreleased bool) ([]AniListSe
 	return results, nil
 }
 
+// GetEpisodeTorrentCandidates lists the torrents for one episode (the single-episode picker).
+func (c *Client) GetEpisodeTorrentCandidates(id, episode int, query string) (*TorrentCandidatesResponse, error) {
+	path := "/api/v1/animes/" + strconv.Itoa(id) + "/episodes/" + strconv.Itoa(episode) + "/torrent-candidates"
+	if query != "" {
+		q := url.Values{}
+		q.Set("q", query)
+		path += "?" + q.Encode()
+	}
+	var out TorrentCandidatesResponse
+	if err := c.get(path, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) GetTorrentCandidates(id int, query string) (*TorrentCandidatesResponse, error) {
 	path := "/api/v1/animes/" + strconv.Itoa(id) + "/torrent-candidates"
 	if query != "" {

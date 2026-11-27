@@ -19,6 +19,8 @@ pack and a magnet escape hatch, not one control with two meanings.
 `name` / `nyaa_id` / `size_bytes` too, so a replacement picked from the list is recorded as a pick
 ([#150](150-what-a-torrent-was-is-recorded-once-per-info-hash.md)). The two confirms are unchanged.
 
+**Amendment (2026-11-26):** a third mode, the single-episode picker (`#/status/:id/episodes/:n/torrents`), follows the same rule: Download this sends the selected row (name, `nyaa_id`, `size_bytes`) with its magnet to `POST …/episodes/{n}/replace`, after a confirmation naming the episode.
+
 **Don't "fix" by:** merging the two buttons again; reading `GET /animes/{id}` for
 the add-mode header (the anime is not tracked yet); widening `GetMediaByID` for a
 year.

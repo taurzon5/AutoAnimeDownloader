@@ -32,6 +32,8 @@
 browser. Fetching eight `/view/<id>` pages up front is the cost [sources.md](../sources.md) called
 out. Writing the id before the torrent leaves a tracked anime with nothing in the session.
 
+**Amendment (2026-11-26):** the single-episode picker (`PreviewEpisodeTorrents`) keeps the anime's season and part on a typed `q`: `nyaa.ScrapNyaa` reads a missing season as season 1 and drops other seasons' rows, so without them a sequel's episode could never be listed from a typed query. No title-variant loop there either.
+
 **Don't "fix" by:** falling through to automatic singles on a custom empty query; fetching
 `/view/<id>` inside the candidates handler "so the pane is instant"; writing the standalone id
 before `backend.Add`; persisting the picker cache or the custom `q`; inventing `1..total`

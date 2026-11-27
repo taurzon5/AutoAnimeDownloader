@@ -52,6 +52,18 @@ func animesCommand() *cli.Command {
 				Action: handleAnimesCandidates,
 			},
 			{
+				Name:      "episode-candidates",
+				Usage:     "List ranked torrent candidates for one episode",
+				ArgsUsage: "<id> <episode>",
+				Description: "The single-episode picker: the pass's own search for the episode, or --query, with every\n" +
+					"result listed (a hand pick ignores the size and seeder limits). Download one with\n" +
+					"`animes replace-episode <id> <episode> --magnet <magnet>`.",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "query", Usage: "Custom Nyaa search query"},
+				},
+				Action: handleAnimesEpisodeCandidates,
+			},
+			{
 				Name:      "candidate",
 				Usage:     "Show the files and Nyaa page of one torrent candidate",
 				ArgsUsage: "<id> <nyaa_id>",
@@ -258,6 +270,25 @@ func handleAnimesCandidates(c *cli.Context) error {
 		return err
 	}
 	candidates, err := getClient().GetTorrentCandidates(id, c.String("query"))
+	if err != nil {
+		return mapClientError(err)
+	}
+	return printValue(candidates, "No candidates")
+}
+
+func handleAnimesEpisodeCandidates(c *cli.Context) error {
+	if err := requireArgs(c, 2, "animes episode-candidates <id> <episode>"); err != nil {
+		return err
+	}
+	id, err := parsePositiveInt(c.Args().Get(0), "id")
+	if err != nil {
+		return err
+	}
+	episode, err := parsePositiveInt(c.Args().Get(1), "episode")
+	if err != nil {
+		return err
+	}
+	candidates, err := getClient().GetEpisodeTorrentCandidates(id, episode, c.String("query"))
 	if err != nil {
 		return mapClientError(err)
 	}

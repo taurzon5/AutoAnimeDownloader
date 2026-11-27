@@ -15,6 +15,8 @@ vi.mock('../../src/lib/api/client.js', async () => {
     getTorrentCandidateDetail: vi.fn(),
     addStandaloneAnime: vi.fn(),
     replaceAnimeWithMagnet: vi.fn(),
+    getEpisodeTorrentCandidates: vi.fn(),
+    replaceEpisodeWithMagnet: vi.fn(),
   }
 })
 
@@ -31,6 +33,8 @@ const getTorrentCandidates = vi.mocked(client.getTorrentCandidates)
 const getTorrentCandidateDetail = vi.mocked(client.getTorrentCandidateDetail)
 const addStandaloneAnime = vi.mocked(client.addStandaloneAnime)
 const replaceAnimeWithMagnet = vi.mocked(client.replaceAnimeWithMagnet)
+const getEpisodeTorrentCandidates = vi.mocked(client.getEpisodeTorrentCandidates)
+const replaceEpisodeWithMagnet = vi.mocked(client.replaceEpisodeWithMagnet)
 const pop = vi.mocked(router.pop)
 const push = vi.mocked(router.push)
 
@@ -504,5 +508,32 @@ describe('TorrentPicker — description pane', () => {
     expect(heading.nextElementSibling?.className).toMatch(/\bmax-h-80\b/)
     expect(heading.nextElementSibling?.className).toMatch(/\boverflow-y-auto\b/)
     expect(heading.nextElementSibling?.className).toMatch(/\bpr-3\b/)
+  })
+})
+
+// The single-episode picker (v0.2.0): the same screen on one episode's releases, asking before it
+// replaces the episode, and going back to the anime page.
+describe('TorrentPicker — one episode', () => {
+  it("lists the episode's releases and replaces the episode with the pick", async () => {
+    getEpisodeTorrentCandidates.mockResolvedValue({
+      query: '',
+      media: media(),
+      items: [candidate({ name: '[SubsPlease] Frieren - 03 [1080p]', is_batch: false, range_start: 0, range_end: 0, magnet: 'magnet:?xt=urn:btih:ep3' })],
+    })
+    replaceEpisodeWithMagnet.mockResolvedValue(undefined as never)
+    window.location.hash = '#/status/21/episodes/3/torrents'
+    render(TorrentPicker)
+    await waitFor(() => expect(getEpisodeTorrentCandidates).toHaveBeenCalledWith(21, 3, undefined, expect.anything()))
+    expect(getTorrentCandidates).not.toHaveBeenCalled()
+    await screen.findByText('[SubsPlease] Frieren - 03 [1080p]')
+    expect(screen.getByTestId('picker-caption').textContent).toContain('episode 3')
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    await fireEvent.click(await screen.findByRole('button', { name: 'Download' }))
+    // The row goes with the magnet, so the release is recorded as a pick (decisions/150).
+    await waitFor(() => expect(replaceEpisodeWithMagnet).toHaveBeenCalledWith(21, 3, 'magnet:?xt=urn:btih:ep3', {
+      name: '[SubsPlease] Frieren - 03 [1080p]', nyaa_id: 12345, size_bytes: 12_000_000_000,
+    }))
+    expect(push).toHaveBeenCalledWith('/status/21')
   })
 })

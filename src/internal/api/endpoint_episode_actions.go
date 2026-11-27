@@ -258,8 +258,13 @@ func handleReplaceEpisodeWithMagnet(server *Server) http.HandlerFunc {
 		}
 		key := files.EpisodeKey{AnimeID: animeId, Episode: episodeNumber}
 
+		// name, nyaa_id and size_bytes: the episode picker's row, recorded with the release
+		// (decisions/150). Absent for a pasted magnet.
 		var body struct {
-			Magnet string `json:"magnet"`
+			Magnet    string `json:"magnet"`
+			Name      string `json:"name,omitempty"`
+			NyaaID    int    `json:"nyaa_id,omitempty"`
+			SizeBytes int64  `json:"size_bytes,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !strings.HasPrefix(body.Magnet, "magnet:") {
 			JSONError(w, http.StatusBadRequest, "INVALID_MAGNET", "Invalid or missing magnet link")
@@ -301,7 +306,8 @@ func handleReplaceEpisodeWithMagnet(server *Server) http.HandlerFunc {
 			logger.Logger.Warn().Err(err).Int("episode", episodeNumber).Msg("Failed to unblock episode")
 		}
 
-		ep, err := daemon.ManualDownloadEpisodeWithMagnet(server.FileManager, server.Torrents, animeId, episodeNumber, body.Magnet, configs)
+		ep, err := daemon.ManualDownloadEpisodeWithMagnet(server.FileManager, server.Torrents, animeId, episodeNumber, body.Magnet, configs,
+			daemon.PickedRelease{Name: body.Name, NyaaID: body.NyaaID, SizeBytes: body.SizeBytes})
 		if err != nil {
 			logger.Logger.Error().Err(err).Int("anime_id", animeId).Int("episode", episodeNumber).Msg("Failed to replace episode with magnet")
 			JSONDownloadError(w, err, "REPLACE_FAILED")

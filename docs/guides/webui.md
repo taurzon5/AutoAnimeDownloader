@@ -32,6 +32,9 @@ Per-anime episode list, opened by clicking an anime on the Status page:
 - **On lists** — every configured account that has the anime on its list, in any status, with its own status, progress (`ep 7/12`) and score in that account's own format (`85/100`, `8.5/10`, `★ 4/5`, a face for AniList's 3-point scale; MAL is always `x/10`), avatar and a link to the account's list
 - Episode table (episode number, Anilist watch status, downloaded state)
 - Header **Replace torrent** opens the [torrent picker](#torrent-picker) (`/status/:id/torrents`)
+- An episode's **Choose torrent** (in its row menu) opens the same picker on that one episode's
+  releases (`/status/:id/episodes/:n/torrents`), all of them, since a hand pick ignores the size and
+  seeder limits; downloading one first asks, then replaces the episode if it was downloaded
 - Header **Delete**: an anime you added by hand is removed from the app, its downloaded files with
   it unless you untick **Delete downloaded files**. An anime from a list can't be removed (the list
   would bring it back): the dialog names the account and offers **Delete downloaded files** (they

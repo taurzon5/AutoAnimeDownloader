@@ -777,8 +777,14 @@ export async function redownloadEpisode(animeId: number, episodeNumber: number):
   return apiRequest<void>('POST', `/animes/${animeId}/episodes/${episodeNumber}/redownload`)
 }
 
-export async function replaceEpisodeWithMagnet(animeId: number, episodeNumber: number, magnet: string): Promise<void> {
-  return apiRequest<void>('POST', `/animes/${animeId}/episodes/${episodeNumber}/replace`, { magnet })
+/** pick: the episode picker's row (name, Nyaa id, size), recorded with the release; absent for a pasted magnet. */
+export async function replaceEpisodeWithMagnet(
+  animeId: number,
+  episodeNumber: number,
+  magnet: string,
+  pick?: { name?: string; nyaa_id?: number; size_bytes?: number },
+): Promise<void> {
+  return apiRequest<void>('POST', `/animes/${animeId}/episodes/${episodeNumber}/replace`, { magnet, ...pick })
 }
 
 /** pick: the picker's row (name, Nyaa id, size), recorded with the release; absent for a pasted magnet. */
@@ -1015,6 +1021,21 @@ export async function getTorrentCandidates(
   const trimmed = query?.trim() ?? ''
   const q = trimmed ? `?q=${encodeURIComponent(trimmed)}` : ''
   return apiRequest<TorrentCandidates>('GET', `/animes/${id}/torrent-candidates${q}`, null, {
+    silent: true,
+    signal,
+  })
+}
+
+/** The single-episode picker's list: the pass's own search for one episode, or `query`. */
+export async function getEpisodeTorrentCandidates(
+  id: number,
+  episode: number,
+  query?: string,
+  signal?: AbortSignal,
+): Promise<TorrentCandidates> {
+  const trimmed = query?.trim() ?? ''
+  const q = trimmed ? `?q=${encodeURIComponent(trimmed)}` : ''
+  return apiRequest<TorrentCandidates>('GET', `/animes/${id}/episodes/${episode}/torrent-candidates${q}`, null, {
     silent: true,
     signal,
   })

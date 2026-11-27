@@ -453,3 +453,51 @@ func TestTorrentCandidateDetail_NyaaUnavailable(t *testing.T) {
 		t.Fatalf("want NYAA_UNAVAILABLE, got %s", got)
 	}
 }
+
+func getEpisodeTorrentCandidates(t *testing.T, server *Server, id, episode, query string) *httptest.ResponseRecorder {
+	t.Helper()
+	path := "/api/v1/animes/" + id + "/episodes/" + episode + "/torrent-candidates"
+	if query != "" {
+		path += "?q=" + url.QueryEscape(query)
+	}
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.SetPathValue("id", id)
+	req.SetPathValue("episodeNumber", episode)
+	rec := httptest.NewRecorder()
+	handleEpisodeTorrentCandidates(server)(rec, req)
+	return rec
+}
+
+// The single-episode picker lists the episode's releases, singles first, and every one of them:
+// a hand pick ignores the size and seeder limits (decisions/160).
+func TestEpisodeTorrentCandidates_ListsTheEpisode(t *testing.T) {
+	defer mockStandaloneAniList(emptyListJSON, standaloneMediaJSON)()
+	defer mockNyaaListing(t, previewListingHTML(
+		previewListingRow(3000, "[SubsPlease] Standalone Anime - 03 [1080p]", "1.4 GiB", "200", "5"),
+		previewListingRow(3001, "[Dead] Standalone Anime - 03 [1080p]", "1.4 GiB", "0", "0"),
+		previewListingRow(3002, "[SubsPlease] Standalone Anime - 04 [1080p]", "1.4 GiB", "200", "5"),
+	), nil)()
+
+	rec := getEpisodeTorrentCandidates(t, candidatesServer(), "21", "3", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	data := decodeCandidates(t, rec)
+	names := map[string]bool{}
+	for _, item := range data.Items {
+		names[item.Name] = true
+	}
+	if !names["[SubsPlease] Standalone Anime - 03 [1080p]"] || !names["[Dead] Standalone Anime - 03 [1080p]"] {
+		t.Fatalf("want both episode-3 releases, the unseeded one too: %v", names)
+	}
+	if names["[SubsPlease] Standalone Anime - 04 [1080p]"] {
+		t.Fatal("episode 4 must not be listed for episode 3")
+	}
+}
+
+func TestEpisodeTorrentCandidates_BadEpisodeIs400(t *testing.T) {
+	rec := getEpisodeTorrentCandidates(t, candidatesServer(), "21", "0", "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", rec.Code)
+	}
+}

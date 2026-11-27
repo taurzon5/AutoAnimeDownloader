@@ -22,6 +22,8 @@ manga, novel or one-shot relation names the source, so its numbers count the sou
 synonyms keep feeding season and part as before — Kaguya-sama's "Season 2" is still read. For
 dashboard search the source name is a fine hit, so that path keeps every synonym.
 
+**Amendment (2026-11-26):** `PreviewEpisodeTorrents` (the single-episode picker) is a fourth caller of `searchNyaaForSingleEpisode`, with the whole `Media` like the others.
+
 **Don't "fix" by:**
 - Dropping synonyms from season/part extraction altogether: some sequels carry their season only in
   a synonym (Kaguya-sama 112641, Attack on Titan Final Season).

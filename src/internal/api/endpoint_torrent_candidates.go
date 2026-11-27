@@ -97,6 +97,51 @@ func handleTorrentCandidates(server *Server) http.HandlerFunc {
 	}
 }
 
+// handleEpisodeTorrentCandidates is GET /animes/{id}/episodes/{episodeNumber}/torrent-candidates:
+// the single-episode picker's list (daemon.PreviewEpisodeTorrents). The pick goes through
+// POST /animes/{id}/episodes/{episodeNumber}/replace, as a pasted magnet does.
+func handleEpisodeTorrentCandidates(server *Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only GET method is allowed")
+			return
+		}
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil || id <= 0 {
+			JSONError(w, http.StatusBadRequest, "INVALID_ID", "Invalid anime ID")
+			return
+		}
+		episode, err := strconv.Atoi(r.PathValue("episodeNumber"))
+		if err != nil || episode <= 0 {
+			JSONError(w, http.StatusBadRequest, "INVALID_EPISODE_NUMBER", "Invalid episode number")
+			return
+		}
+		config, err := server.FileManager.LoadConfigs()
+		if err != nil {
+			JSONInternalError(w, err)
+			return
+		}
+		preview, err := daemon.PreviewEpisodeTorrents(config, id, episode, r.URL.Query().Get("q"))
+		if err != nil {
+			if errors.Is(err, nyaa.ErrNyaaUnavailable) {
+				JSONError(w, http.StatusBadGateway, "NYAA_UNAVAILABLE", "Nyaa is unavailable")
+				return
+			}
+			if strings.Contains(err.Error(), "does not exist on AniList") {
+				JSONError(w, http.StatusNotFound, "ANIME_NOT_FOUND", "AniList does not know this media id")
+				return
+			}
+			JSONInternalError(w, err)
+			return
+		}
+		JSONSuccess(w, http.StatusOK, TorrentCandidatesResponse{
+			Query: preview.Query,
+			Media: TorrentCandidateMedia{Title: preview.Media.Title, CoverImage: preview.Media.CoverImage, Format: preview.Media.Format, Episodes: preview.Media.Episodes},
+			Items: mapTorrentCandidates(preview.Items),
+		})
+	}
+}
+
 func handleTorrentCandidateDetail(server *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

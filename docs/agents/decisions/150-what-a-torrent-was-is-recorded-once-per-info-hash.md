@@ -82,6 +82,8 @@ Pinned by:
   pick, with its Nyaa page and size (`PickedRelease`). Without one it is a pasted magnet named by
   its `dn`.
 
+**Amendment (2026-11-26):** `POST /animes/{id}/episodes/{n}/replace` takes the picker's row too (`ManualDownloadEpisodeWithMagnet` with a `PickedRelease`), so an episode picked from the single-episode picker is recorded as a pick; a pasted magnet still records its dn.
+
 **Don't "fix" by:**
 - Moving the release details into `episodes.json`.
 - Updating a record when the same hash is added again.

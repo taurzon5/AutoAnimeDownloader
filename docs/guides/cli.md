@@ -99,6 +99,7 @@ autoanimedownloader animes search "frieren"
 autoanimedownloader animes search "foo" --unreleased
 autoanimedownloader animes candidates 154587
 autoanimedownloader animes candidates 154587 --query "frieren s01"
+autoanimedownloader animes episode-candidates 154587 3   # one episode's releases; download one with replace-episode --magnet
 autoanimedownloader animes candidate 154587 1790123
 autoanimedownloader animes add 154587
 autoanimedownloader animes add 154587 --magnet "magnet:?xt=…"

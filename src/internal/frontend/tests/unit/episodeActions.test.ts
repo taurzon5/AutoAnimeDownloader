@@ -45,7 +45,7 @@ describe('episodeActions', () => {
     const torrent = makeTorrent({ status: 'downloading' })
     const result = episodeActions(ep, torrent)
     expect(result.principal).toBeUndefined()
-    expect(result.menu.map((a) => a.id)).toEqual(['replace', 'delete'])
+    expect(result.menu.map((a) => a.id)).toEqual(['choose', 'replace', 'delete'])
     expect(result.menu.find((a) => a.id === 'delete')?.destructive).toBe(true)
   })
 
@@ -54,14 +54,14 @@ describe('episodeActions', () => {
     const ep = makeEpisode({ is_aired: true, is_downloaded: false })
     const result = episodeActions(ep, undefined)
     expect(result.principal).toEqual({ id: 'download', labelKey: 'download', variant: 'solid' })
-    expect(result.menu.map((a) => a.id)).toEqual(['replace'])
+    expect(result.menu.map((a) => a.id)).toEqual(['choose', 'replace'])
   })
 
   // Already in Shoko -> no principal, Download only in the menu (the Shoko spec §3)
   it('an episode already in Shoko offers Download only from the menu', () => {
     const result = episodeActions(makeEpisode({ is_aired: true, in_shoko: true }), undefined)
     expect(result.principal).toBeUndefined()
-    expect(result.menu.map((a) => a.id)).toEqual(['download'])
+    expect(result.menu.map((a) => a.id)).toEqual(['download', 'choose'])
   })
 
   it('an episode in Shoko that the app downloaded too keeps the downloaded actions', () => {
@@ -74,7 +74,7 @@ describe('episodeActions', () => {
     const ep = makeEpisode({ is_aired: true, is_downloaded: true })
     const result = episodeActions(ep, undefined)
     expect(result.principal).toEqual({ id: 'redownload', labelKey: 'redownload', variant: 'ghost', destructive: true })
-    expect(result.menu.map((a) => a.id)).toEqual(['replace', 'delete'])
+    expect(result.menu.map((a) => a.id)).toEqual(['choose', 'replace', 'delete'])
     expect(result.menu.find((a) => a.id === 'delete')?.destructive).toBe(true)
   })
 

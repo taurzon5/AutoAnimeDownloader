@@ -18,8 +18,9 @@ migration. If presenting the repo to employers gets urgent, `v1.0.0` can move up
 ## `v0.2.0` — episode torrent picker
 
 - Pick torrent when downloading / redownloading a single episode — same screen as the
-  whole-title picker in `v2.7.0`, singles search instead of packs. Own spec; do not start
-  it in the same change as the dashboard recents.
+  whole-title picker, singles search instead of packs: **Choose torrent** in an episode's row
+  menu, `GET /animes/{id}/episodes/{n}/torrent-candidates`, CLI `animes episode-candidates`.
+  Done on master; waits for the `v0.2.0` stamp.
 
 ## `v1.0.0` — Nyaanchiver
 

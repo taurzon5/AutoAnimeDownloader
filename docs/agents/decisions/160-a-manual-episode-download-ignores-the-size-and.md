@@ -16,6 +16,8 @@ something the user wouldn't, and a click is the user picking. The free-space gua
 because a full disk breaks everything else, not just this download. The results stay ranked, so the
 best release is still tried first, and `episode_retry_limit` still caps how many are tried.
 
+**Amendment (2026-11-26):** the single-episode picker's list (`PreviewEpisodeTorrents`) skips the two limits for the same reason: it lists what a click may choose. Unlike the whole-title picker, which still filters, because a pack list is the pass's own choice offered to confirm.
+
 **Don't "fix" by:**
 - Wrapping the manual search in `filterSearchResults`: a click on an episode whose only releases are
   big or poorly seeded would answer "no torrents found" while Nyaa has them.

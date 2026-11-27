@@ -12,6 +12,8 @@
     addStandaloneAnime,
     getTorrentCandidateDetail,
     getTorrentCandidates,
+    getEpisodeTorrentCandidates,
+    replaceEpisodeWithMagnet,
     replaceAnimeWithMagnet,
     type TorrentCandidate,
     type TorrentCandidateDetail,
@@ -34,7 +36,8 @@
 
   function parsePickerRoute(path: string): {
     id: number;
-    mode: "add" | "replace";
+    mode: "add" | "replace" | "episode";
+    episode?: number;
     backHref: string;
   } {
     const cleaned = (path || "").replace(/^#/, "");
@@ -42,6 +45,12 @@
     if (addMatch) {
       const id = Number(addMatch[1]);
       return { id, mode: "add", backHref: "#/add" };
+    }
+    // The single-episode picker (v0.2.0): the same screen, one episode's releases.
+    const episodeMatch = cleaned.match(/^\/status\/(\d+)\/episodes\/(\d+)\/torrents\/?$/);
+    if (episodeMatch) {
+      const id = Number(episodeMatch[1]);
+      return { id, mode: "episode", episode: Number(episodeMatch[2]), backHref: `#/status/${id}` };
     }
     const statusMatch = cleaned.match(/^\/status\/(\d+)\/torrents\/?$/);
     if (statusMatch) {
@@ -54,6 +63,7 @@
   $: parsed = parsePickerRoute($location || (typeof window !== "undefined" ? window.location.hash : ""));
   $: mediaId = parsed.id || parseInt(params.id || "0", 10);
   $: mode = parsed.mode;
+  $: episode = parsed.episode ?? 0;
   $: backHref = parsed.backHref;
 
   $: fmtLocale = ($locale ?? "en") as FormatLocale;
@@ -116,7 +126,8 @@
 
   onMount(() => {
     const cached = get(pickerCache);
-    if (cached && cached.mediaId === mediaId) {
+    // The cache is the whole-title search Add anime already ran; an episode's list is its own.
+    if (cached && cached.mediaId === mediaId && mode !== "episode") {
       query = cached.query;
       items = cached.items;
       listError = cached.error;
@@ -154,7 +165,9 @@
     detailError = false;
 
     try {
-      const found = await getTorrentCandidates(mediaId, q, controller.signal);
+      const found = mode === "episode"
+        ? await getEpisodeTorrentCandidates(mediaId, episode, q, controller.signal)
+        : await getTorrentCandidates(mediaId, q, controller.signal);
       if (controller.signal.aborted) return;
       items = found.items ?? [];
       query = found.query ?? q ?? "";
@@ -206,6 +219,11 @@
 
   async function afterSuccess(added?: { added: number }): Promise<void> {
     pickerCache.clear();
+    if (mode === "episode") {
+      toast.success(m.picker_episode_done({ number: episode }));
+      await push(backHref.replace(/^#/, ""));
+      return;
+    }
     if (mode === "replace") {
       toast.success(m.detail_replace_anime_done());
       await push(backHref.replace(/^#/, ""));
@@ -223,14 +241,15 @@
     await pop();
   }
 
-  // Replacing deletes every downloaded episode of the anime, files and torrents included (kept
-  // forever or not; a file handed to Shoko stays, decisions/152), before adding the pick: every other delete on the anime page asks first, so
-  // this one does too. Add mode deletes nothing and doesn't ask.
+  // Replace mode deletes every downloaded episode of the anime, files and torrents included (kept
+  // forever or not; a file handed to Shoko stays, decisions/152), before adding the pick; episode
+  // mode deletes that one episode the same way, if it was downloaded. Every other delete on the
+  // anime page asks first, so these do too. Add mode deletes nothing and doesn't ask.
   let replaceConfirmOpen = false;
   let pendingReplace: (() => Promise<void>) | null = null;
 
   function askReplace(run: () => Promise<void>): void {
-    if (mode !== "replace") {
+    if (mode === "add") {
       void run();
       return;
     }
@@ -242,6 +261,15 @@
     if (!selected?.magnet) return;
     confirming = true;
     try {
+      if (mode === "episode") {
+        await replaceEpisodeWithMagnet(mediaId, episode, selected.magnet, {
+          name: selected.name,
+          nyaa_id: selected.nyaa_id,
+          size_bytes: selected.size_bytes,
+        });
+        await afterSuccess();
+        return;
+      }
       if (mode === "replace") {
         await replaceAnimeWithMagnet(mediaId, selected.magnet, {
           name: selected.name,
@@ -271,6 +299,11 @@
     if (!isValidMagnet(pasted)) return;
     confirming = true;
     try {
+      if (mode === "episode") {
+        await replaceEpisodeWithMagnet(mediaId, episode, pasted);
+        await afterSuccess();
+        return;
+      }
       if (mode === "replace") {
         await replaceAnimeWithMagnet(mediaId, pasted);
         await afterSuccess();
@@ -286,6 +319,9 @@
   }
 
   function confirmErrorMessage(error: unknown): string {
+    if (mode === "episode") {
+      return error instanceof Error ? error.message : m.detail_replace_ep_error();
+    }
     if (mode === "replace") {
       return error instanceof Error ? error.message : m.detail_replace_anime_error();
     }
@@ -332,9 +368,9 @@
 
 <ConfirmDialog
   bind:open={replaceConfirmOpen}
-  title={m.picker_replace_confirm_title()}
-  message={m.picker_replace_confirm_msg({ title: media?.title || m.picker_title() })}
-  confirmLabel={m.picker_replace_confirm()}
+  title={mode === "episode" ? m.picker_episode_confirm_title({ number: episode }) : m.picker_replace_confirm_title()}
+  message={mode === "episode" ? m.picker_episode_confirm_msg({ number: episode }) : m.picker_replace_confirm_msg({ title: media?.title || m.picker_title() })}
+  confirmLabel={mode === "episode" ? m.picker_episode_confirm() : m.picker_replace_confirm()}
   cancelLabel={m.common_cancel()}
   on:confirm={() => { const run = pendingReplace; pendingReplace = null; if (run) void run(); }}
 />
@@ -347,7 +383,7 @@
         <Cover src={media?.cover_image} alt={media?.title ?? ""} radiusClass="rounded-field" />
       </div>
       <div class="min-w-0">
-        <p class="text-caption text-subtle">{T && T.title}</p>
+        <p class="text-caption text-subtle" data-testid="picker-caption">{mode === "episode" ? ($locale && m.picker_episode_caption({ number: episode })) : (T && T.title)}</p>
         {#if media?.title}
           <h1 class="truncate text-screen-title text-heading">{media.title}</h1>
         {/if}
@@ -356,7 +392,7 @@
         {/if}
       </div>
     </div>
-    <p class="text-copy text-subtle">{T && T.hint}</p>
+    <p class="text-copy text-subtle">{mode === "episode" ? ($locale && m.picker_episode_hint()) : (T && T.hint)}</p>
   </div>
 
   <form class="flex flex-col gap-1.5" on:submit|preventDefault={onQuerySubmit}>
