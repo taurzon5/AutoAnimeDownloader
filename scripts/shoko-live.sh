@@ -15,7 +15,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$(cd "$HERE/.." && pwd)"
 BASE="$PROJECT/runtime/shoko-test"
-IMAGE=shokoanime/server:v5.3.3
+# v6.0.0 since 2026-11-27 (the data folder was migrated from v5.3.3; the client reads both).
+IMAGE=shokoanime/server:v6.0.0
 NAME=aad-shoko-test
 PORT=18111
 U="http://127.0.0.1:$PORT"

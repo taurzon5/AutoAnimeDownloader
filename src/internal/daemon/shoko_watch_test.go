@@ -29,6 +29,9 @@ type liveShoko struct {
 	dialed   atomic.Int32
 	episodes atomic.Int32 // reads of the series' episodes
 	lists    atomic.Int32 // reads of every series: full syncs
+	// lookups counts the AniDB lookups (Shoko 6 events); failLookups answers them 500.
+	lookups     atomic.Int32
+	failLookups atomic.Bool
 }
 
 func newLiveShoko(t *testing.T) *liveShoko {
@@ -41,7 +44,14 @@ func newLiveShoko(t *testing.T) *liveShoko {
 		switch r.URL.Path {
 		case "/api/v3/Series":
 			l.lists.Add(1)
-			io.WriteString(w, `{"Total":1,"List":[{"IDs":{"ID":1,"MAL":[52991]},"Name":"Sousou no Frieren","Sizes":{"Total":{"Episodes":28}}}]}`)
+			io.WriteString(w, `{"Total":1,"List":[{"IDs":{"ID":1,"AniDB":17617,"MAL":[52991]},"Name":"Sousou no Frieren","Sizes":{"Total":{"Episodes":28}}}]}`)
+		case "/api/v3/Series/AniDB/17617/Series", "/api/v3/Series/AniDB/17618/Series":
+			l.lookups.Add(1)
+			if l.failLookups.Load() {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			io.WriteString(w, `{"IDs":{"ID":1,"AniDB":17617}}`)
 		case "/api/v3/File":
 			io.WriteString(w, `{"Total":0,"List":[]}`)
 		case "/api/v3/Series/1/Episode":
@@ -154,6 +164,50 @@ func TestShokoWatchRefreshesOnAChange(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Watch did not stop with its context")
 	}
+}
+
+// Shoko 6 names the file and its AniDB anime, not the Shoko series (decisions/148): a deletion
+// still reaches the anime page through the store, and an AniDB anime the store can't name is looked
+// up once the events settle, kept when the lookup fails.
+func TestShokoWatchFollowsShoko6Events(t *testing.T) {
+	t.Cleanup(anilist.MockAniListDo(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"data":{"Page":{"media":[{"id":154587,"idMal":52991,"episodes":28}]}}}`))}, nil
+	}))
+	l := newLiveShoko(t)
+	svc := NewShokoService(t.TempDir())
+	svc.settle = 20 * time.Millisecond
+	cfg := &files.Config{ShokoEnabled: true, ShokoURL: l.srv.URL, ShokoAPIKey: "key", ShokoRefreshHours: 24, ShokoWatch: true}
+	svc.ForPass(context.Background(), cfg, []anilist.MediaList{frierenAnime()}, nil, time.Now())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Watch(ctx, func() (*files.Config, error) { return cfg, nil })
+	waitFor(t, "the watcher to connect", func() bool { return svc.WatchState().Connected })
+
+	// file:deleted names only the file: the store knows it is episode 2's.
+	l.mu.Lock()
+	l.only1 = true
+	l.mu.Unlock()
+	l.send <- `{"type":1,"target":"file:deleted","arguments":[{"FileID":2}]}`
+	waitFor(t, "the deletion to reach the anime page", func() bool {
+		st, _ := svc.AnimeStatus(154587)
+		return len(st.Owned) == 1
+	})
+	if l.lookups.Load() != 0 {
+		t.Fatalf("a file the store knows cost %d AniDB lookups, want none", l.lookups.Load())
+	}
+
+	// An AniDB anime the store doesn't name (17618, which this fake Shoko files under series 1) is
+	// looked up; a failed lookup is kept, not dropped.
+	l.failLookups.Store(true)
+	before := l.episodes.Load()
+	l.send <- `{"type":1,"target":"release:saved","arguments":[{"FileID":5,"Release":{"CrossReferences":[{"IDs":["anidb://episode/1","anidb://series/17618"]}]}}]}`
+	waitFor(t, "the failed lookup", func() bool { return l.lookups.Load() >= 1 })
+	l.failLookups.Store(false)
+	l.send <- `{"type":1,"target":"file:hashed","arguments":[{"FileID":5}]}`
+	l.send <- `{"type":1,"target":"release:saved","arguments":[{"FileID":6,"Release":{"CrossReferences":[{"IDs":["anidb://series/424242"]}]}}]}`
+	waitFor(t, "the series refreshed after the retried lookup", func() bool { return l.episodes.Load() > before })
 }
 
 // Off (shoko_watch false, or Shoko off), the watcher doesn't connect.

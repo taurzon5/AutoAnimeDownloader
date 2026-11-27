@@ -140,7 +140,9 @@ type ImportFolder struct {
 // IsDropSource reports whether Shoko imports from this folder as a drop source.
 func (f ImportFolder) IsDropSource() bool { return f.DropType == "Source" || f.DropType == "Both" }
 
-// ImportFolders lists Shoko's import folders (GET /api/v3/ImportFolder).
+// ImportFolders lists Shoko's import folders: GET /api/v3/ManagedFolder on Shoko 6 (the folders
+// were renamed "managed folders", same fields; ImportFolder answers 404 there, measured on
+// v6.0.0), else GET /api/v3/ImportFolder (v5).
 func (c *Client) ImportFolders(ctx context.Context) ([]ImportFolder, error) {
 	var raw []struct {
 		ID               int    `json:"ID"`
@@ -149,7 +151,11 @@ func (c *Client) ImportFolders(ctx context.Context) ([]ImportFolder, error) {
 		DropFolderType   string `json:"DropFolderType"`
 		WatchForNewFiles bool   `json:"WatchForNewFiles"`
 	}
-	if err := c.get(ctx, "ImportFolder", nil, &raw); err != nil {
+	err := c.get(ctx, "ManagedFolder", nil, &raw)
+	if errors.Is(err, ErrNotFound) {
+		err = c.get(ctx, "ImportFolder", nil, &raw)
+	}
+	if err != nil {
 		return nil, err
 	}
 	out := make([]ImportFolder, 0, len(raw))
@@ -164,6 +170,23 @@ func (c *Client) ImportFolders(ctx context.Context) ([]ImportFolder, error) {
 // body with a key, 401 without, measured on v5.3.3). Shoko queues the work and answers at once.
 func (c *Client) ImportNewFiles(ctx context.Context) error {
 	return c.get(ctx, "Action/ImportNewFiles", nil, nil)
+}
+
+// SeriesOfAniDB is the Shoko series of an AniDB anime (GET /api/v3/Series/AniDB/{id}/Series, a
+// lookup in Shoko's own database: no AniDB request). ErrNotFound when Shoko has none.
+func (c *Client) SeriesOfAniDB(ctx context.Context, anidbID int) (int, error) {
+	var s struct {
+		IDs struct {
+			ID int `json:"ID"`
+		} `json:"IDs"`
+	}
+	if err := c.get(ctx, "Series/AniDB/"+strconv.Itoa(anidbID)+"/Series", nil, &s); err != nil {
+		return 0, err
+	}
+	if s.IDs.ID <= 0 {
+		return 0, fmt.Errorf("%w: AniDB %d", ErrNotFound, anidbID)
+	}
+	return s.IDs.ID, nil
 }
 
 // Series is a Shoko series (one AniDB anime) as the app keeps it.

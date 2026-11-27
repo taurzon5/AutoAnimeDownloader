@@ -330,6 +330,18 @@ func TestImportNewFilesAndImportFolders(t *testing.T) {
 	}
 }
 
+// Shoko 6 renamed import folders "managed folders" (GET ManagedFolder, same fields; ImportFolder is
+// 404 there, measured on v6.0.0). Both versions read the same.
+func TestImportFoldersOnShoko6(t *testing.T) {
+	f := newFakeShoko(t)
+	f.v6 = true
+	c, _ := NewClient(f.server.URL, "key-1")
+	folders, err := c.ImportFolders(context.Background())
+	if err != nil || len(folders) != 2 || !folders[0].IsDropSource() || folders[0].Path != "/import/" {
+		t.Fatalf("ImportFolders on Shoko 6 = %+v, %v", folders, err)
+	}
+}
+
 // Shoko's import folders are kept on disk, so a restart knows them before Shoko is read again,
 // and a sync, which rebuilds the state, keeps them (decisions/152).
 func TestStoreKeepsTheImportFolders(t *testing.T) {
@@ -346,5 +358,33 @@ func TestStoreKeepsTheImportFolders(t *testing.T) {
 	}
 	if got := NewStore(dir).ImportFolders(); len(got) != 1 || got[0].Path != "/import/" {
 		t.Fatalf("import folders after a sync and a reload = %+v", got)
+	}
+}
+
+// A Shoko 6 change names AniDB anime and files: the store turns them into its series, and hands
+// back the AniDB ids it doesn't know.
+func TestStoreSeriesForChange(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.state.Series = map[int]Series{1: {ID: 1, AniDB: 17617}, 2: {ID: 2, AniDB: 20035}}
+	store.state.Owned = map[int][]Episode{2: {{Number: 3, Files: []File{{ID: 9}}}}}
+	series, unknown := store.SeriesForChange([]int{17617, 4242}, []int{9, 77})
+	if len(series) != 2 || series[0] != 1 || series[1] != 2 {
+		t.Errorf("series = %v, want 1 (by AniDB) and 2 (by its file)", series)
+	}
+	if len(unknown) != 1 || unknown[0] != 4242 {
+		t.Errorf("unknown = %v, want 4242", unknown)
+	}
+}
+
+// SeriesOfAniDB looks a series up by its AniDB anime, in Shoko's own database.
+func TestSeriesOfAniDB(t *testing.T) {
+	f := newFakeShoko(t)
+	f.series = []fakeSeries{{Series: Series{ID: 5, AniDB: 20035, Name: "Sekamajo"}}}
+	c, _ := NewClient(f.server.URL, "key-1")
+	if id, err := c.SeriesOfAniDB(context.Background(), 20035); err != nil || id != 5 {
+		t.Fatalf("SeriesOfAniDB = %d, %v; want 5", id, err)
+	}
+	if _, err := c.SeriesOfAniDB(context.Background(), 1); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an unknown AniDB anime = %v, want ErrNotFound", err)
 	}
 }

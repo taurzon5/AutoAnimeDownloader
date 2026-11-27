@@ -34,6 +34,8 @@ type fakeShoko struct {
 	// for a key without the rights.
 	imports    int
 	denyImport bool
+	// v6 serves the import folders as Shoko 6 does, at ManagedFolder; ImportFolder is then 404.
+	v6 bool
 }
 
 type fakeSeries struct {
@@ -190,7 +192,7 @@ func (f *fakeShoko) handle(w http.ResponseWriter, r *http.Request) {
 		f.imports++
 		w.Header().Set("Content-Length", "0")
 		w.WriteHeader(http.StatusOK)
-	case path == "ImportFolder" && r.Method == http.MethodGet:
+	case (path == "ImportFolder" && !f.v6 || path == "ManagedFolder" && f.v6) && r.Method == http.MethodGet:
 		_ = json.NewEncoder(w).Encode([]map[string]any{
 			{"ID": 1, "Name": "drop", "Path": "/import/", "DropFolderType": "Source", "WatchForNewFiles": false},
 			{"ID": 2, "Name": "library", "Path": "/anime/", "DropFolderType": "Destination", "WatchForNewFiles": true},
@@ -201,6 +203,15 @@ func (f *fakeShoko) handle(w http.ResponseWriter, r *http.Request) {
 			list = append(list, seriesJSON(s))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"Total": len(list), "List": page(list, q, 100)})
+	case len(parts) == 4 && parts[0] == "Series" && parts[1] == "AniDB" && parts[3] == "Series":
+		anidb, _ := strconv.Atoi(parts[2])
+		for _, sr := range f.series {
+			if sr.AniDB == anidb {
+				_ = json.NewEncoder(w).Encode(map[string]any{"IDs": map[string]any{"ID": sr.ID, "AniDB": sr.AniDB}})
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
 	case len(parts) == 2 && parts[0] == "Series":
 		id, _ := strconv.Atoi(parts[1])
 		for _, s := range f.series {

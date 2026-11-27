@@ -62,15 +62,32 @@ func TestShokoLive(t *testing.T) {
 		t.Fatalf("owned episodes = %+v, want 1 and 2 with their files", owned)
 	}
 
-	files, err := c.FilesImportedSince(ctx, time.Time{})
-	if err != nil || len(files) != 2 {
-		t.Fatalf("FilesImportedSince = %+v, %v; want both files", files, err)
+	// Other series' files may be in this Shoko too (the Docker test stack downloads into it): the
+	// two linked here must be among them, every file naming its series, newest first.
+	imported, err := c.FilesImportedSince(ctx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !files[0].Imported.After(files[1].Imported) || len(files[0].Series) != 1 || files[0].Series[0] != frieren.ID {
+	var files []importedFile
+	for i, f := range imported {
+		if i > 0 && f.Imported.After(imported[i-1].Imported) {
+			t.Fatalf("files = %+v, want newest first", imported)
+		}
+		if len(f.Series) != 1 {
+			t.Fatalf("file %+v, want it to name its series", f)
+		}
+		if f.Series[0] == frieren.ID {
+			files = append(files, f)
+		}
+	}
+	if len(files) != 2 {
+		t.Fatalf("FilesImportedSince = %+v; want both of Frieren's files", imported)
+	}
+	if !files[0].Imported.After(files[1].Imported) {
 		t.Fatalf("files = %+v, want newest first, each naming its series", files)
 	}
 	newest, id, err := c.NewestImport(ctx)
-	if err != nil || !newest.Equal(files[0].Imported) || id != files[0].ID {
+	if err != nil || !newest.Equal(imported[0].Imported) || id != imported[0].ID {
 		t.Fatalf("NewestImport = %v, %d, %v; want the first of the newest-first list", newest, id, err)
 	}
 
@@ -156,8 +173,11 @@ func TestShokoLiveWatch(t *testing.T) {
 	link(http.MethodPost)
 	select {
 	case ch := <-changes:
-		if ch.Event != "FileMatched" || len(ch.Series) != 1 || ch.Series[0] != all[0].ID {
-			t.Fatalf("change = %+v, want FileMatched of series %d", ch, all[0].ID)
+		// Shoko 5 names the series, Shoko 6 its AniDB anime (and the file).
+		byShoko := len(ch.Series) == 1 && ch.Series[0] == all[0].ID
+		byAniDB := len(ch.AniDB) == 1 && ch.AniDB[0] == all[0].AniDB && len(ch.Files) == 1 && ch.Files[0] == fileID
+		if ch.Event != "FileMatched" || !(byShoko || byAniDB) {
+			t.Fatalf("change = %+v, want FileMatched of series %d (AniDB %d)", ch, all[0].ID, all[0].AniDB)
 		}
 	case <-ctx.Done():
 		t.Fatal("no event after relinking a file")

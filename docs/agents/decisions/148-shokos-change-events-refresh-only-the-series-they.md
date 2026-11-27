@@ -1,11 +1,13 @@
 # 148. Shoko's change events refresh only the series they name, after they settle, and the daily refresh stays for what the events don't tell
 
 **Location:**
-- `internal/shoko/watch.go`: `Client.Watch` (the SignalR client) and `parseHubMessage`.
+- `internal/shoko/watch.go`: `Client.Watch` (the SignalR client), `parseHubMessage`, and for Shoko
+  6 `shoko6Events` and `parseShoko6Change`; `client.go`: `Client.SeriesOfAniDB`.
 - `internal/shoko/store.go`: `Store.RefreshSeries`, and `syncMu`, which runs it and `Sync` one at a
-  time.
+  time; `Store.SeriesForChange` (Shoko 6).
 - `internal/daemon/shoko.go`: `ShokoService.Watch`, `settleAndRefresh`, `catchUp` and `rematch`,
-  started by `cmd/daemon/main.go`.
+  started by `cmd/daemon/main.go`; for Shoko 6, `seriesOfChange`, `resolveAniDB` and the queue's
+  `pendingAniDB`.
 - Config: `shoko_watch`.
 
 Pinned by:
@@ -75,8 +77,26 @@ Pinned by:
   state back. Run together (a pass's sync and a refresh after an event), one would overwrite the
   other, so `syncMu` makes them take turns.
 
+**Amendment (2026-11-27, Shoko 6.0.0):** Shoko 6 has no `shoko` feed and renamed the events
+(measured on v6.0.0, and the same names Shoko's own web UI listens to): a link **and** an unlink
+send `release:saved` / `release:removed` on the `release` feed, a deletion `file:deleted` on the
+`file` feed. They don't name a Shoko series: the payload is the file id and the release's
+cross-references as AniDB URIs (`anidb://series/20035`). The client asks for
+`shoko,file,release` (a hub ignores a feed it doesn't know, so one list serves 5 and 6), reads both
+shapes (`parseShoko6Change`), and the daemon turns AniDB and file ids into Shoko series
+(`Store.SeriesForChange`). An AniDB anime the store never read waits in the queue
+(`pendingAniDB`) and is looked up once the events settle (`resolveAniDB`, `Client.SeriesOfAniDB`, a
+lookup in Shoko's own database, no AniDB request): a season of a new series costs one lookup, and a
+failed lookup stays queued for the next refresh, so no event is dropped there either; one Shoko has
+no series for names nothing to refresh. On 6 an unlink is seen at once. The 5.3.3 facts above
+still hold for 5.x. Pinned by `TestWatchReadsShoko6Events`, `TestStoreSeriesForChange`,
+`TestSeriesOfAniDB`, `TestShokoWatchFollowsShoko6Events` and `TestShokoLiveWatch` (run on v6.0.0).
+
 **Don't "fix" by:**
-- Subscribing to the `file` feed.
+- Asking for the `shoko` feed alone again: Shoko 6 ignores it, and the app would hear nothing.
+- Dropping a change that names no Shoko series: on Shoko 6 none does.
+- Subscribing to the `file` feed **instead of** `shoko`: on 5.3.3 it carries no file events (it is
+  in the list for Shoko 6's `file:deleted`).
 - Waiting for `OnConnected` as the connected signal.
 - Running a full or newer-only sync on every event.
 - Refreshing on `FileDetected`/`FileHashed`.

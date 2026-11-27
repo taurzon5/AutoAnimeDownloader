@@ -593,8 +593,8 @@ autoanimedownloader config set shoko_refresh_hours 6
 `shoko_watch` · default on
 
 Listens to Shoko: a file added to an episode or deleted there shows up within seconds instead of
-at the next refresh. A deleted episode is downloaded at the next check. The one change Shoko
-doesn't announce is a file unlinked from an episode: the next full resync catches it.
+at the next refresh. A deleted episode is downloaded at the next check. Shoko 5 doesn't announce a
+file unlinked from an episode (the next full resync catches it); Shoko 6 does.
 
 Example: Shoko is on another network and you'd rather not keep a connection open to it.
 

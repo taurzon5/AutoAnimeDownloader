@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -141,7 +142,9 @@ func (s *ShokoService) Watch(ctx context.Context, loadConfig func() (*files.Conf
 				s.mu.Lock()
 				s.lastEvent = time.Now()
 				s.mu.Unlock()
-				q.add(ch.Series, false)
+				ids, unknown := s.seriesOfChange(ch)
+				q.add(ids, false)
+				q.addAniDB(unknown)
 			})
 		stop()
 		<-done
@@ -173,9 +176,80 @@ func (s *ShokoService) Watch(ctx context.Context, loadConfig func() (*files.Conf
 type watchQueue struct {
 	mu      sync.Mutex
 	pending map[int]bool
-	catchUp bool
-	kick    chan struct{}
-	takes   int // how many times the refresher took the queue (tests)
+	// pendingAniDB are AniDB anime of Shoko 6 events the store couldn't name, looked up at refresh.
+	pendingAniDB map[int]bool
+	catchUp      bool
+	kick         chan struct{}
+	takes        int // how many times the refresher took the queue (tests)
+}
+
+// seriesOfChange is the Shoko series a change names: as such (Shoko 5), or through the AniDB anime
+// and file ids of a Shoko 6 event, which the store resolves. unknown are the AniDB anime the store
+// never read: the refresher looks them up in Shoko once the events settle (resolveAniDB), so a
+// season of a new series costs one lookup, not one per file, and a failed lookup waits in the
+// queue instead of being dropped (decisions/148).
+func (s *ShokoService) seriesOfChange(ch shoko.Change) (ids, unknown []int) {
+	ids = append([]int(nil), ch.Series...)
+	known, unknown := s.store.SeriesForChange(ch.AniDB, ch.Files)
+	return append(ids, known...), unknown
+}
+
+// resolveAniDB looks the queue's AniDB anime up in Shoko (a lookup in Shoko's own database, no
+// AniDB request). One Shoko has no series for is dropped: nothing in it to refresh. One whose lookup
+// failed goes back to the queue for the next refresh.
+func (s *ShokoService) resolveAniDB(ctx context.Context, client *shoko.Client, q *watchQueue) []int {
+	var ids, retry []int
+	for _, anidb := range q.takeAniDB() {
+		lookup, cancel := context.WithTimeout(ctx, 10*time.Second)
+		id, err := client.SeriesOfAniDB(lookup, anidb)
+		cancel()
+		switch {
+		case err == nil:
+			ids = append(ids, id)
+		case errors.Is(err, shoko.ErrNotFound):
+			logger.Logger.Debug().Int("anidb_id", anidb).Msg("Shoko: no series for a change's AniDB anime")
+		default:
+			logger.Logger.Debug().Err(err).Int("anidb_id", anidb).Msg("Shoko: could not look up a change's AniDB anime; tries again")
+			retry = append(retry, anidb)
+		}
+	}
+	q.keepAniDB(retry)
+	return ids
+}
+
+// addAniDB queues AniDB anime of Shoko 6 events the store couldn't name, and kicks the refresher.
+func (q *watchQueue) addAniDB(anidb []int) {
+	if len(anidb) == 0 {
+		return
+	}
+	q.keepAniDB(anidb)
+	select {
+	case q.kick <- struct{}{}:
+	default:
+	}
+}
+
+func (q *watchQueue) keepAniDB(anidb []int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.pendingAniDB == nil {
+		q.pendingAniDB = map[int]bool{}
+	}
+	for _, id := range anidb {
+		q.pendingAniDB[id] = true
+	}
+}
+
+func (q *watchQueue) takeAniDB() []int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	out := make([]int, 0, len(q.pendingAniDB))
+	for id := range q.pendingAniDB {
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	q.pendingAniDB = nil
+	return out
 }
 
 func (q *watchQueue) add(series []int, catchUp bool) {
@@ -245,7 +319,9 @@ func (s *ShokoService) settleAndRefresh(ctx context.Context, client *shoko.Clien
 			timer = time.After(settle)
 		case <-timer:
 			timer = nil
+			resolved := s.resolveAniDB(ctx, client, q)
 			ids, catchUp := q.take()
+			ids = append(ids, resolved...)
 			s.mu.Lock()
 			tracked, bySeries := s.lastTracked, s.lastBySeries
 			s.mu.Unlock()

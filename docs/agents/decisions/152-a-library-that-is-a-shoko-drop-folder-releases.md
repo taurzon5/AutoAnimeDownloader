@@ -31,7 +31,7 @@ Pinned by:
   `TestRemoveEpisodes_HandedToShokoSeedingKeepsTheFiles` and `TestDropShokoPackFiles` (its Shoko
   folder cases).
 - `TestRequestImport` and `TestReadImportFolders` (daemon),
-  `TestImportNewFilesAndImportFolders` (shoko).
+  `TestImportNewFilesAndImportFolders`, `TestImportFoldersOnShoko6` (shoko).
 - `TestUpdateConfig_ValidatesShoko`, `TestShokoStatusCarriesShokosFolders`,
   `TestHandleAnimeEpisodes_BatchRange`, `TestShokoStatusPrintsShokosFolders` (CLI), and the
   frontend's `Config.shoko.test.ts` and `AnimeDetail.shoko.test.ts`.
@@ -57,7 +57,8 @@ Pinned by:
   ([#154](154-several-download-roots-each-placement-records-its.md)). The user then said: "you use
   the ones from shoko and send the signal to scan for new, not manage the drop folders for shoko,
   only show this folder is in shoko or not" (2026-11-24). So the app reads Shoko's import folders
-  (`GET /api/v3/ImportFolder`, with each sync), and a download folder is in Shoko when it is one of
+  (`GET /api/v3/ManagedFolder` on Shoko 6, where import folders became "managed folders" with
+  the same fields, else `GET /api/v3/ImportFolder`; with each sync), and a download folder is in Shoko when it is one of
   them or lies inside one. A switch could disagree with Shoko; this can't. Every import folder
   counts, whatever its drop type: those are the folders Shoko scans for new files, and the drop
   type only says where its renamer moves them (not measured per type).

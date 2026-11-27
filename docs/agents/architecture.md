@@ -692,13 +692,15 @@ per-torrent loop. `videoExtEpisodeRegexp` is the one builder (from `videoExtensi
 ### `src/internal/shoko/` — the Shoko Server client
 
 Reads a Shoko library (v3 API, measured against v5.3.3: the facts are in the Shoko spec's "Measured
-against v5.3.3"); it never writes to Shoko beyond signing in and `ImportNewFiles`, the drop
+against v5.3.3"; Shoko 6.0.0 works too: its renamed folder endpoint and hub events are read in
+`client.go` and `watch.go`, [decisions/148](decisions/148-shokos-change-events-refresh-only-the-series-they.md)); it never writes to Shoko beyond signing in and `ImportNewFiles`, the drop
 folder's "import new files" request. It imports no internal package.
 `client.go` is the API; `match.go` is `MatchEntry`/`OwnedOf`, the AniList-to-Shoko match through
 the MAL id ([decisions/146](decisions/146-an-anilist-entry-matches-a-shoko-series-through.md)); `store.go` is the synced state in `shoko.json`, one full sync then
 only files imported since the newest seen (`NewestImport`, `NewestImportIDs`); `watch.go` is the
-SignalR client for Shoko's change events (`/signalr/aggregate`, the `shoko` feed), and
-`Store.RefreshSeries` re-reads the series an event names ([decisions/148](decisions/148-shokos-change-events-refresh-only-the-series-they.md)).
+SignalR client for Shoko's change events (`/signalr/aggregate`; the `shoko` feed on Shoko 5, the
+`release` and `file` feeds on Shoko 6, whose events name AniDB anime and files that the daemon turns
+into Shoko series), and `Store.RefreshSeries` re-reads the series an event names ([decisions/148](decisions/148-shokos-change-events-refresh-only-the-series-they.md)).
 
 The daemon half is `daemon/shoko.go`, `ShokoService`, held by the `State` (`SetShoko` in
 `cmd/daemon/main.go`; nil in tests): `ForPass` runs once per pass after the anime list is built,

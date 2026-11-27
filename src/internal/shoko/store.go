@@ -96,6 +96,46 @@ func (s *Store) HasOwned(seriesID int) bool {
 	return ok
 }
 
+// SeriesForChange turns a Shoko 6 event's AniDB anime ids and file ids into the Shoko series the
+// store knows: a series by its AniDB id, a file by the owned episodes it is a file of. unknown are
+// the AniDB ids no known series has (a series the store never read), for the caller to look up.
+func (s *Store) SeriesForChange(anidb, files []int) (series, unknown []int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	seen := map[int]bool{}
+	add := func(id int) {
+		if !seen[id] {
+			seen[id] = true
+			series = append(series, id)
+		}
+	}
+	for _, a := range anidb {
+		found := false
+		for _, sr := range s.state.Series {
+			if sr.AniDB == a {
+				add(sr.ID)
+				found = true
+			}
+		}
+		if !found {
+			unknown = append(unknown, a)
+		}
+	}
+	for _, f := range files {
+		for id, eps := range s.state.Owned {
+			for _, ep := range eps {
+				for _, file := range ep.Files {
+					if file.ID == f {
+						add(id)
+					}
+				}
+			}
+		}
+	}
+	sort.Ints(series)
+	return series, unknown
+}
+
 // OwnedEpisodes returns the owned episodes of a series, as of the last sync.
 func (s *Store) OwnedEpisodes(seriesID int) []Episode {
 	s.mu.Lock()

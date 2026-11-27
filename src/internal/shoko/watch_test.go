@@ -25,7 +25,7 @@ func fakeHub(t *testing.T, key string, events []string) *httptest.Server {
 		}
 		switch r.URL.Path {
 		case "/signalr/aggregate/negotiate":
-			if r.URL.Query().Get("feeds") != "shoko" {
+			if r.URL.Query().Get("feeds") != "shoko,file,release" {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
@@ -173,5 +173,32 @@ func TestStoreRefreshSeriesGoesPastAMissingSeries(t *testing.T) {
 	}
 	if store.HasOwned(2) {
 		t.Fatal("the series Shoko no longer has is still owned")
+	}
+}
+
+// Shoko 6 (measured on v6.0.0): a link or unlink is release:saved / release:removed with the file id
+// and AniDB URIs, a deletion file:deleted; the other events name nothing to refresh.
+func TestWatchReadsShoko6Events(t *testing.T) {
+	events := []string{
+		`{"type":1,"target":"feed.joined","arguments":[["file","release"]]}`,
+		`{"type":1,"target":"file:hashed","arguments":[{"FileID":6}]}`,
+		`{"type":1,"target":"release:removed","arguments":[{"FileID":6,"Release":{"ProviderName":"User","CrossReferences":[{"IDs":["anidb://episode/316938","anidb://series/20035"],"PercentageStart":0,"PercentageEnd":100}]}}]}`,
+		`{"type":1,"target":"release:saved","arguments":[{"FileID":6,"Release":{"CrossReferences":[{"IDs":["anidb://episode/316938","anidb://series/20035"]},{"IDs":["anidb://episode/316939","anidb://series/20035"]}]}}]}`,
+		`{"type":1,"target":"file:deleted","arguments":[{"FileID":9}]}`,
+	}
+	srv := fakeHub(t, "key-1", events)
+	c, _ := NewClient(srv.URL, "key-1")
+	var got []Change
+	_ = c.Watch(context.Background(), nil, func(ch Change) { got = append(got, ch) })
+	if len(got) != 3 {
+		t.Fatalf("changes = %+v, want the two release events and the deletion", got)
+	}
+	for _, ch := range got[:2] {
+		if ch.Event != "FileMatched" || len(ch.Series) != 0 || len(ch.AniDB) != 1 || ch.AniDB[0] != 20035 || len(ch.Files) != 1 || ch.Files[0] != 6 {
+			t.Errorf("release event = %+v, want file 6 of AniDB 20035 once", ch)
+		}
+	}
+	if got[2].Event != "FileDeleted" || len(got[2].Files) != 1 || got[2].Files[0] != 9 {
+		t.Errorf("deletion = %+v, want file 9", got[2])
 	}
 }

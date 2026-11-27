@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,19 +26,29 @@ const watchPing = 15 * time.Second
 // (FileMatched) or deleted (FileDeleted). Measured on v5.3.3: those two carry the series in their
 // cross-references; FileDetected and FileHashed don't yet, and unlinking a file from an episode
 // sends nothing at all (a reconnection's catch-up or a full resync sees it, decisions/148).
+//
+// Shoko 6 names the series another way (measured on v6.0.0): a link or an unlink is
+// release:saved / release:removed with the file's id and its cross-references as AniDB URIs
+// ("anidb://series/20035"), so Series is empty and AniDB holds the AniDB anime ids, Files the file
+// ids; the daemon turns them into Shoko series (SeriesForChange). Unlinking now sends an event.
 type Change struct {
 	Event  string
 	Series []int
+	// AniDB are the AniDB anime ids a Shoko 6 event names.
+	AniDB []int
+	// Files are the Shoko file ids a Shoko 6 event names.
+	Files []int
 }
 
-// Watch connects to Shoko's SignalR hub (/signalr/aggregate, the "shoko" feed) and calls onChange
-// for every file event that names a series, until ctx ends or the connection fails, which it
-// returns. onConnected runs once the hub answered the handshake ({}), the one signal every feed
+// Watch connects to Shoko's SignalR hub (/signalr/aggregate: the "shoko" feed on Shoko 5, "release"
+// and "file" on Shoko 6) and calls onChange for every file event that names a series, an AniDB
+// anime or a file, until ctx ends or the connection fails, which it returns. onConnected runs once the hub answered the handshake ({}), the one signal every feed
 // gives.
 func (c *Client) Watch(ctx context.Context, onConnected func(), onChange func(Change)) error {
-	// The file events are the "shoko" feed's (ShokoEvent:File…); the "file" feed sends none of them
-	// (measured on v5.3.3).
-	feeds := url.Values{"feeds": {"shoko"}}
+	// v5.3.3 sends the file events on the "shoko" feed (ShokoEvent:File…; its "file" feed sends none
+	// of them). v6.0.0 has no "shoko" feed: links and unlinks are on "release", deletions on "file".
+	// A hub ignores a feed it doesn't know, so one list serves both.
+	feeds := url.Values{"feeds": {"shoko,file,release"}}
 	negotiate := c.base.String() + "/signalr/aggregate/negotiate?negotiateVersion=1&" + feeds.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, negotiate, nil)
 	if err != nil {
@@ -107,7 +118,7 @@ func (c *Client) Watch(ctx context.Context, onConnected func(), onChange func(Ch
 				if onConnected != nil {
 					onConnected()
 				}
-			} else if len(ch.Series) > 0 && onChange != nil {
+			} else if len(ch.Series)+len(ch.AniDB)+len(ch.Files) > 0 && onChange != nil {
 				onChange(ch)
 			}
 		}
@@ -115,7 +126,8 @@ func (c *Client) Watch(ctx context.Context, onConnected func(), onChange func(Ch
 }
 
 // parseHubMessage reads one SignalR message: the handshake answer ({}, connected; with an error, a
-// refusal), a file event naming series, or a close (type 7) as an error. Pings and other events
+// refusal), a file event (Shoko 5's naming series, Shoko 6's naming AniDB anime and files), or a
+// close (type 7) as an error. Pings and other events
 // are nothing.
 func parseHubMessage(raw string) (Change, bool, error) {
 	var msg struct {
@@ -139,7 +151,11 @@ func parseHubMessage(raw string) (Change, bool, error) {
 		return Change{}, false, fmt.Errorf("shoko's event hub: %s", msg.Error)
 	case msg.Type != 1:
 		return Change{}, false, nil
-	case msg.Target != "ShokoEvent:FileMatched" && msg.Target != "ShokoEvent:FileDeleted":
+	}
+	if event, ok := shoko6Events[msg.Target]; ok {
+		return parseShoko6Change(event, msg.Arguments), false, nil
+	}
+	if msg.Target != "ShokoEvent:FileMatched" && msg.Target != "ShokoEvent:FileDeleted" {
 		return Change{}, false, nil
 	}
 	ch := Change{Event: strings.TrimPrefix(msg.Target, "ShokoEvent:")}
@@ -161,4 +177,52 @@ func parseHubMessage(raw string) (Change, bool, error) {
 		}
 	}
 	return ch, false, nil
+}
+
+// shoko6Events are Shoko 6's file events and the v5 name each one stands for (Shoko's own web UI
+// maps them the same way).
+var shoko6Events = map[string]string{
+	"release:saved":   "FileMatched",
+	"release:removed": "FileMatched",
+	"file:deleted":    "FileDeleted",
+}
+
+// parseShoko6Change reads a Shoko 6 file event: {"FileID": 6, "Release": {"CrossReferences":
+// [{"IDs": ["anidb://episode/316938", "anidb://series/20035"]}]}} (release:saved, measured on
+// v6.0.0). A cross-reference may sit at the top level too; both are read.
+func parseShoko6Change(event string, args []json.RawMessage) Change {
+	ch := Change{Event: event}
+	seenFile, seenAniDB := map[int]bool{}, map[int]bool{}
+	type xref struct {
+		IDs []string `json:"IDs"`
+	}
+	for _, arg := range args {
+		var ev struct {
+			FileID          int    `json:"FileID"`
+			CrossReferences []xref `json:"CrossReferences"`
+			Release         struct {
+				CrossReferences []xref `json:"CrossReferences"`
+			} `json:"Release"`
+		}
+		if json.Unmarshal(arg, &ev) != nil {
+			continue
+		}
+		if ev.FileID > 0 && !seenFile[ev.FileID] {
+			seenFile[ev.FileID] = true
+			ch.Files = append(ch.Files, ev.FileID)
+		}
+		for _, x := range append(ev.CrossReferences, ev.Release.CrossReferences...) {
+			for _, id := range x.IDs {
+				rest, ok := strings.CutPrefix(id, "anidb://series/")
+				if !ok {
+					continue
+				}
+				if n, err := strconv.Atoi(rest); err == nil && n > 0 && !seenAniDB[n] {
+					seenAniDB[n] = true
+					ch.AniDB = append(ch.AniDB, n)
+				}
+			}
+		}
+	}
+	return ch
 }

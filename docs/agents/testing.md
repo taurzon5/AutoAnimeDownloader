@@ -95,7 +95,8 @@ bumps the Web API version. The test itself takes a few seconds.
 ## Shoko Live Test
 
 `shoko/shoko_test.go` drives the Shoko client against `fakeShoko`, which answers the way Shoko
-v5.3.3 was measured to, surprises included (an episode has no number without
+v5.3.3 was measured to (with `v6` set, the folders as Shoko 6 serves them; `fakeHub` and the
+watcher tests carry both versions' events), surprises included (an episode has no number without
 `includeDataFrom=AniDB`, `type=Normal` is ignored, an unknown `sortOrder` is ignored). `TestShokoLive`
 checks the same against a real Shoko:
 
@@ -105,7 +106,9 @@ source runtime/shoko-test/env.sh && go test ./src/internal/shoko/ -run TestShoko
 bash scripts/shoko-live.sh down    # removes the container, keeps its data
 ```
 
-- **What `up` sets up, the first time:** the `shokoanime/server:v5.3.3` image, a default user with
+- **What `up` sets up, the first time:** the `shokoanime/server:v6.0.0` image (v5.3.3 until
+  2026-11-27; `runtime/shoko-test` was migrated in place, its v5.3.3 copy kept as
+  `runtime/shoko-test/data-backup-v5.3.3`), a default user with
   a generated password (`runtime/shoko-test/pass`), and one series fetched from AniDB through Shoko
   (Frieren, AniDB 17617). Then two dummy files, linked by hand to its episodes 1 and 2: without an
   AniDB account nothing is identified on its own. The API answers on 127.0.0.1:18111 only.

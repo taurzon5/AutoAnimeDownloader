@@ -39,7 +39,7 @@ var keyClasses = map[string]keyClass{
 	"path": title, "folder_path": title, "source": title, "destination": title, "series_dir": title, "download_folder": title,
 	"anilist_response": title,
 	// An AniList/MAL id is a title by lookup.
-	"anime_id": title, "media_id": title, "mal_id": title, "owner_anime_id": title, "nyaa_id": title,
+	"anime_id": title, "media_id": title, "mal_id": title, "anidb_id": title, "owner_anime_id": title, "nyaa_id": title,
 	"entries_no_longer_on_anilist": title,
 
 	"absolute_episode": keep, "addr": keep, "animes_checked": keep, "animes_found": keep,
