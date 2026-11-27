@@ -22,7 +22,7 @@ their own server and receive the saved password. Pinned by
 
 **Why it's right:** the password and key unlock a client that can download and delete anything on
 the machine, and `GET /config` answers anyone who reaches the web UI. Not sending them out is the
-point. But the web UI and `config set` save the whole config object: without the placeholder, every
+point. But the Settings page and `config set` save the whole config object: without the placeholder, every
 save made without retyping the password would erase it. Sending the placeholder back unchanged is
 how both keep it, and typing a new value (or clearing the field) still changes it.
 

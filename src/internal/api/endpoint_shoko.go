@@ -131,6 +131,9 @@ func handleShokoLogin(server *Server) http.HandlerFunc {
 			JSONError(w, http.StatusBadGateway, "SHOKO_UNREACHABLE", err.Error())
 			return
 		}
+		// Under the config lock, like every other config write (decisions/161).
+		server.configMu.Lock()
+		defer server.configMu.Unlock()
 		configs, err := server.FileManager.LoadConfigs()
 		if err != nil {
 			JSONInternalError(w, err)

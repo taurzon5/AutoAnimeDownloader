@@ -172,3 +172,4 @@ do not edit by hand.
 - [**#158** — The episode limit stays one number with 0 as off, drawn as a switch, and is off by default](158-the-episode-limit-stays-one-number-with-0-as-off.md)
 - [**#159** — Direct is the default library mode, and an empty mode becomes direct only where config comes in](159-direct-is-the-default-library-mode-and-an-empty.md)
 - [**#160** — A manual episode download ignores the size and seeder limits, and only the disk guard applies](160-a-manual-episode-download-ignores-the-size-and.md)
+- [**#161** — Priorities and notifications save only their part, merged into the saved one, and skip the full save's checks](161-priorities-and-notifications-save-only-their-part.md)

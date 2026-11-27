@@ -3,9 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"AutoAnimeDownloader/src/internal/files"
+	"AutoAnimeDownloader/src/internal/nyaa"
 
 	"github.com/urfave/cli/v2"
 )
@@ -54,6 +57,21 @@ func prioritiesCommand() *cli.Command {
 				Action: func(c *cli.Context) error {
 					return handlePriorityDefaults()
 				},
+			},
+			{
+				Name:  "get",
+				Usage: "Show the saved torrent priority lists",
+				Action: func(c *cli.Context) error {
+					return handlePrioritiesGet()
+				},
+			},
+			{
+				Name:      "set",
+				Usage:     "Save the torrent priority lists from a JSON file (- for stdin), and nothing else",
+				ArgsUsage: "<file|->",
+				Description: "Writes only `priorities` (PUT /config/priorities), as the Priorities page does: it doesn't run\n" +
+					"the folder and torrent-client checks of a full `config set`. Start from `priorities get --json`.",
+				Action: handlePrioritiesSet,
 			},
 		},
 	}
@@ -195,4 +213,44 @@ func parseConfigValue(current any, value string) any {
 		return parsed
 	}
 	return value
+}
+
+func handlePrioritiesGet() error {
+	config, err := getClient().GetConfig()
+	if err != nil {
+		return mapClientError(err)
+	}
+	return printValue(config.Priorities, "")
+}
+
+func handlePrioritiesSet(c *cli.Context) error {
+	if err := requireArgs(c, 1, "priorities set <file|->"); err != nil {
+		return err
+	}
+	var priorities nyaa.Priorities
+	if err := readJSONArg(c.Args().Get(0), &priorities); err != nil {
+		return err
+	}
+	if err := mapClientError(getClient().UpdatePriorities(priorities)); err != nil {
+		return err
+	}
+	return printMessage("Priorities updated", "Priorities updated")
+}
+
+// readJSONArg decodes the JSON in a file, or in stdin for "-", into v.
+func readJSONArg(path string, v any) error {
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read %s: %w", path, err)
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		return fmt.Errorf("invalid JSON in %s: %w", path, err)
+	}
+	return nil
 }

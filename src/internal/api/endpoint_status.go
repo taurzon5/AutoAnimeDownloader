@@ -79,7 +79,7 @@ func handleStatus(server *Server) http.HandlerFunc {
 		restart := false
 		cfg, cfgErr := server.FileManager.LoadConfigs()
 		if cfgErr == nil && cfg != nil && running != "" {
-			restart = running != savedTorrentClient(cfg)
+			restart = running != clientOf(cfg)
 		}
 		diskLow := false
 		var disks []StatusDisk
@@ -140,13 +140,4 @@ func runningTorrentClient(b torrents.TorrentBackend) string {
 	default:
 		return files.TorrentClientBuiltin
 	}
-}
-
-// savedTorrentClient is the client the saved config asks for; an empty torrent_client is the
-// built-in one.
-func savedTorrentClient(c *files.Config) string {
-	if c.UsesQBittorrent() {
-		return files.TorrentClientQBittorrent
-	}
-	return files.TorrentClientBuiltin
 }

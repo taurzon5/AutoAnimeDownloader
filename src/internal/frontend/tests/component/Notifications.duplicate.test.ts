@@ -6,13 +6,13 @@ import type { Config, WebhookPreset } from '../../src/lib/api/client.js'
 
 vi.mock('../../src/lib/api/client.js', () => ({
   getConfig: vi.fn(),
-  updateConfig: vi.fn(),
+  updateNotifications: vi.fn(),
   testWebhook: vi.fn(),
   previewWebhook: vi.fn(),
 }))
 
 const getConfig = vi.mocked(client.getConfig)
-const updateConfig = vi.mocked(client.updateConfig)
+const updateNotifications = vi.mocked(client.updateNotifications)
 
 const btn = (re: RegExp) => screen.getByRole('button', { name: re })
 const CONFIRM = /Confirmar|Confirm/
@@ -36,8 +36,8 @@ async function renderWith(webhooks: WebhookPreset[]) {
 }
 
 async function savedWebhooks(): Promise<WebhookPreset[]> {
-  await waitFor(() => expect(updateConfig).toHaveBeenCalled())
-  return (updateConfig.mock.calls[0][0] as Config).notifications.webhooks
+  await waitFor(() => expect(updateNotifications).toHaveBeenCalled())
+  return (updateNotifications.mock.calls[0][0] as Config['notifications']).webhooks
 }
 
 beforeEach(() => vi.clearAllMocks())

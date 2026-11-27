@@ -70,6 +70,8 @@ autoanimedownloader config set completed_anime_path "/mnt/Anime, Series"
 autoanimedownloader config set notifications.batch_window_seconds 30
 autoanimedownloader config set priorities.fansubs SubsPlease,Erai-raws
 autoanimedownloader priorities defaults
+autoanimedownloader priorities get --json > priorities.json
+autoanimedownloader priorities set priorities.json
 ```
 
 `config get` prints **every** JSON key `config.json` serializes. `config set` accepts any of those
@@ -82,6 +84,9 @@ is gone, webhooks included. A value under `notifications` / `notifications.webho
 back after saving: webhook URLs and headers hold tokens.
 
 `priorities defaults` is the default torrent priority lists. To change one: `config set priorities.<list> …`.
+`priorities get` prints the saved lists; `priorities set <file|->` saves them from JSON (`-` reads
+stdin) and nothing else. A list the file leaves out keeps its saved value, as the Priorities page does (`PUT /config/priorities`): unlike `config set`,
+it doesn't run the folder and torrent-client checks, so an unplugged download drive doesn't block it.
 
 ## Animes
 
@@ -276,10 +281,15 @@ Reads the data dir on disk. The daemon may be dead. `--json` prints `{bundle, en
 ```bash
 autoanimedownloader notifications test discord
 autoanimedownloader notifications preview discord
+autoanimedownloader notifications get --json > notifications.json
+autoanimedownloader notifications set notifications.json
 ```
 
 `test` fires a test payload at the webhook named in config. `preview` renders the same sample payload
 (method, URL, headers, body) and sends nothing — check a template before it reaches the service.
+`get` prints the webhooks and the batch window; `set <file|->` saves them from JSON and nothing else
+(`PUT /config/notifications`); a key the file leaves out keeps its saved value, as the Notifications page does. The output of `get` holds the
+webhooks' URLs and headers, which can carry tokens.
 
 ## Destructive flags
 

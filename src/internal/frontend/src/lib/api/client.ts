@@ -536,6 +536,16 @@ export async function updateConfig(config: Config): Promise<UpdateConfigResult> 
   return apiRequest<UpdateConfigResult>('PUT', '/config', config)
 }
 
+/** Saves the priority lists only (PUT /config/priorities): none of the folder or client checks of a full save. */
+export async function updatePriorities(priorities: Priorities): Promise<void> {
+  await apiRequest<unknown>('PUT', '/config/priorities', priorities)
+}
+
+/** Saves the notification settings only (PUT /config/notifications). */
+export async function updateNotifications(notifications: Config['notifications']): Promise<void> {
+  await apiRequest<unknown>('PUT', '/config/notifications', notifications)
+}
+
 /** Tests qBittorrent with the settings being edited (unsaved); a secret still at the placeholder
  * uses the saved one. Throws with the reason when it cannot connect or sign in. */
 export async function testTorrentClient(config: Config): Promise<TorrentClientTestResult> {

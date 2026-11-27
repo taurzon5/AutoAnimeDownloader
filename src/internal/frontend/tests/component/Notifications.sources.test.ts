@@ -6,13 +6,13 @@ import type { Config, WebhookPreset } from '../../src/lib/api/client.js'
 
 vi.mock('../../src/lib/api/client.js', () => ({
   getConfig: vi.fn(),
-  updateConfig: vi.fn(),
+  updateNotifications: vi.fn(),
   testWebhook: vi.fn(),
   previewWebhook: vi.fn(),
 }))
 
 const getConfig = vi.mocked(client.getConfig)
-const updateConfig = vi.mocked(client.updateConfig)
+const updateNotifications = vi.mocked(client.updateNotifications)
 
 const hook: WebhookPreset = {
   name: 'ntfy', url: 'https://ntfy.sh/x', method: 'POST', headers: {}, body: '{{message}}', events: ['download_completed'],
@@ -32,8 +32,8 @@ async function renderWith(webhooks: WebhookPreset[]) {
 async function saved(): Promise<WebhookPreset> {
   await fireEvent.click(screen.getByRole('button', { name: /Confirmar|Confirm/ }))
   await fireEvent.click(screen.getByRole('button', { name: /^(Salvar|Save)$/ }))
-  await waitFor(() => expect(updateConfig).toHaveBeenCalled())
-  return (updateConfig.mock.calls[0][0] as Config).notifications.webhooks[0]
+  await waitFor(() => expect(updateNotifications).toHaveBeenCalled())
+  return (updateNotifications.mock.calls[0][0] as Config['notifications']).webhooks[0]
 }
 
 const box = (name: RegExp) => screen.getByRole('checkbox', { name }) as HTMLInputElement

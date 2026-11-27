@@ -6,13 +6,13 @@ import type { Config, WebhookPreset } from '../../src/lib/api/client.js'
 
 vi.mock('../../src/lib/api/client.js', () => ({
   getConfig: vi.fn(),
-  updateConfig: vi.fn(),
+  updateNotifications: vi.fn(),
   testWebhook: vi.fn(),
   previewWebhook: vi.fn(),
 }))
 
 const getConfig = vi.mocked(client.getConfig)
-const updateConfig = vi.mocked(client.updateConfig)
+const updateNotifications = vi.mocked(client.updateNotifications)
 const previewWebhook = vi.mocked(client.previewWebhook)
 
 const config = (webhooks: WebhookPreset[] = []) =>
@@ -31,8 +31,8 @@ async function renderWith(webhooks: WebhookPreset[] = []) {
 }
 
 async function savedWebhooks(): Promise<WebhookPreset[]> {
-  await waitFor(() => expect(updateConfig).toHaveBeenCalled())
-  return (updateConfig.mock.calls[0][0] as Config).notifications.webhooks
+  await waitFor(() => expect(updateNotifications).toHaveBeenCalled())
+  return (updateNotifications.mock.calls[0][0] as Config['notifications']).webhooks
 }
 
 beforeEach(() => vi.clearAllMocks())
@@ -115,7 +115,7 @@ describe('Notifications — preview', () => {
       headers: { Title: '{{title}}' },
     }))
     expect(await screen.findByText('POST http://hook/154587')).toBeTruthy()
-    expect(updateConfig).not.toHaveBeenCalled()
+    expect(updateNotifications).not.toHaveBeenCalled()
 
     await fireEvent.input(screen.getByPlaceholderText(/^https:\/\/ntfy/), { target: { value: 'http://other' } })
     await waitFor(() => expect(screen.queryByTestId('webhook-preview')).toBeNull())

@@ -158,6 +158,16 @@ func (c *Client) UpdateConfig(config *files.Config) error {
 	return c.send(http.MethodPut, "/api/v1/config", config, nil)
 }
 
+// UpdatePriorities writes the priority lists only (PUT /config/priorities).
+func (c *Client) UpdatePriorities(priorities nyaa.Priorities) error {
+	return c.send(http.MethodPut, "/api/v1/config/priorities", priorities, nil)
+}
+
+// UpdateNotifications writes the notification settings only (PUT /config/notifications).
+func (c *Client) UpdateNotifications(notifications files.NotificationsConfig) error {
+	return c.send(http.MethodPut, "/api/v1/config/notifications", notifications, nil)
+}
+
 // GetAnimes also returns the accounts whose list failed for this response (FailedAccountsHeader),
 // as "<source>:<username>" keys; none of the animes carries them.
 func (c *Client) GetAnimes() ([]AnimeInfo, []string, error) {

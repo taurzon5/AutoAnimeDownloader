@@ -3,7 +3,7 @@
   import Checkbox from "../components/ui/Checkbox.svelte";
   import {
     getConfig,
-    updateConfig,
+    updateNotifications,
     testWebhook,
     previewWebhook,
     type Config,
@@ -245,7 +245,7 @@
     if (!fullConfig) return;
     saving = true;
     try {
-      await updateConfig({ ...fullConfig, notifications });
+      await updateNotifications(notifications);
       fullConfig = await getConfig();
       notifications = fullConfig.notifications ?? { webhooks: [], batch_window_seconds: 0 };
       rememberSaved(notifications.webhooks);

@@ -53,6 +53,11 @@ type Server struct {
 	mu                 sync.Mutex
 	currentLoopControl *daemon.LoopControl
 
+	// configMu serializes the writes of config.json: PUT /config, the partial PUTs of
+	// /config/priorities and /config/notifications, and the Shoko sign-in each read, change and
+	// save, so two at once would drop one of the changes (decisions/161).
+	configMu sync.Mutex
+
 	// checks tracks the manual-verification goroutines started by handleCheck. The endpoint
 	// is fire-and-forget by design, so production never waits on it — the tests do
 	// (waitForChecks). A verification that outlives its test keeps calling into package-level
@@ -94,6 +99,8 @@ func (s *Server) SetupRoutes() *http.ServeMux {
 	apiMux.HandleFunc("/api/v1/last-check", handleLastCheck(s))
 	apiMux.HandleFunc("/api/v1/config", handleConfig(s))
 	apiMux.HandleFunc("/api/v1/config/priorities/defaults", handlePriorityDefaults(s))
+	apiMux.HandleFunc("/api/v1/config/priorities", handleUpdatePriorities(s))
+	apiMux.HandleFunc("/api/v1/config/notifications", handleUpdateNotifications(s))
 	apiMux.HandleFunc("/api/v1/animes", handleAnimes(s))
 	apiMux.HandleFunc("/api/v1/animes/{id}/episodes", handleAnimeEpisodes(s))
 	apiMux.HandleFunc("/api/v1/shoko/login", handleShokoLogin(s))

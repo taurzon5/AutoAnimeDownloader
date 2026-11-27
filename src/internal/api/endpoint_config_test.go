@@ -3,6 +3,7 @@ package api
 import (
 	"AutoAnimeDownloader/src/internal/daemon"
 	"AutoAnimeDownloader/src/internal/files"
+	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"bytes"
 	"encoding/json"
@@ -777,4 +778,65 @@ func TestSaveConfig_EmptyLibraryModeSavesDirect(t *testing.T) {
 	if mockFM.configs == nil || mockFM.configs.LibraryMode != files.LibraryModeDirect {
 		t.Fatalf("saved library_mode = %+v, want direct", mockFM.configs)
 	}
+}
+
+// The partial PUTs write their part and nothing else, and skip the full PUT's checks: a library
+// path that doesn't exist, which PUT /config would refuse, doesn't stop a priorities save.
+func TestUpdateConfigParts(t *testing.T) {
+	saved := func() *files.Config {
+		return &files.Config{CompletedAnimePath: "/nonexistent/library", CheckInterval: 10, EpisodeRetryLimit: 3, MinSeeders: 7,
+			Priorities:    nyaa.Priorities{Fansubs: []string{"SubsPlease"}, Codecs: []string{"h.264"}},
+			Notifications: files.NotificationsConfig{Webhooks: []files.WebhookPreset{{Name: "discord"}}, BatchWindowSeconds: 60}}
+	}
+	t.Run("priorities", func(t *testing.T) {
+		mockFM := &mockFileManager{configs: saved()}
+		w := httptest.NewRecorder()
+		handleUpdatePriorities(&Server{State: daemon.NewState(), FileManager: mockFM})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config/priorities", strings.NewReader(`{"codecs":["hevc"]}`)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("got %d: %s", w.Code, w.Body.String())
+		}
+		// codecs changed; fansubs, left out of the body, keep their saved value.
+		if got := mockFM.configs; len(got.Priorities.Codecs) != 1 || got.Priorities.Codecs[0] != "hevc" || len(got.Priorities.Fansubs) != 1 || got.MinSeeders != 7 || got.CompletedAnimePath != "/nonexistent/library" {
+			t.Fatalf("saved = %+v", got)
+		}
+	})
+	t.Run("notifications", func(t *testing.T) {
+		mockFM := &mockFileManager{configs: saved()}
+		w := httptest.NewRecorder()
+		handleUpdateNotifications(&Server{State: daemon.NewState(), FileManager: mockFM})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config/notifications", strings.NewReader(`{"batch_window_seconds":45}`)))
+		// The body leaves the webhooks out: they stay.
+		if w.Code != http.StatusOK || mockFM.configs.Notifications.BatchWindowSeconds != 45 || len(mockFM.configs.Notifications.Webhooks) != 1 || mockFM.configs.MinSeeders != 7 {
+			t.Fatalf("got %d, saved %+v", w.Code, mockFM.configs)
+		}
+	})
+	t.Run("a negative batch window is refused", func(t *testing.T) {
+		mockFM := &mockFileManager{configs: saved()}
+		w := httptest.NewRecorder()
+		handleUpdateNotifications(&Server{State: daemon.NewState(), FileManager: mockFM})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config/notifications", strings.NewReader(`{"batch_window_seconds":-1}`)))
+		if w.Code != http.StatusBadRequest || mockFM.configs.Notifications.BatchWindowSeconds != 60 {
+			t.Fatalf("got %d, saved %+v", w.Code, mockFM.configs.Notifications)
+		}
+	})
+	t.Run("a null webhooks list is saved as an empty one", func(t *testing.T) {
+		mockFM := &mockFileManager{configs: saved()}
+		w := httptest.NewRecorder()
+		handleUpdateNotifications(&Server{State: daemon.NewState(), FileManager: mockFM})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config/notifications", strings.NewReader(`{"webhooks":null}`)))
+		if w.Code != http.StatusOK || mockFM.configs.Notifications.Webhooks == nil || len(mockFM.configs.Notifications.Webhooks) != 0 {
+			t.Fatalf("got %d, webhooks %#v", w.Code, mockFM.configs.Notifications.Webhooks)
+		}
+	})
+	t.Run("a body that isn't a JSON object is refused", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		handleUpdatePriorities(&Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: saved()}})(w, httptest.NewRequest(http.MethodPut, "/api/v1/config/priorities", strings.NewReader(`["hevc"]`)))
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("got %d", w.Code)
+		}
+	})
+	t.Run("only PUT", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		handleUpdatePriorities(&Server{State: daemon.NewState(), FileManager: &mockFileManager{configs: saved()}})(w, httptest.NewRequest(http.MethodGet, "/api/v1/config/priorities", nil))
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("got %d", w.Code)
+		}
+	})
 }

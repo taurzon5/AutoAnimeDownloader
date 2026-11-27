@@ -49,6 +49,9 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 			return
 		}
 
+		server.configMu.Lock()
+		defer server.configMu.Unlock()
+
 		// Read before anything else: a secret sent back as the placeholder keeps its saved value, and
 		// disable_seeding/library_mode/torrent_client are compared with it below.
 		previous, err := server.FileManager.LoadConfigs()
@@ -237,6 +240,96 @@ func handleUpdateConfig(server *Server) http.HandlerFunc {
 		}
 		JSONSuccess(w, http.StatusOK, response)
 	}
+}
+
+// handleUpdatePriorities is PUT /config/priorities: it writes the priority lists and nothing else,
+// so the Priorities page doesn't run the folder probes, the download-folder checks or the
+// qBittorrent and Shoko checks of a full PUT /config (a drive unplugged elsewhere would refuse a
+// fansub reorder). The lists go to the nyaa package on the next LoadConfigs, as after a full save.
+func handleUpdatePriorities(server *Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only PUT method is allowed")
+			return
+		}
+		body, ok := readPartBody(w, r)
+		if !ok {
+			return
+		}
+		savePart(server, w, "Priorities updated successfully", func(c *files.Config) string {
+			// Over the saved lists: a list the body leaves out keeps its value.
+			merged := c.Priorities
+			if err := json.Unmarshal(body, &merged); err != nil {
+				return "Invalid priorities: " + err.Error()
+			}
+			c.Priorities = merged
+			return ""
+		})
+	}
+}
+
+// handleUpdateNotifications is PUT /config/notifications: the webhooks and the batch window, and
+// nothing else, for the same reason as handleUpdatePriorities.
+func handleUpdateNotifications(server *Server) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only PUT method is allowed")
+			return
+		}
+		body, ok := readPartBody(w, r)
+		if !ok {
+			return
+		}
+		savePart(server, w, "Notifications updated successfully", func(c *files.Config) string {
+			// Over the saved settings, as for the priorities. A null webhooks list is an empty one:
+			// the Notifications page reads it as a list.
+			merged := c.Notifications
+			if err := json.Unmarshal(body, &merged); err != nil {
+				return "Invalid notifications: " + err.Error()
+			}
+			if merged.Webhooks == nil {
+				merged.Webhooks = []files.WebhookPreset{}
+			}
+			if merged.BatchWindowSeconds < 0 {
+				return "Notification batch window must be non-negative"
+			}
+			c.Notifications = merged
+			return ""
+		})
+	}
+}
+
+// readPartBody reads a partial PUT's body and checks it is a JSON object, before the lock.
+func readPartBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	var body json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body) == 0 || body[0] != '{' {
+		JSONError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid JSON format: send a JSON object")
+		return nil, false
+	}
+	return body, true
+}
+
+// savePart reads the saved config, lets change write one part of it (or refuse with a validation
+// message), and saves it, under the same lock as PUT /config so neither drops the other's write.
+// It runs none of PUT /config's checks on purpose (decisions/161).
+func savePart(server *Server, w http.ResponseWriter, done string, change func(*files.Config) string) {
+	server.configMu.Lock()
+	defer server.configMu.Unlock()
+	config, err := server.FileManager.LoadConfigs()
+	if err != nil {
+		JSONInternalError(w, err)
+		return
+	}
+	if msg := change(config); msg != "" {
+		JSONError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg)
+		return
+	}
+	if err := server.FileManager.SaveConfigs(config); err != nil {
+		logger.Logger.Error().Err(err).Msg("Failed to save configs")
+		JSONInternalError(w, err)
+		return
+	}
+	JSONSuccess(w, http.StatusOK, map[string]string{"message": done})
 }
 
 func clientOf(c *files.Config) string {

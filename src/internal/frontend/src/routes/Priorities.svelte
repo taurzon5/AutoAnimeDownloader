@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import {
     getConfig,
-    updateConfig,
+    updatePriorities,
     getPriorityDefaults,
     type Config,
     type Priorities,
@@ -146,7 +146,9 @@
     if (!config) return;
     try {
       saving = true;
-      await updateConfig(config);
+      // Only the lists: a full save would also run the folder and client checks (an unplugged
+      // drive elsewhere would refuse a reorder).
+      await updatePriorities(config.priorities);
       baseline = snapshot(config);
       toast.success(m.priorities_toast_saved());
     } catch (err) {

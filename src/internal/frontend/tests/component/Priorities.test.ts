@@ -7,12 +7,12 @@ import type { Config, Priorities as P } from '../../src/lib/api/client.js'
 vi.mock('../../src/lib/api/client.js', () => ({
   getConfig: vi.fn(),
   getPriorityDefaults: vi.fn(),
-  updateConfig: vi.fn(),
+  updatePriorities: vi.fn(),
 }))
 
 const getConfig = vi.mocked(client.getConfig)
 const getPriorityDefaults = vi.mocked(client.getPriorityDefaults)
-const updateConfig = vi.mocked(client.updateConfig)
+const updatePriorities = vi.mocked(client.updatePriorities)
 
 /** The seven lists minus criteria_order, the only one without an add field. */
 const LISTS_WITH_ADD = 6
@@ -60,8 +60,8 @@ describe('Priorities', () => {
     await fireEvent.click(screen.getByLabelText(/Use av1$/))
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(updateConfig).toHaveBeenCalled())
-    expect(updateConfig.mock.calls[0][0].priorities.codecs).toEqual(['h.264', 'hevc', 'xvid'])
+    await waitFor(() => expect(updatePriorities).toHaveBeenCalled())
+    expect(updatePriorities.mock.calls[0][0].codecs).toEqual(['h.264', 'hevc', 'xvid'])
   })
 
   // ✕ only on what the user created (including the inert leftovers of an old config.json, like "x265").
@@ -88,8 +88,8 @@ describe('Priorities', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'I prefer compatibility' }))
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
-    await waitFor(() => expect(updateConfig).toHaveBeenCalled())
-    expect(updateConfig.mock.calls[0][0].priorities.codecs).toEqual(['h.264', 'hevc', 'av1', 'xvid'])
+    await waitFor(() => expect(updatePriorities).toHaveBeenCalled())
+    expect(updatePriorities.mock.calls[0][0].codecs).toEqual(['h.264', 'hevc', 'av1', 'xvid'])
   })
 })
 
