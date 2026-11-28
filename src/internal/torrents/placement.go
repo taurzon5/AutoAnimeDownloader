@@ -71,6 +71,10 @@ var ErrIncompleteFolderUnavailable = errors.New("the incomplete downloads folder
 // (decisions/154).
 var ErrDownloadRootUnavailable = errors.New("the download folder is unavailable")
 
+// ErrFilesNotPlanned is what choosing a torrent's files returns before the torrent's file map
+// exists: no placement (hardlink mode, a torrent added outside the app) or no metadata yet.
+var ErrFilesNotPlanned = errors.New("the torrent's files are not placed yet")
+
 // PlacementRequest is what the daemon decides about a torrent before adding it.
 type PlacementRequest struct {
 	// Hash is the torrent's info hash (rain's torrent id).
@@ -103,6 +107,10 @@ type PlacementRequest struct {
 	// the library (decisions/141). Frozen with the rest of the placement; "" writes straight to the
 	// library.
 	IncompleteRoot string `json:"incomplete_root,omitempty"`
+	// Skip lists the torrent files the user chose not to download when adding it (the picker's
+	// file choice): torrent paths as Nyaa's file list gives them. planFiles marks them Skipped.
+	// qBittorrent only: rain downloads every file (decisions/165).
+	Skip []string `json:"skip,omitempty"`
 }
 
 // PlacedFile is one torrent file and where it lives.
@@ -112,10 +120,11 @@ type PlacedFile struct {
 	// Path is the final path, relative to the library root ("Frieren/Season 01/ep05.mkv") as
 	// stored, absolute once the placement went through Resolve.
 	Path string `json:"path"`
-	// Skipped marks a file the daemon doesn't want: an episode of a pack the user already has in
-	// Shoko, for an anime set to remove them (SkipPlacedFiles). qBittorrent never downloads it
+	// Skipped marks a file that is not downloaded: an episode of a pack the user already has in
+	// Shoko, for an anime set to remove them (decisions/153), or a file the user unticked, at the
+	// add (PlacementRequest.Skip) or later (decisions/165). qBittorrent never downloads it
 	// (priority 0); one already written is deleted by the daemon. A skipped file missing from disk
-	// is no loss, and it is no library path (decisions/153).
+	// is no loss, and it is no library path. WantPlacedFiles clears it.
 	Skipped bool `json:"skipped,omitempty"`
 }
 
@@ -177,6 +186,20 @@ func (p Placement) DiskPath(f PlacedFile) string {
 		return f.Path + partSuffix
 	}
 	return f.Path
+}
+
+// DiskNames are the names a placed file can have on disk: its final path (a reopened placement's
+// finished files keep it), DiskPath, and each with qBittorrent's ".!qB" when its "append to
+// incomplete files" option is on.
+func (p Placement) DiskNames(f PlacedFile) []string {
+	names := []string{f.Path}
+	if disk := p.DiskPath(f); disk != f.Path {
+		names = append(names, disk)
+	}
+	for _, n := range names[:len(names):len(names)] {
+		names = append(names, n+qbitIncompleteExt)
+	}
+	return names
 }
 
 // StagingDir is the torrent's own folder inside its staging root, "" when it doesn't stage.
@@ -349,15 +372,15 @@ func (s *placementStore) setKept(hash string, kept bool) error {
 	return nil
 }
 
-// setSkipped marks the files whose torrent paths are given Skipped (see PlacedFile.Skipped) and
-// returns the placement as saved. A hash with no placement, or one whose files aren't planned yet
-// (no metadata), is an error: there is nothing to mark.
-func (s *placementStore) setSkipped(hash string, torrentPaths []string) (Placement, error) {
+// setSkipped sets Skipped to skipped on the files whose torrent paths are given (see
+// PlacedFile.Skipped) and returns the placement as saved. A hash with no placement, or one whose
+// files aren't planned yet (no metadata), is an error: there is nothing to mark.
+func (s *placementStore) setSkipped(hash string, torrentPaths []string, skipped bool) (Placement, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.byID[hash]
 	if !ok || len(p.Files) == 0 {
-		return Placement{}, fmt.Errorf("torrent %s has no planned files to skip", hash)
+		return Placement{}, fmt.Errorf("%w: %s", ErrFilesNotPlanned, hash)
 	}
 	want := make(map[string]bool, len(torrentPaths))
 	for _, t := range torrentPaths {
@@ -366,8 +389,8 @@ func (s *placementStore) setSkipped(hash string, torrentPaths []string) (Placeme
 	files := append([]PlacedFile(nil), p.Files...)
 	changed := false
 	for i := range files {
-		if want[files[i].Torrent] && !files[i].Skipped {
-			files[i].Skipped = true
+		if want[files[i].Torrent] && files[i].Skipped != skipped {
+			files[i].Skipped = skipped
 			changed = true
 		}
 	}
@@ -525,6 +548,7 @@ func planFiles(req PlacementRequest, torrentPaths []string, exists func(string) 
 		}
 	}
 
+	skip := SkipMatcher(req.Skip)
 	used := map[string]bool{}
 	out := make([]PlacedFile, 0, len(torrentPaths))
 	for _, tp := range torrentPaths {
@@ -564,9 +588,38 @@ func planFiles(req PlacementRequest, torrentPaths []string, exists func(string) 
 			return nil, fmt.Errorf("two files of torrent %s map to %s", req.Hash, dest)
 		}
 		used[dest] = true
-		out = append(out, PlacedFile{Torrent: tp, Path: dest})
+		out = append(out, PlacedFile{Torrent: tp, Path: dest, Skipped: skip(tp)})
 	}
 	return out, nil
+}
+
+// SkipMatcher tells whether a torrent path is one of the paths the user unticked. Those come from
+// Nyaa's file list, which names the torrent's top folder like the client does; a client that lays
+// the files out without it (or under another top folder) still matches with the top folder
+// stripped from both sides.
+func SkipMatcher(paths []string) func(string) bool {
+	if len(paths) == 0 {
+		return func(string) bool { return false }
+	}
+	exact := make(map[string]bool, len(paths))
+	inner := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		p = strings.Trim(filepath.ToSlash(p), "/")
+		exact[p] = true
+		if _, rest, ok := strings.Cut(p, "/"); ok {
+			inner[rest] = true
+		}
+	}
+	return func(tp string) bool {
+		tp = strings.Trim(filepath.ToSlash(tp), "/")
+		if exact[tp] {
+			return true
+		}
+		if _, rest, ok := strings.Cut(tp, "/"); ok && (inner[rest] || exact[rest]) {
+			return true
+		}
+		return inner[tp]
+	}
 }
 
 // flatName drops the folders of a torrent path: a single episode or a movie lands directly in

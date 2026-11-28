@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -555,7 +556,7 @@ func TestPlacedStorage_OpenRecreatesASkippedFile(t *testing.T) {
 	if err := ps.store.update(p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ps.store.setSkipped(testHash, []string{"ep.mkv"}); err != nil {
+	if _, err := ps.store.setSkipped(testHash, []string{"ep.mkv"}, true); err != nil {
 		t.Fatal(err)
 	}
 	f, _, err := ps.Open("ep.mkv", 4)
@@ -725,5 +726,27 @@ func TestPlacedStorage_OpenRefusesAMissingDownloadRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(gone); !os.IsNotExist(err) {
 		t.Fatal("the missing root must not be created")
+	}
+}
+
+// The picker's unticked files (PlacementRequest.Skip, Nyaa's paths) come out Skipped. Nyaa names
+// the torrent's top folder like the client; a client without it, or with another top folder,
+// still matches by the path inside (decisions/165).
+func TestPlanFiles_MarksTheUntickedFilesSkipped(t *testing.T) {
+	req := PlacementRequest{Hash: testHash, SeriesDir: "Kimetsu", Kind: PlacementPack,
+		Skip: []string{"[Trix] Kimetsu S01-05/S02/ep01.mkv", "[Trix] Kimetsu S01-05/NCOP.mkv"}}
+	files := plan(t, req, "[Trix] Kimetsu S01-05/S01/ep01.mkv", "[Trix] Kimetsu S01-05/S02/ep01.mkv", "[Trix] Kimetsu S01-05/NCOP.mkv")
+	got := []bool{files[0].Skipped, files[1].Skipped, files[2].Skipped}
+	if want := []bool{false, true, true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("skipped = %v, want %v", got, want)
+	}
+	files = plan(t, req, "S01/ep01.mkv", "S02/ep01.mkv", "NCOP.mkv")
+	got = []bool{files[0].Skipped, files[1].Skipped, files[2].Skipped}
+	if want := []bool{false, true, true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("skipped without the top folder = %v, want %v", got, want)
+	}
+	files = plan(t, PlacementRequest{Hash: testHash, SeriesDir: "Kimetsu", Kind: PlacementPack}, "Pack/ep01.mkv")
+	if files[0].Skipped {
+		t.Fatal("no Skip skips nothing")
 	}
 }

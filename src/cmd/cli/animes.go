@@ -86,6 +86,7 @@ func animesCommand() *cli.Command {
 					&cli.StringFlag{Name: "query", Usage: "With --magnet: the Nyaa query the magnet came from (same as candidates --query)"},
 					&cli.BoolFlag{Name: "unblacklist", Usage: "The anime is on the blacklist: take it off and add it"},
 					&cli.StringFlag{Name: "queue", Usage: "The download queue it goes in (a queue id from `queues`; default: the default queue)"},
+					&cli.StringSliceFlag{Name: "skip-file", Usage: "With --magnet: a file of the torrent not to download, by its path in `animes candidate` (repeatable; qBittorrent only)"},
 				},
 				Action: handleAnimesAdd,
 			},
@@ -193,6 +194,7 @@ func animesCommand() *cli.Command {
 				Flags: []cli.Flag{
 					yesFlag(),
 					&cli.StringFlag{Name: "magnet", Usage: "Magnet URI"},
+					&cli.StringSliceFlag{Name: "skip-file", Usage: "A file of the torrent not to download, by its path in `animes candidate` (repeatable; qBittorrent only)"},
 				},
 				Action: handleAnimesReplace,
 			},
@@ -408,6 +410,12 @@ func handleAnimesAdd(c *cli.Context) error {
 		if cand := candidateForMagnet(mediaID, c.String("query"), magnet); cand != nil {
 			req.Name, req.NyaaID, req.SizeBytes = cand.Name, cand.NyaaID, cand.SizeBytes
 		}
+	}
+	if skip := c.StringSlice("skip-file"); len(skip) > 0 {
+		if req.Magnet == "" {
+			return fmt.Errorf("--skip-file needs --magnet: a search picks its own torrents")
+		}
+		req.SkipFiles = skip
 	}
 	req.Unblacklist = c.Bool("unblacklist")
 	req.Queue = c.String("queue")
@@ -802,7 +810,15 @@ func handleAnimesReplace(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := mapClientError(getClient().ReplaceAnime(id, magnet)); err != nil {
+	req := api.ReplaceAnimeRequest{Magnet: magnet, SkipFiles: c.StringSlice("skip-file")}
+	if len(req.SkipFiles) > 0 {
+		// The picker row, as `add --magnet` sends it: the daemon reads the file list by its Nyaa id
+		// to leave the unticked episodes unrecorded (decisions/165).
+		if cand := candidateForMagnet(id, "", magnet); cand != nil {
+			req.Name, req.NyaaID, req.SizeBytes = cand.Name, cand.NyaaID, cand.SizeBytes
+		}
+	}
+	if err := mapClientError(getClient().ReplaceAnime(id, req)); err != nil {
 		return err
 	}
 	return printMessage("Anime replacement started", "Anime replacement started")

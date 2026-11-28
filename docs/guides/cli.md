@@ -161,7 +161,9 @@ by an `On lists:` table — every configured account that has the anime, in any 
 progress and score (the anime page's panel). `add --magnet` skips auto-pick and looks the magnet up among the
 candidates (pass the same `--query` you used with `candidates`), so it sends the release name, Nyaa id
 and size the web picker sends — the daemon reads the episode range from them. A magnet that is not
-among them is added with the magnet alone. Flags may follow the id (`animes add 154587 --magnet "…"` is
+among them is added with the magnet alone. With qBittorrent, `--skip-file PATH` (repeatable, on
+`add --magnet` and `replace`) leaves a file of the torrent out, by its path in `animes candidate`:
+qBittorrent never downloads it, and an episode left with no file is not recorded. Flags may follow the id (`animes add 154587 --magnet "…"` is
 the same as flags-first). `add` is a standalone anime; on a blacklisted one it fails with
 `BLACKLISTED` unless `--unblacklist` takes it off the blacklist first.
 
@@ -228,6 +230,9 @@ off and resumes the torrents the blacklist paused (not one you had paused yourse
 ```bash
 autoanimedownloader torrents
 autoanimedownloader torrents files HASH
+autoanimedownloader torrents skip HASH 3 4 --yes
+autoanimedownloader torrents skip HASH "Pack/Show - 05.mkv" --yes --block
+autoanimedownloader torrents want HASH 3
 autoanimedownloader torrents pause HASH
 autoanimedownloader torrents resume HASH
 autoanimedownloader torrents announce HASH
@@ -239,6 +244,14 @@ autoanimedownloader torrents redownload-missing
 autoanimedownloader torrents redownload-missing HASH1 HASH2
 autoanimedownloader torrents test
 ```
+
+`files` numbers the torrent's files and marks the ones not downloaded (`skipped`). With qBittorrent,
+`skip` stops downloading files, by those numbers or by their paths: a file already downloaded is
+deleted, unless it is finished in one of Shoko's import folders, and the rest keeps seeding. An
+episode left with no file loses its record, so the app may download it from another torrent;
+`--block` stops that. `want` downloads skipped files again, and their episodes get their records
+back. Both hit `PUT /torrents/{hash}/files` and refuse with the built-in client, which downloads
+every file.
 
 `test` hits `POST /torrent-client/test` with the saved settings: it signs in to qBittorrent,
 prints its version and Web API version, and says whether qBittorrent sees the library folder (or

@@ -178,8 +178,12 @@ func DownloadStandaloneAnime(fm FileManagerInterface, backend torrents.TorrentBa
 // DownloadStandaloneAnimeWithMagnet adds a user-chosen whole-title magnet, then the standalone
 // id, then episode records for the pack's coverage. The torrent goes in first so a refused add
 // cannot leave a tracked id with nothing to download. An unknown pack range writes no episode
-// records (decisions/084).
-func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int, magnet, name string, nyaaID int, sizeBytes int64) (int, error) {
+// records (decisions/084), and neither does an episode whose every file the user unticked
+// (decisions/165).
+func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, configs *files.Config, mediaID int, magnet string, picked PickedRelease) (int, error) {
+	if err := CheckFileSelection(configs, backend, picked.Skip); err != nil {
+		return 0, err
+	}
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return 0, err
 	}
@@ -188,7 +192,9 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 		return 0, err
 	}
 	target.root = animeRoot(fm, mediaID)
-	hash, err := addAndPrioritize(backend, magnet, sizeBytes, configs, target)
+	picked = withoutSkipForPlacedTorrent(backend, magnet, picked)
+	target.skip = picked.Skip
+	hash, err := addAndPrioritize(backend, magnet, picked.selectedBytes(), configs, target)
 	if err != nil || hash == "" {
 		return 0, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
@@ -199,21 +205,25 @@ func DownloadStandaloneAnimeWithMagnet(fm FileManagerInterface, backend torrents
 
 	// A client that sends only the magnet (an older CLI, a script) still gets a name to read the
 	// range from: the magnet's own dn, which Nyaa fills with the torrent's title (decisions/123).
+	name := picked.Name
 	if name == "" {
 		name = magnetDisplayName(magnet)
 	}
-	records, err := standaloneMagnetCoverage(mediaID, hash, name, nyaaID)
+	records, err := standaloneMagnetCoverage(mediaID, hash, name, picked.NyaaID)
 	if err != nil {
 		rollbackStandaloneID(fm, mediaID)
 		return 0, err
 	}
+	records = withoutSkipped(records, skippedEpisodes(mediaID, picked))
+	records = withoutSkipped(records, untickedEpisodes(backend, hash, target, recordNumbers(records)))
 	// Recorded even when the range is unknown and no episode record is written: the torrent is in
 	// the client either way.
 	numbers := make([]int, len(records))
 	for i, r := range records {
 		numbers[i] = r.EpisodeNumber
 	}
-	PickedRelease{Name: name, NyaaID: nyaaID, SizeBytes: sizeBytes}.record(hash, magnet, mediaID, numbers...)
+	picked.Name = name
+	picked.record(hash, magnet, mediaID, numbers...)
 	if len(records) == 0 {
 		return 0, nil
 	}

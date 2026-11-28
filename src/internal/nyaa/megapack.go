@@ -97,6 +97,19 @@ func cachedFileList(nyaaID int) ([]TorrentFile, bool) {
 	return files, true
 }
 
+// TorrentFileList is nyaaID's file list: the cached one, else Nyaa's page (which caches it). The
+// add of a pick with a file choice reads it, right after the picker read the page (decisions/165).
+func TorrentFileList(nyaaID int) ([]TorrentFile, error) {
+	if files, ok := cachedFileList(nyaaID); ok {
+		return files, nil
+	}
+	detail, err := FetchTorrentDetail(nyaaID)
+	if err != nil {
+		return nil, err
+	}
+	return detail.Files, nil
+}
+
 // storeFileList keeps a list read from Nyaa. An empty list is never kept: a page that lost its file
 // list for a moment would otherwise read as an empty torrent forever.
 func storeFileList(nyaaID int, files []TorrentFile) {

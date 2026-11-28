@@ -148,6 +148,9 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 	epName := fmt.Sprintf("%s - Episode %d", details.title, targetNode.Episode)
 	target := manualTarget(configs, details.mediaList, targetNode.Episode, false)
 	target.root = animeRoot(fm, details.mediaList.Media.Id)
+	if repicksUnticked(backend, magnet, target) {
+		return files.EpisodeStruct{}, ErrEpisodeFileUnticked
+	}
 	hash, err := addAndPrioritize(backend, magnet, 0, configs, target)
 	if err != nil || hash == "" {
 		return files.EpisodeStruct{}, fmt.Errorf("failed to add torrent to embedded client: %w", err)
@@ -169,6 +172,9 @@ func ManualDownloadEpisodeWithMagnet(fm FileManagerInterface, backend torrents.T
 // Marks all aired episodes as downloaded sharing the same torrent hash. picked is the Nyaa row the
 // torrent picker chose it from; empty for a pasted magnet.
 func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.TorrentBackend, animeId int, magnet string, configs *files.Config, picked PickedRelease) ([]files.EpisodeStruct, error) {
+	if err := CheckFileSelection(configs, backend, picked.Skip); err != nil {
+		return nil, err
+	}
 	if _, err := backend.Ensure(configs.DownloadPath()); err != nil {
 		return nil, err
 	}
@@ -180,7 +186,10 @@ func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.Tor
 
 	target := manualTarget(configs, details.mediaList, 0, true)
 	target.root = animeRoot(fm, details.mediaList.Media.Id)
-	hash, err := addAndPrioritize(backend, magnet, 0, configs, target)
+	picked = withoutSkipForPlacedTorrent(backend, magnet, picked)
+	target.skip = picked.Skip
+	// The disk guard counts what downloads: the unticked files are left out (decisions/165).
+	hash, err := addAndPrioritize(backend, magnet, picked.selectedBytes(), configs, target)
 	if err != nil || hash == "" {
 		return nil, fmt.Errorf("failed to add torrent to embedded client: %w", err)
 	}
@@ -204,6 +213,10 @@ func ManualDownloadAnimeWithMagnet(fm FileManagerInterface, backend torrents.Tor
 		})
 	}
 
+	// An episode whose every file was unticked is not downloaded: no record (decisions/165). For a
+	// torrent the app already has, its own unticked files say it.
+	episodes = withoutSkipped(episodes, skippedEpisodes(animeId, picked))
+	episodes = withoutSkipped(episodes, untickedEpisodes(backend, hash, target, recordNumbers(episodes)))
 	if len(episodes) == 0 {
 		return nil, fmt.Errorf("no aired episodes found for anime %d", animeId)
 	}
@@ -256,6 +269,11 @@ func ManualDownloadEpisode(fm FileManagerInterface, backend torrents.TorrentBack
 	target.root = animeRoot(fm, details.mediaList.Media.Id)
 	var hash string
 	for i := range maxAttempts {
+		// The same torrent with this episode's file unticked would record it with no file
+		// (decisions/165): tick it in Downloads instead.
+		if repicksUnticked(backend, results[i].MagnetLink, target) {
+			continue
+		}
 		h, err := addAndPrioritize(backend, results[i].MagnetLink, results[i].Size, configs, target)
 		if err == nil && h != "" {
 			hash = h

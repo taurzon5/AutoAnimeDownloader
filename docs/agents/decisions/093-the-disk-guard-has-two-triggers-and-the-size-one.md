@@ -55,3 +55,8 @@ covers both.
 **Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** `DiskLow` now takes the backend and spreads reservations over the download roots (`withRoots`): it is low when no root takes a torrent of size 0, as the add-gate counts. `RootDisks` gives each root's own flag for `GET /status`.
 
 **Amendment (see [#154](154-several-download-roots-each-placement-records-its.md)):** the floor is per download root: a root's own `min_free_gb`, else `min_free_disk_gb` (`Config.RootMinFreeGB`), in `checkRootBudgetSpace`, which replaced `checkDiskSpace` and `checkBudgetSpace`. A manual add reserves through a nil budget (`addAndPrioritize`), and `RedownloadMissingFiles` checks and counts each torrent's own root (`checkOn`, `addOn`).
+
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** `ManualDownloadAnimeWithMagnet` no longer passes `0`: a picker row
+(whole-title replace) sends its size minus the files the user unticked, like `POST
+/standalone-animes` always sent its size, so the size trigger applies to it too. A pasted magnet
+still has no size and still passes `0`, and so does `ManualDownloadEpisodeWithMagnet`.

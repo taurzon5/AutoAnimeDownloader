@@ -2,13 +2,20 @@
   // File panel of a torrent — spec 2026-08-28. Owns the fetch, loading and error, so the two
   // screens that use it don't duplicate all three.
   //
-  // READ-ONLY on purpose: rain v2 has no SetWanted/FilePriority (the module's only `Priority`
-  // is PEER), so there is no selecting or excluding a file from inside the pack.
+  // `selectable` (Downloads, with qBittorrent running) adds a box per file: unticked files are
+  // never downloaded, one already on disk is deleted after a confirm (decisions/165). rain v2
+  // has no file selection (its only `Priority` is PEER), so with it the panel stays read-only,
+  // and so does the anime screen's episode cut.
   //
   // One endpoint, one component, TWO render MODES: the two screens want different cuts of
   // the same list, not different lists.
   import { onDestroy } from "svelte";
-  import { getTorrentFiles, type TorrentFile } from "../lib/api/client.js";
+  import { chooseTorrentFiles, getTorrentFiles, type TorrentFile } from "../lib/api/client.js";
+  import { choiceDiff, toggleOne } from "../lib/domain/fileChoice.js";
+  import { toast } from "../lib/stores/toast.js";
+  import Button from "./ui/Button.svelte";
+  import Checkbox from "./ui/Checkbox.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import { filesByEpisode } from "../lib/utils/torrentFiles.js";
   import { formatBytes, formatPercent, type FormatLocale } from "../lib/domain/format.js";
   import Chip from "./ui/Chip.svelte";
@@ -36,6 +43,8 @@
    */
   export let chip: { variant: "accent" | "ok" | "warn" | "danger" | "neutral"; label: string } | undefined =
     undefined;
+  /** Raw mode only: a box per file to stop or restart its download (qBittorrent, decisions/165). */
+  export let selectable = false;
 
   $: fmtLocale = ($locale ?? "en") as FormatLocale;
 
@@ -45,11 +54,23 @@
 
   onDestroy(() => (destroyed = true));
 
+  // The unticked paths the panel shows. Follows the torrent until the user changes a box (dirty),
+  // so the poll's refetch never undoes a choice being made.
+  let skip = new Set<string>();
+  let dirty = false;
+  let saving = false;
+  let confirmOpen = false;
+  let block = false;
+  $: choosing = selectable && mode === "raw" && files.length > 1;
+  $: diff = choiceDiff(files, skip);
+  $: changed = diff.skip.length + diff.want.length > 0;
+
   async function load(h: string) {
     try {
       const next = await getTorrentFiles(h);
       if (destroyed) return;
       files = next;
+      if (!dirty) skip = new Set(next.filter((f) => f.skipped).map((f) => f.path));
     } catch {
       // Degrade silently, like the rest of the screen: keep what it already had and move on.
     } finally {
@@ -78,6 +99,39 @@
   function detailsOf(f: TorrentFile): string {
     const pct = progressOf(f);
     return `${pct === null ? "—" : formatPercent(pct, fmtLocale)} · ${formatBytes(f.size, fmtLocale)}`;
+  }
+
+  function toggle(path: string) {
+    skip = toggleOne(path, skip);
+    dirty = true;
+  }
+
+  function reset() {
+    skip = new Set(files.filter((f) => f.skipped).map((f) => f.path));
+    dirty = false;
+  }
+
+  function save() {
+    if (diff.skip.length > 0) {
+      block = false;
+      confirmOpen = true;
+      return;
+    }
+    void apply();
+  }
+
+  async function apply() {
+    saving = true;
+    try {
+      await chooseTorrentFiles(hash, { skip: diff.skip, want: diff.want, block });
+      toast.success(m.files_choice_done());
+      dirty = false;
+      await load(hash);
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : m.files_choice_error());
+    } finally {
+      saving = false;
+    }
   }
 
   function chipFor(f: TorrentFile) {
@@ -143,8 +197,19 @@
           {@const pct = progressOf(f)}
           <li
             class="rounded-field border border-default bg-surface p-2.5 lg:flex lg:items-center lg:gap-x-3
-                   lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0"
+                   lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 {skip.has(f.path) ? 'opacity-60' : ''}"
           >
+            {#if choosing}
+              <span class="float-left mr-2 lg:float-none lg:mr-0">
+                <Checkbox
+                  checked={!skip.has(f.path)}
+                  label={$locale && m.picker_files_toggle_file({ name: baseName(f.path) })}
+                  labelHidden
+                  disabled={saving}
+                  on:change={() => toggle(f.path)}
+                />
+              </span>
+            {/if}
             <!-- The name is NOT `flex-1`: with it the name ate the whole row and pushed the
                  codec chip to the right edge, far from the file it refers to. Shrinking to
                  content, the chip stays glued to the name, and `flex-1` goes to the spacer. -->
@@ -163,6 +228,9 @@
               {#if mode === "raw" && f.codec}
                 <span class="shrink-0"><Chip variant="neutral">{f.codec}</Chip></span>
               {/if}
+              {#if f.skipped}
+                <span class="shrink-0"><Chip variant="neutral">{$locale && m.files_choice_skipped()}</Chip></span>
+              {/if}
               <span class="hidden lg:block lg:flex-1"></span>
               <span class="min-w-0 flex-1 lg:w-[104px] lg:flex-none">
                 <ProgressBar value={pct ?? 0} thickness={4} variant={pct === 1 ? "ok" : "accent"} label={f.path} />
@@ -172,6 +240,25 @@
           </li>
         {/each}
       </ul>
+      {#if choosing && changed}
+        <div class="mt-2 flex justify-end gap-2">
+          <Button variant="ghost" disabled={saving} on:click={reset}>{$locale && m.files_choice_reset()}</Button>
+          <Button variant="solid" disabled={saving || skip.size === files.length} on:click={save}>
+            {$locale && m.files_choice_save()}
+          </Button>
+        </div>
+      {/if}
     {/if}
   </div>
 {/if}
+
+<ConfirmDialog
+  bind:open={confirmOpen}
+  title={$locale && m.files_choice_confirm_title({ count: diff.skip.length })}
+  message={$locale && m.files_choice_confirm_body()}
+  confirmLabel={$locale && m.files_choice_confirm()}
+  cancelLabel={$locale && m.common_cancel()}
+  on:confirm={() => void apply()}
+>
+  <Checkbox bind:checked={block} label={$locale && m.files_choice_confirm_block()} />
+</ConfirmDialog>

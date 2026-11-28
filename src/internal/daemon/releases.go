@@ -50,11 +50,13 @@ func recordRelease(hash string, tr nyaa.TorrentResult, origin string, animeID in
 }
 
 // PickedRelease is what the torrent picker knows of the release it sends with a magnet: its name,
-// Nyaa id and size. A zero NyaaID is a pasted magnet.
+// Nyaa id and size, and the files the user unticked (torrent paths from Nyaa's file list,
+// decisions/165). A zero NyaaID is a pasted magnet.
 type PickedRelease struct {
 	Name      string
 	NyaaID    int
 	SizeBytes int64
+	Skip      []string
 }
 
 // record writes the release: a pick, with its Nyaa page, when it came with a Nyaa id; else a pasted

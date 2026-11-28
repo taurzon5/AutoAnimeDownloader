@@ -35,6 +35,13 @@ the picker shows the Trix pack's mapping table (which season each file belongs t
 downloads the whole pack for a season-1 entry; that ends with file selection (spec step 2,
 qBittorrent's file priorities).
 
+## Progress (2026-11-27, later)
+
+Megapack step 2 is built ([decisions/165](../agents/decisions/165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):
+with qBittorrent, picking the Trix pack by hand can untick the four other seasons, and the files of
+a pack already downloading can be unticked from the Downloads page. The pass still takes the whole
+pack for a season-1 entry: choosing files there is spec step 3 (with "Download related seasons").
+
 ## What to check
 
 - Whether "covers the window" should prefer, all else close, the pack whose span is nearest the

@@ -425,10 +425,21 @@ func jsonFieldOrder(v any) []string {
 	if t == nil || t.Kind() != reflect.Struct {
 		return nil
 	}
+	return structJSONKeys(t)
+}
+
+// structJSONKeys lists a struct's JSON keys in field order, with an untagged embedded struct's
+// keys in its place, as encoding/json flattens them.
+func structJSONKeys(t reflect.Type) []string {
 	var keys []string
 	for i := 0; i < t.NumField(); i++ {
-		tag := t.Field(i).Tag.Get("json")
+		field := t.Field(i)
+		tag := field.Tag.Get("json")
 		name, _, _ := strings.Cut(tag, ",")
+		if field.Anonymous && tag == "" && field.Type.Kind() == reflect.Struct {
+			keys = append(keys, structJSONKeys(field.Type)...)
+			continue
+		}
 		if name == "" || name == "-" {
 			continue
 		}

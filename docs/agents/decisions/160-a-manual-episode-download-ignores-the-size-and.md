@@ -18,6 +18,11 @@ best release is still tried first, and `episode_retry_limit` still caps how many
 
 **Amendment (2026-11-26):** the single-episode picker's list (`PreviewEpisodeTorrents`) skips the two limits for the same reason: it lists what a click may choose. Unlike the whole-title picker, which still filters, because a pack list is the pass's own choice offered to confirm.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** besides the disk guard, a manual episode download leaves out one more
+candidate: a torrent the app already has with this episode's file unticked (`repicksUnticked`),
+since adding it again would record the episode with no file. A pasted magnet of such a torrent
+answers 409 `EPISODE_FILE_UNTICKED`; the file is ticked again from Downloads.
+
 **Don't "fix" by:**
 - Wrapping the manual search in `filterSearchResults`: a click on an episode whose only releases are
   big or poorly seeded would answer "no torrents found" while Nyaa has them.

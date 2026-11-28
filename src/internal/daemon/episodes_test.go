@@ -556,7 +556,7 @@ func TestDedupeAnimesByMedia(t *testing.T) {
 		}
 	}
 	if media500 == nil {
-		t.Fatal("anime media 500 sumiu do resultado")
+		t.Fatal("anime media 500 is missing from the result")
 	}
 	if media500.Progress != 3 {
 		t.Errorf("expected progress 3 (the lowest across accounts), got %d", media500.Progress)

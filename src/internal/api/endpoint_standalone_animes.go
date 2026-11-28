@@ -19,6 +19,10 @@ type StandaloneAnimeRequest struct {
 	Name      string `json:"name,omitempty"`
 	NyaaID    int    `json:"nyaa_id,omitempty"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
+	// SkipFiles are the torrent files the user unticked in the picker (paths from Nyaa's file
+	// list), which qBittorrent never downloads. Only with a magnet, and only with qBittorrent:
+	// 409 FILE_SELECTION_UNSUPPORTED otherwise (decisions/165).
+	SkipFiles []string `json:"skip_files,omitempty"`
 	// Unblacklist takes the anime off the app's blacklist and adds it. Without it a blacklisted
 	// anime is refused with 409 BLACKLISTED, so the screen can ask first (decisions/155).
 	Unblacklist bool `json:"unblacklist,omitempty"`
@@ -150,6 +154,10 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 			}
 		}
 
+		if body.Magnet == "" && len(body.SkipFiles) > 0 {
+			JSONError(w, http.StatusBadRequest, "INVALID_SKIP_FILES", "skip_files needs a magnet: a search picks its own torrents")
+			return
+		}
 		if body.Magnet != "" {
 			if !strings.HasPrefix(body.Magnet, "magnet:") {
 				JSONError(w, http.StatusBadRequest, "INVALID_MAGNET", "Invalid or missing magnet link")
@@ -159,7 +167,8 @@ func handleStandaloneAnimeAdd(server *Server) http.HandlerFunc {
 			// is accepted — the handler must not write it first.
 			added, err := daemon.DownloadStandaloneAnimeWithMagnet(
 				server.FileManager, server.Torrents, config,
-				body.MediaID, body.Magnet, body.Name, body.NyaaID, body.SizeBytes,
+				body.MediaID, body.Magnet,
+				daemon.PickedRelease{Name: body.Name, NyaaID: body.NyaaID, SizeBytes: body.SizeBytes, Skip: body.SkipFiles},
 			)
 			if err != nil {
 				logger.Logger.Error().Err(err).Int("media_id", body.MediaID).Msg("Failed to download the standalone anime")

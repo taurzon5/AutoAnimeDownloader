@@ -58,6 +58,13 @@ the stored number stays wrong forever; the derived one self-corrects on the next
 source of truth a derivable number creates a second truth nobody invalidates. **Reopen only if**
 the lookup shows up as a **measured** cost — and then it becomes a derived cache, never a source.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** a pack's
+declared range no longer covers an episode whose file the user unticked: `adoptCoveredEpisodes`
+asks `packSkips`, which reads the pack's placement and maps its skipped files to the adopter's
+episodes like organize does (`nyaa.FilesInPackWindow`), else by the file name's number. Without
+it the next pass would write back the record a file choice removed, pointing at a file that was
+never downloaded.
+
 **Don't "fix" by:** comparing `BatchStart`/`BatchEnd` of different media ids without converting;
 converting the stored range to the adopter's local numbering (breaks `declaredSpan`); adopting
 with an unknown range, with the torrent out of the session or without checking `Series.Key`;

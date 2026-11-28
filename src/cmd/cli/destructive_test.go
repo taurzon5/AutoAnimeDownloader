@@ -16,6 +16,7 @@ func TestDestructiveCommandsRequireYes(t *testing.T) {
 		{[]string{"animes", "replace", "1", "--magnet", "magnet:?xt=urn:btih:abc"}, "pass --yes"},
 		{[]string{"animes", "replace-episode", "1", "2", "--magnet", "magnet:?xt=urn:btih:abc"}, "pass --yes"},
 		{[]string{"torrents", "delete", "deadbeef"}, "pass --yes (optional: --keep-data --block)"},
+		{[]string{"torrents", "skip", "deadbeef", "1"}, "pass --yes (optional: --block)"},
 	}
 
 	for _, tt := range commands {

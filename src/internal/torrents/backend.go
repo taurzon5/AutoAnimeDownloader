@@ -195,6 +195,11 @@ type TorrentBackend interface {
 	// only records the mark, and the daemon releases the torrent once it deleted them
 	// (decisions/153).
 	SkipPlacedFiles(hash string, torrentPaths []string) error
+	// WantPlacedFiles clears the mark SkipPlacedFiles (or PlacementRequest.Skip) set on those files.
+	// qBittorrent downloads them again (priority 1): a finished placement is reopened, like a
+	// redownload of missing files, and onComplete fires once they are in. rain only records it: it
+	// never skipped them (decisions/165).
+	WantPlacedFiles(hash string, torrentPaths []string) error
 	// Announce forces a re-announce to all trackers and DHT. It does not override the
 	// trackers' minimum interval, so calling it in a loop achieves nothing.
 	Announce(hash string) error

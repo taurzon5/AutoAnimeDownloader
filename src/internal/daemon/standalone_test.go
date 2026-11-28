@@ -267,7 +267,7 @@ func TestDownloadStandaloneAnimeWithMagnet_WritesOnlyCoveredEpisodes(t *testing.
 	backend := torrents.NewFakeBackend()
 	name := "[SubsPlease] Frieren Season 2 (01-12) [1080p]"
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 700, standaloneMagnet, name, 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 700, standaloneMagnet, PickedRelease{Name: name})
 	if err != nil {
 		t.Fatalf("DownloadStandaloneAnimeWithMagnet: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestDownloadStandaloneAnimeWithMagnet_UnknownRangeWritesNoEpisodes(t *testi
 	fm := &mockFileManagerForEpisodes{}
 	backend := torrents.NewFakeBackend()
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 500, standaloneMagnet, "[SubsPlease] Standalone Anime [1080p]", 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 500, standaloneMagnet, PickedRelease{Name: "[SubsPlease] Standalone Anime [1080p]"})
 	if err != nil {
 		t.Fatalf("DownloadStandaloneAnimeWithMagnet: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestDownloadStandaloneAnimeWithMagnet_AddFailureDoesNotWriteID(t *testing.T
 	backend := torrents.NewFakeBackend()
 	backend.AddErr = fmt.Errorf("refused")
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 500, standaloneMagnet, "[SubsPlease] Standalone Anime (01-12) [1080p]", 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 500, standaloneMagnet, PickedRelease{Name: "[SubsPlease] Standalone Anime (01-12) [1080p]"})
 	if err == nil {
 		t.Fatal("want an error when the torrent add is refused")
 	}
@@ -361,7 +361,7 @@ func TestDownloadStandaloneAnimeWithMagnet_SaveFailureRollsBackID(t *testing.T) 
 	fm := &mockFileManagerForEpisodes{upsertErr: fmt.Errorf("disk full")}
 	backend := torrents.NewFakeBackend()
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 700, standaloneMagnet, "[SubsPlease] Frieren Season 2 (01-12) [1080p]", 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 700, standaloneMagnet, PickedRelease{Name: "[SubsPlease] Frieren Season 2 (01-12) [1080p]"})
 	if err == nil {
 		t.Fatal("want an error when episode save fails")
 	}
@@ -385,7 +385,7 @@ func TestDownloadStandaloneAnimeWithMagnet_MovieWritesAiredRecords(t *testing.T)
 	fm := &mockFileManagerForEpisodes{}
 	backend := torrents.NewFakeBackend()
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 600, standaloneMagnet, "[SubsPlease] Standalone Movie [1080p]", 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, backend, standaloneTestConfig(), 600, standaloneMagnet, PickedRelease{Name: "[SubsPlease] Standalone Movie [1080p]"})
 	if err != nil {
 		t.Fatalf("DownloadStandaloneAnimeWithMagnet: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestDownloadStandaloneAnimeWithMagnet_OneEpisodeEntryRecordsEpisodeOne(t *t
 	fm := &mockFileManagerForEpisodes{}
 	name := "[Erai-raws] Mushoku Tensei - Isekai Ittara Honki Dasu Part 2 - Eris the Goblin Slayer [1080p][Multiple Subtitle]"
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 141534, standaloneMagnet, name, 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 141534, standaloneMagnet, PickedRelease{Name: name})
 	if err != nil {
 		t.Fatalf("DownloadStandaloneAnimeWithMagnet: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestDownloadStandaloneAnimeWithMagnet_EmptyNameFallsBackToMagnetDN(t *testi
 	fm := &mockFileManagerForEpisodes{}
 	magnet := standaloneMagnet + "&dn=" + url.QueryEscape("[SubsPlease] Frieren Season 2 (01-12) [1080p]")
 
-	n, err := DownloadStandaloneAnimeWithMagnet(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 700, magnet, "", 0, 0)
+	n, err := DownloadStandaloneAnimeWithMagnet(fm, torrents.NewFakeBackend(), standaloneTestConfig(), 700, magnet, PickedRelease{Name: ""})
 	if err != nil {
 		t.Fatalf("DownloadStandaloneAnimeWithMagnet: %v", err)
 	}

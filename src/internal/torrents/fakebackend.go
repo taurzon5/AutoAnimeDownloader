@@ -51,6 +51,8 @@ type FakeBackend struct {
 	redownloadCalls []string
 	// SkippedCalls lists the hashes SkipPlacedFiles was called for.
 	SkippedCalls []string
+	// WantedCalls lists the hashes WantPlacedFiles was called for.
+	WantedCalls []string
 	// KeepErr, if set, is returned by SetPlacementKept (a failed save of the placements).
 	KeepErr error
 	// LibraryRoot is what placements resolve against. Empty = the parent of the last Ensure path,
@@ -404,8 +406,21 @@ func (f *FakeBackend) SkipPlacedFiles(hash string, torrentPaths []string) error 
 	f.mu.Lock()
 	f.SkippedCalls = append(f.SkippedCalls, hash)
 	f.mu.Unlock()
-	_, err := f.placementStore().setSkipped(hash, torrentPaths)
+	_, err := f.placementStore().setSkipped(hash, torrentPaths, true)
 	return err
+}
+
+// WantPlacedFiles clears the mark, as both real backends do; WantedCalls lists the hashes.
+func (f *FakeBackend) WantPlacedFiles(hash string, torrentPaths []string) error {
+	f.mu.Lock()
+	f.WantedCalls = append(f.WantedCalls, hash)
+	f.mu.Unlock()
+	p, err := f.placementStore().setSkipped(hash, torrentPaths, false)
+	if err != nil || !p.Completed {
+		return err
+	}
+	// A finished torrent downloads again, as qBittorrent's reopens it.
+	return f.placementStore().reopen(hash, "")
 }
 
 func (f *FakeBackend) MovePlacementRoot(hash, root string) error {

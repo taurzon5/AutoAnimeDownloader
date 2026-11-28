@@ -86,8 +86,14 @@ A row whose name says it holds more than one season or the movies (`S01-05`, `Co
 `+ Movies`) carries a **Megapack** chip. When the selected torrent's videos belong to two entries
 or more of the anime's franchise, the detail shows **What goes where**: each entry (season, movie,
 OVA) with its format, year, the episodes found (`Episodes 1–26 of 26`) and their size, this anime
-marked, and a fold with the files no entry takes and why. The table only shows what is inside: the
-whole torrent still downloads.
+marked, and a fold with the files no entry takes and why.
+
+With qBittorrent, the entries and the files have boxes: untick what you don't want and qBittorrent
+never downloads it. A megapack starts with everything an entry takes ticked and the files no entry
+takes unticked; any other pack starts with everything ticked. A line says how much downloads
+(`Downloading 12 GB of 20 GB · 40 of 63 files`), and an episode of this anime whose files are all
+unticked is not recorded as downloaded. With the built-in client the whole torrent downloads and
+there are no boxes.
 
 **Download this** sits in the list card and always posts the highlighted row. The magnet strip
 below the grid has **Download magnet** for a pasted URI; a paste does not override the list
@@ -100,7 +106,11 @@ stays on Anime Detail.
 
 Live torrent table for the embedded client: progress, speeds, queue order, pause / resume /
 announce / prioritize / delete (single or bulk). Expanding a row shows the files inside the
-torrent.
+torrent. With qBittorrent each file has a box: untick files to stop downloading them, tick a
+skipped one (**Not downloaded**) to get it, then **Save file choice**. Unticking asks first: a file
+already downloaded is deleted (a finished one in Shoko's folders stays), and an episode left with no file loses its
+record, so the app may fetch it from another torrent unless you tick **Don't download those
+episodes automatically**.
 
 ### Config (`/config`)
 

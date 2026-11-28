@@ -62,6 +62,13 @@ and organize records the paths then.
 **Known limits:** a pack is one torrent, so one deleted file flags (and stops) the whole pack's
 row.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** a file the user ticks again on a finished torrent reopens the
+placement first (`WantPlacedFiles`, qBittorrent; like `RedownloadPlacement`, without the
+recheck): the file downloads as ".part" and the placement is not `Completed` meanwhile, so it
+never reads as "File not found" or shows in the redownload dialog while it downloads. It sets the
+`reopened` mark too, so the old complete state neither fires onComplete nor lets the finish step
+rename the new ".part" before qBittorrent shows the torrent incomplete (#140).
+
 **Don't "fix" by:** letting `Open` create the missing file "so the torrent keeps seeding" (that is
 the re-download); dropping or re-adding the stopped torrent in `HandleTorrentFailure`; raising the
 warning anywhere louder (a report problem, a banner, `download_failed`, `episode_stuck`); deleting

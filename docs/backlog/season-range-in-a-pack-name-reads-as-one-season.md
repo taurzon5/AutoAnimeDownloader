@@ -46,6 +46,12 @@ per entry in the picker. The pack-path filter still waits: the pass doesn't act 
 taking the pack for a later season would download the whole franchise until file selection (spec
 step 2) exists.
 
+## Progress (2026-11-27, later)
+
+File selection exists for the user's own picks ([decisions/165](../agents/decisions/165-a-torrents-files-are-chosen-with-qbittorrents-file.md)),
+not in the pass, which still downloads every file of the pack it takes. The pack-path filter keeps
+waiting for spec step 3, when the pass can skip the seasons nobody tracks.
+
 ## What to check
 
 - Whether `ExtractSeason` (or a new `ExtractSeasonRange`) should return lo..hi, with the pack-path

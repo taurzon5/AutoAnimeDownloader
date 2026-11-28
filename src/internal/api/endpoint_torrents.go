@@ -7,6 +7,7 @@ import (
 	"AutoAnimeDownloader/src/internal/nyaa"
 	"AutoAnimeDownloader/src/internal/torrents"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -180,6 +181,9 @@ type TorrentFileResponse struct {
 	// Episode comes from nyaa.ExtractEpisodeNumber over the FILE NAME — the same cascade the
 	// Librarian uses to rename a pack's files. null when nothing matches.
 	Episode *int `json:"episode" example:"3"`
+	// Skipped is a file that is not downloaded: unticked by the user, or an episode already in
+	// Shoko (decisions/153, decisions/165). Path is what PUT /torrents/{hash}/files takes.
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // handleTorrentFiles returns the files inside a torrent, in the order the release was built (not
@@ -188,8 +192,12 @@ type TorrentFileResponse struct {
 // progress is unavailable) and the list is empty while the metadata has not arrived yet.
 func handleTorrentFiles(server *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			chooseTorrentFiles(server, w, r)
+			return
+		}
 		if r.Method != http.MethodGet {
-			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only GET method is allowed")
+			JSONError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "Only GET and PUT methods are allowed")
 			return
 		}
 
@@ -214,6 +222,10 @@ func handleTorrentFiles(server *Server) http.HandlerFunc {
 			return
 		}
 		placement, placed := server.Torrents.Placement(hash)
+		skipped := map[string]bool{}
+		for _, f := range placement.Files {
+			skipped[f.Torrent] = f.Skipped
+		}
 
 		out := make([]TorrentFileResponse, 0, len(list))
 		for _, f := range list {
@@ -227,6 +239,7 @@ func handleTorrentFiles(server *Server) http.HandlerFunc {
 				// the full path yields nil on EVERY file, the file name yields the right episode.
 				Episode: nyaa.ExtractEpisodeNumber(path.Base(f.Path)),
 				Codec:   videoCodecOf(info.DataDir, f, placement, placed),
+				Skipped: skipped[f.Path],
 			})
 		}
 
@@ -473,5 +486,58 @@ func handleTorrentDelete(server *Server) http.HandlerFunc {
 		}
 
 		JSONSuccess(w, http.StatusOK, nil)
+	}
+}
+
+// TorrentFileChoiceRequest is PUT /torrents/{hash}/files: the torrent paths (GET's path) to stop
+// downloading and to download again.
+type TorrentFileChoiceRequest struct {
+	Skip []string `json:"skip,omitempty"`
+	Want []string `json:"want,omitempty"`
+	// Block also blocks, from automatic download, the episodes a skip leaves with no file, like
+	// deleting a torrent with block.
+	Block bool `json:"block,omitempty"`
+}
+
+// chooseTorrentFiles changes which files of a torrent download (decisions/165): qBittorrent only
+// (409 FILE_SELECTION_UNSUPPORTED), a torrent whose file map exists (409 FILES_NOT_PLACED), and
+// paths the torrent has (400 UNKNOWN_FILE). A skipped file already on disk is deleted.
+func chooseTorrentFiles(server *Server, w http.ResponseWriter, r *http.Request) {
+	hash := r.PathValue("hash")
+	if hash == "" {
+		JSONError(w, http.StatusBadRequest, "INVALID_HASH", "Torrent hash is required")
+		return
+	}
+	var body TorrentFileChoiceRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		JSONError(w, http.StatusBadRequest, "INVALID_BODY", "Invalid JSON body")
+		return
+	}
+	if len(body.Skip) == 0 && len(body.Want) == 0 {
+		JSONError(w, http.StatusBadRequest, "INVALID_BODY", "skip or want must list at least one file")
+		return
+	}
+	if _, ok := server.Torrents.Get(hash); !ok {
+		JSONError(w, http.StatusNotFound, "TORRENT_NOT_FOUND", "Torrent not found")
+		return
+	}
+	configs, err := server.FileManager.LoadConfigs()
+	if err != nil {
+		JSONInternalError(w, err)
+		return
+	}
+	result, err := daemon.ChooseTorrentFiles(server.FileManager, server.Torrents, configs, server.State.Shoko(), hash, body.Skip, body.Want, body.Block)
+	switch {
+	case errors.Is(err, daemon.ErrFileSelectionNeedsQBittorrent):
+		JSONError(w, http.StatusConflict, "FILE_SELECTION_UNSUPPORTED", err.Error())
+	case errors.Is(err, torrents.ErrFilesNotPlanned):
+		JSONError(w, http.StatusConflict, "FILES_NOT_PLACED", err.Error())
+	case errors.Is(err, daemon.ErrUnknownTorrentFile):
+		JSONError(w, http.StatusBadRequest, "UNKNOWN_FILE", err.Error())
+	case err != nil:
+		logger.Logger.Error().Err(err).Str("hash", hash).Msg("Failed to change a torrent's file choice")
+		JSONInternalError(w, err)
+	default:
+		JSONSuccess(w, http.StatusOK, result)
 	}
 }

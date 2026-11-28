@@ -3,8 +3,10 @@
 **Date:** 2026-11-23
 **Status:** step 1 (mapping, no new download behavior) built on 2026-11-27
 ([decisions/163](../../agents/decisions/163-a-megapack-is-a-torrent-whose-files-map-onto-two.md));
-steps 2-4 not started — the user's decisions are recorded at the end; step 2 depends on the
-qBittorrent backend, which becomes the only client (rain is being dropped)
+step 2 (file selection, qBittorrent only, for the user's picks and later changes) built on
+2026-11-27 ([decisions/165](../../agents/decisions/165-a-torrents-files-are-chosen-with-qbittorrents-file.md));
+steps 3-4 not started — the user's decisions are recorded at the end; rain stays as the built-in
+client until it is dropped, and with it nothing can be unticked
 **Origin:** "create a spec for megapack downloads, and how to achieve that". It is also the design
 the qBittorrent backend spec (`docs/superpowers/specs/2026-11-23-qbittorrent-backend-design.md` on
 branch `feat/qbittorrent-backend`) and the
@@ -262,7 +264,14 @@ After the qBittorrent backend replaces rain:
    read it. The season-range filter fix waits for step 2: without file selection, a later season
    taking `S01-05` downloads the whole franchise (the user's hold, decisions/083).
 2. **File selection** — `TorrentBackend.SetWantedFiles` through qBittorrent's `filePrio`, selected
-   bytes in the disk guard and the progress, ticking later.
+   bytes in the disk guard and the progress, ticking later. **Built 2026-11-27** (decisions/165):
+   `PlacementRequest.Skip` and priority 0 before the start, `WantPlacedFiles`, the picker's boxes
+   (a megapack starts with its unmapped videos unticked) with `skip_files` on both whole-title
+   adds, `PUT /torrents/{hash}/files` with `torrents skip|want` and the Downloads file panel's
+   boxes. An episode left with no file has no record, and the coverage adoption skips it; a file
+   unticked after it was written is deleted. qBittorrent's own size and progress already count
+   only the wanted files. Not in it: the pass still downloads every file of the pack it takes,
+   so the season-range hold (#83) waits for step 3.
 3. **Search order and the megapack queue** — megapack → season pack → episodes in the search queue,
    the threshold and the megapack queue, Download related seasons.
 4. **Franchise pages** — the group on the anime page, Track switches, Download the whole series.

@@ -13,6 +13,7 @@
     getTorrentCandidateDetail,
     getTorrentCandidates,
     getEpisodeTorrentCandidates,
+    getStatus,
     replaceEpisodeWithMagnet,
     replaceAnimeWithMagnet,
     type TorrentCandidate,
@@ -22,6 +23,7 @@
   import { pickerCache } from "../lib/stores/pickerCache.js";
   import Button from "../components/ui/Button.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import Checkbox from "../components/ui/Checkbox.svelte";
   import Chip from "../components/ui/Chip.svelte";
   import Cover from "../components/ui/Cover.svelte";
   import Loading from "../components/Loading.svelte";
@@ -31,6 +33,16 @@
   import { locale } from "../lib/stores/locale.js";
   import { formatBytes, type FormatLocale } from "../lib/domain/format.js";
   import { isValidMagnet } from "../lib/domain/magnet.js";
+  import {
+    allSkipped,
+    defaultSkip,
+    entryFileNames,
+    partlySkipped,
+    selectionSize,
+    shownName,
+    toggleAll,
+    toggleOne,
+  } from "../lib/domain/fileChoice.js";
 
   export let params: { id?: string } = {};
 
@@ -106,8 +118,17 @@
   let candidatesAbort: AbortController | undefined;
   let detailAbort: AbortController | undefined;
 
+  // The files unticked on the shown pick (megapack spec §4, decisions/165). Only qBittorrent can
+  // skip a file (rain downloads them all), so the boxes show only while it is the running client;
+  // a single episode's torrent has nothing to choose.
+  let clientSelectsFiles = false;
+  let skip = new Set<string>();
+  $: canChoose = clientSelectsFiles && mode !== "episode" && (detail?.files?.length ?? 0) > 1;
+  $: choice = canChoose && detail ? selectionSize(detail.files, skip) : null;
+  $: skipFiles = canChoose ? [...skip] : [];
+
   $: selected = items[selectedIndex];
-  $: canDownloadThis = Boolean(selected?.magnet) && !confirming && !loading;
+  $: canDownloadThis = Boolean(selected?.magnet) && !confirming && !loading && (!choice || choice.count > 0);
   // With nothing to pick (no packs, or Nyaa failed) the list stands alone: no detail panel and no
   // "Download this" — both would only repeat the empty state or offer an action with no target.
   $: hasCandidates = loading || items.length > 0;
@@ -127,6 +148,9 @@
         .join(" · ");
 
   onMount(() => {
+    getStatus({ silent: true })
+      .then((s) => (clientSelectsFiles = s.torrent_client === "qbittorrent"))
+      .catch(() => {});
     const cached = get(pickerCache);
     // The cache is the whole-title search Add anime already ran; an episode's list is its own.
     if (cached && cached.mediaId === mediaId && mode !== "episode") {
@@ -209,10 +233,12 @@
     detailLoading = true;
     detailError = false;
     detail = null;
+    skip = new Set();
     try {
       const next = await getTorrentCandidateDetail(mediaId, nyaaId, controller.signal);
       if (controller.signal.aborted) return;
       detail = next;
+      skip = defaultSkip(next);
     } catch (error) {
       if (controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;
       detailError = true;
@@ -280,6 +306,7 @@
           name: selected.name,
           nyaa_id: selected.nyaa_id,
           size_bytes: selected.size_bytes,
+          ...(skipFiles.length ? { skip_files: skipFiles } : {}),
         });
         await afterSuccess();
         return;
@@ -291,6 +318,7 @@
         size_bytes: selected.size_bytes,
         ...(unblacklist ? { unblacklist } : {}),
         ...(queue ? { queue } : {}),
+        ...(skipFiles.length ? { skip_files: skipFiles } : {}),
       });
       await afterSuccess(added);
     } catch (error) {
@@ -535,8 +563,20 @@
               </p>
               <ul class="mt-2 space-y-1.5" data-testid="megapack-mapping">
                 {#each mapping.entries as entry (entry.id)}
+                  {@const names = entryFileNames(entry)}
                   <li class="rounded-field border border-default px-3 py-2">
                     <div class="flex min-w-0 items-start justify-between gap-2">
+                      {#if canChoose}
+                        <span class="mt-0.5 shrink-0">
+                          <Checkbox
+                            checked={!allSkipped(names, skip)}
+                            indeterminate={partlySkipped(names, skip)}
+                            label={$locale && m.picker_files_toggle_entry({ title: entry.title })}
+                            labelHidden
+                            on:change={() => (skip = toggleAll(names, skip))}
+                          />
+                        </span>
+                      {/if}
                       <p class="min-w-0 flex-1 truncate text-copy text-heading" title={entry.title}>{entry.title}</p>
                       {#if entry.seed}
                         <Chip variant="accent">{$locale && m.picker_mapping_this_anime()}</Chip>
@@ -560,7 +600,17 @@
                   <ul class="mt-1 max-h-48 space-y-1 overflow-y-auto pr-3 font-mono text-caption text-subtle">
                     {#each mapping.unmapped as file (file.name)}
                       <li class="flex justify-between gap-2">
-                        <span class="min-w-0 truncate" title={file.name}>{file.name}</span>
+                        {#if canChoose}
+                          <span class="shrink-0">
+                            <Checkbox
+                              checked={!skip.has(file.name)}
+                              label={$locale && m.picker_files_toggle_file({ name: file.name })}
+                              labelHidden
+                              on:change={() => (skip = toggleOne(file.name, skip))}
+                            />
+                          </span>
+                        {/if}
+                        <span class="min-w-0 flex-1 truncate" title={file.name}>{shownName(file.name, detail.files)}</span>
                         <span class="shrink-0">{$locale && unmappedReason(file.reason)}</span>
                       </li>
                     {/each}
@@ -570,10 +620,33 @@
             {/if}
             {#if detail.files?.length}
               <h2 class="mt-4 text-card-title text-heading">{T && T.files}</h2>
+              {#if choice}
+                <p class="mt-1 text-caption text-subtle" data-testid="file-choice-summary">
+                  {$locale && m.picker_files_selected({
+                    bytes: formatBytes(choice.bytes, fmtLocale),
+                    total: formatBytes(choice.totalBytes, fmtLocale),
+                    count: choice.count,
+                    files: choice.total,
+                  })}
+                </p>
+                <p class="mt-0.5 text-caption {choice.count === 0 ? 'text-danger' : 'text-subtle'}">
+                  {$locale && (choice.count === 0 ? m.picker_files_none_selected() : m.picker_files_choose_hint())}
+                </p>
+              {/if}
               <ul class="mt-2 max-h-80 space-y-1 overflow-y-auto pr-3 font-mono text-caption text-subtle">
                 {#each detail.files ?? [] as file (file.name)}
                   <li class="flex justify-between gap-2 hover:bg-control">
-                    <span class="min-w-0 truncate hover:text-heading" title={file.name}>{file.name}</span>
+                    {#if canChoose}
+                      <span class="shrink-0">
+                        <Checkbox
+                          checked={!skip.has(file.name)}
+                          label={$locale && m.picker_files_toggle_file({ name: file.name })}
+                          labelHidden
+                          on:change={() => (skip = toggleOne(file.name, skip))}
+                        />
+                      </span>
+                    {/if}
+                    <span class="min-w-0 flex-1 truncate hover:text-heading" title={file.name}>{shownName(file.name, detail.files)}</span>
                     <span class="shrink-0">{formatBytes(file.size_bytes, fmtLocale)}</span>
                   </li>
                 {/each}

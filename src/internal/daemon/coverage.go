@@ -78,6 +78,7 @@ func adoptCoveredEpisodes(
 	savedEpisodes []files.EpisodeStruct,
 	seriesIndex map[int]anilist.Series,
 	torrentsHashSet map[string]bool,
+	skipped skippedInPack,
 ) []files.EpisodeStruct {
 	if len(pending) == 0 || isAnimeMovie(anime) {
 		return nil
@@ -91,6 +92,11 @@ func adoptCoveredEpisodes(
 	for _, ep := range pending {
 		owner, ownerOffset := findCoveringPack(savedEpisodes, seriesIndex, torrentsHashSet, series, series.Offset+ep.Episode)
 		if owner == nil {
+			continue
+		}
+		// The pack covers the episode by its range, but its file is not downloaded: the user
+		// unticked it (decisions/165). Adopting it would record an episode with no file.
+		if skipped != nil && skipped(owner.EpisodeHash, series.Offset, totalEpisodes, season, ep.Episode) {
 			continue
 		}
 

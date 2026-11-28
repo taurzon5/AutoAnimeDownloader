@@ -135,7 +135,7 @@ func TestCoverageOwnership_AdoptedRangeDoesNotShiftForTheNextCour(t *testing.T) 
 	hashes := map[string]bool{seasonHash: true}
 	pending := anilist.EpisodeList(cour2Anime(12), 1)
 
-	adopted := adoptCoveredEpisodes(cour2Anime(12), "Cour 2", seasonOf(cour2Anime(12)), 12, pending, seasonPackOnDisk(), index, hashes)
+	adopted := adoptCoveredEpisodes(cour2Anime(12), "Cour 2", seasonOf(cour2Anime(12)), 12, pending, seasonPackOnDisk(), index, hashes, nil)
 	if len(adopted) != 12 {
 		t.Fatalf("expected the 12 of cour 2 adopted, got %d", len(adopted))
 	}
@@ -144,7 +144,7 @@ func TestCoverageOwnership_AdoptedRangeDoesNotShiftForTheNextCour(t *testing.T) 
 	cour3 := cour2Anime(13)
 	cour3.Id, cour3.Media.Id = cour3ID, cour3ID
 	saved := append(seasonPackOnDisk(), adopted...)
-	if leaked := adoptCoveredEpisodes(cour3, "Cour 3", seasonOf(cour3), 13, anilist.EpisodeList(cour3, 1), saved, index, hashes); len(leaked) != 0 {
+	if leaked := adoptCoveredEpisodes(cour3, "Cour 3", seasonOf(cour3), 13, anilist.EpisodeList(cour3, 1), saved, index, hashes, nil); len(leaked) != 0 {
 		t.Fatalf("the pack ends at absolute 23: cour 3 can't adopt anything, adopted %d (ep %d)", len(leaked), leaked[0].EpisodeNumber)
 	}
 }
@@ -328,6 +328,27 @@ func TestCoverageOwnership_KaguyaRestartPackCoversS2(t *testing.T) {
 		}
 		if ep.AnimeSeason == nil || *ep.AnimeSeason != 2 {
 			t.Fatalf("adopted AnimeSeason: want 2, got %v", ep.AnimeSeason)
+		}
+	}
+}
+
+// A pack whose range covers an episode but whose file for it the user unticked doesn't hold it:
+// the episode is not adopted, so no record points at a file that was never written
+// (decisions/165).
+func TestCoverageOwnership_UntickedFileIsNotAdopted(t *testing.T) {
+	index := map[int]anilist.Series{cour1ID: {Key: cour1ID, Offset: 0}, cour2ID: {Key: cour1ID, Offset: 11}}
+	hashes := map[string]bool{seasonHash: true}
+	pending := anilist.EpisodeList(cour2Anime(12), 1)
+	skipped := func(hash string, offset, total int, season *int, episode int) bool {
+		return hash == seasonHash && offset == 11 && episode == 5
+	}
+	adopted := adoptCoveredEpisodes(cour2Anime(12), "Cour 2", seasonOf(cour2Anime(12)), 12, pending, seasonPackOnDisk(), index, hashes, skipped)
+	if len(adopted) != 11 {
+		t.Fatalf("adopted %d, want 11 (episode 5's file is unticked)", len(adopted))
+	}
+	for _, ep := range adopted {
+		if ep.EpisodeNumber == 5 {
+			t.Fatal("episode 5 must not be adopted")
 		}
 	}
 }

@@ -67,6 +67,11 @@ Pinned by:
   same helper and `selectEpisodes` over the first selection. Those episodes keep
   `would_search: false` and get the pack as `picked`.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** "only removing them does" no longer holds: the user can untick
+files too, in the picker before a whole-title add and later in Downloads, with qBittorrent. What
+holds: the pass itself still takes whole packs, so a pack chosen for the missing episodes still
+brings the ones in Shoko, and this switch still decides what happens to them.
+
 **Don't "fix" by:**
 - Putting the Shoko episodes back before the first selection: they would take slots of
   `max_episodes_per_anime` again.

@@ -176,3 +176,4 @@ do not edit by hand.
 - [**#162** — A download custom list brings its anime whatever their list status, read from MediaListCollection, and vetoes status deletion](162-a-download-custom-list-brings-its-anime-whatever.md)
 - [**#163** — A megapack is a torrent whose files map onto two entries of a franchise group, and a group entry needs both an AniList relation and a similar name](163-a-megapack-is-a-torrent-whose-files-map-onto-two.md)
 - [**#164** — Download queues search in their order and rank with their own priorities, live in their own store, and share the download limit](164-download-queues-search-in-their-order-and-rank.md)
+- [**#165** — A torrent's files are chosen with qBittorrent's file priorities, and an episode left with no file has no record](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)

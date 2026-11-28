@@ -74,6 +74,16 @@ Pinned by:
 - **`Resolve` keeps every field.** It rebuilt each file from `Torrent` and `Path` only, which
   dropped `Skipped` from every placement the backends hand back.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):**
+`PlacedFile.Skipped` also carries the user's file choice: the files unticked in the picker
+(`PlacementRequest.Skip`, marked when the files are planned) and the ones unticked later
+(`PUT /torrents/{hash}/files`). qBittorrent's `applyPlacement` now sets every skipped file to
+priority 0 before it starts a placed torrent, and again on every apply, so a skip marked before
+the metadata lands before any data. `setSkipped` sets the mark both ways, and
+`TorrentBackend.WantPlacedFiles` clears it (qBittorrent priority 1; rain only the mark). What
+still holds: the Shoko removal runs once per check, with the anime's choice and Shoko's episodes,
+and an episode the app has a record of is never removed by it.
+
 **Don't "fix" by:**
 - Removing an episode the app has a record of, or one no window maps (no total, an extra, another
   cour): that deletes what the user wanted.

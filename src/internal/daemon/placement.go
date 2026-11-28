@@ -29,6 +29,9 @@ type torrentTarget struct {
 	// root is the anime's download root override (AnimeSettings.Root) for a manual download; the
 	// pass reads it from the disk budget instead (decisions/154).
 	root string
+	// skip is the picker's unticked files (PlacementRequest.Skip, decisions/165); the pass never
+	// sets it.
+	skip []string
 }
 
 // placedOrder is order for a torrent whose hash already has a placement (a retry of a failed one, a
@@ -209,6 +212,7 @@ func placementRequest(configs *files.Config, hash string, target torrentTarget) 
 		// Frozen into the placement: changing the setting later only affects new torrents
 		// (decisions/141).
 		IncompleteRoot: configs.StagingPath(),
+		Skip:           target.skip,
 	}
 	switch {
 	case target.anime.Media.Format == anilist.MediaFormatMovie:

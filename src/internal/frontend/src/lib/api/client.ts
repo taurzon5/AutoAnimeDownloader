@@ -488,6 +488,35 @@ export interface TorrentFile {
    * downloading yet (rain doesn't download sequentially, so the header may not be on disk).
    */
   codec?: string
+  /** Not downloaded: unticked by the user, or an episode already in Shoko (decisions/165). */
+  skipped?: boolean
+}
+
+/** What PUT /torrents/{hash}/files did. */
+export interface FileChoiceResult {
+  skipped: number
+  wanted: number
+  /** Skipped files that were on disk and were deleted; `kept` were in Shoko's folders and stay. */
+  deleted: number
+  kept: number
+  records_removed: number
+  records_added: number
+}
+
+/**
+ * Changes which files of a torrent download (qBittorrent only, decisions/165): `skip` stops them
+ * (a file on disk is deleted), `want` downloads them again. `block` keeps the episodes a skip
+ * leaves with no file from downloading automatically.
+ */
+export async function chooseTorrentFiles(
+  hash: string,
+  choice: { skip?: string[]; want?: string[]; block?: boolean },
+): Promise<FileChoiceResult> {
+  const body: Record<string, unknown> = {}
+  if (choice.skip?.length) body.skip = choice.skip
+  if (choice.want?.length) body.want = choice.want
+  if (choice.block) body.block = true
+  return apiRequest<FileChoiceResult>('PUT', `/torrents/${hash}/files`, body)
 }
 
 /** One line of the last check's report: an (anime, code) pair. */
@@ -830,11 +859,14 @@ export async function replaceEpisodeWithMagnet(
   return apiRequest<void>('POST', `/animes/${animeId}/episodes/${episodeNumber}/replace`, { magnet, ...pick })
 }
 
-/** pick: the picker's row (name, Nyaa id, size), recorded with the release; absent for a pasted magnet. */
+/**
+ * pick: the picker's row (name, Nyaa id, size), recorded with the release; absent for a pasted
+ * magnet. skip_files: the files unticked in the picker (qBittorrent only, decisions/165).
+ */
 export async function replaceAnimeWithMagnet(
   animeId: number,
   magnet: string,
-  pick?: { name?: string; nyaa_id?: number; size_bytes?: number },
+  pick?: { name?: string; nyaa_id?: number; size_bytes?: number; skip_files?: string[] },
 ): Promise<void> {
   return apiRequest<void>('POST', `/animes/${animeId}/replace`, { magnet, ...pick })
 }
@@ -1145,9 +1177,10 @@ export async function getTorrentCandidateDetail(
  */
 export async function addStandaloneAnime(
   mediaId: number,
-  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number; unblacklist?: boolean; queue?: string },
+  opts?: { magnet?: string; name?: string; nyaa_id?: number; size_bytes?: number; unblacklist?: boolean; queue?: string; skip_files?: string[] },
 ): Promise<{ added: number }> {
   const body: Record<string, unknown> = { media_id: mediaId }
+  if (opts?.skip_files?.length) body.skip_files = opts.skip_files
   if (opts?.unblacklist) body.unblacklist = true
   if (opts?.queue) body.queue = opts.queue
   if (opts?.magnet) body.magnet = opts.magnet

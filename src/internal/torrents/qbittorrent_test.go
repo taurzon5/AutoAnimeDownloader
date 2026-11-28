@@ -1262,3 +1262,103 @@ func TestTestQBittorrent_ProbesEachDownloadFolder(t *testing.T) {
 		t.Fatalf("hdd mapped elsewhere: %+v, want its problem reported", res)
 	}
 }
+
+// The files unticked at the add (PlacementRequest.Skip) get priority 0 before qBittorrent starts
+// the torrent, so it never writes them; WantPlacedFiles puts the given ones back at priority 1
+// and clears the mark (decisions/165).
+func TestQBit_PlacementSkipBeforeStartAndWantPutsBack(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	if err := b.SetPlacement(PlacementRequest{Hash: qbHashA, SeriesDir: "Show", Kind: PlacementPack,
+		Skip: []string{"Pack/Show - 02.mkv", "Pack/Show - 03.mkv"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	n := len(q.fake.callLog())
+	q.fake.deliverMetadata(qbHashA,
+		qbitFile{Index: 0, Name: "Pack/Show - 01.mkv", Size: 10},
+		qbitFile{Index: 1, Name: "Pack/Show - 02.mkv", Size: 10},
+		qbitFile{Index: 2, Name: "Pack/Show - 03.mkv", Size: 10})
+	b.poll()
+	var order []string
+	for _, c := range q.callsSince(n) {
+		if strings.HasPrefix(c, "filePrio") || strings.HasPrefix(c, "start") {
+			order = append(order, c)
+		}
+	}
+	if want := []string{"filePrio " + qbHashA + " ids=1|2 priority=0", "start " + qbHashA}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("calls = %v, want the skip before the start: %v", order, want)
+	}
+	p, _ := b.Placement(qbHashA)
+	if p.Files[0].Skipped || !p.Files[1].Skipped || !p.Files[2].Skipped {
+		t.Fatalf("files = %+v, want 02 and 03 skipped", p.Files)
+	}
+
+	n = len(q.fake.callLog())
+	if err := b.WantPlacedFiles(qbHashA, []string{p.Files[1].Torrent}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := q.callsSince(n), []string{"filePrio " + qbHashA + " ids=1 priority=1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+	p, _ = b.Placement(qbHashA)
+	if p.Files[1].Skipped || !p.Files[2].Skipped {
+		t.Fatalf("files = %+v, want only 03 still skipped", p.Files)
+	}
+}
+
+// Wanting a file of a finished torrent reopens its placement, as a redownload does: the download
+// path is cleared, the file is renamed ".part" before qBittorrent writes it, and only then does it
+// get priority 1. A half-written file never carries the final name Jellyfin and Shoko read, and
+// the placement doesn't read as finished-with-a-file-missing (decisions/165).
+func TestQBit_WantingAFileOfAFinishedTorrentReopensIt(t *testing.T) {
+	q := newQBitTest(t)
+	b := q.backend
+	if err := b.SetPlacement(PlacementRequest{Hash: qbHashA, SeriesDir: "Show", Kind: PlacementPack, PartFiles: true,
+		Skip: []string{"Pack/Show - 02.mkv"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Add(qbMagnet(qbHashA)); err != nil {
+		t.Fatal(err)
+	}
+	q.fake.deliverMetadata(qbHashA,
+		qbitFile{Index: 0, Name: "Pack/Show - 01.mkv", Size: 10},
+		qbitFile{Index: 1, Name: "Pack/Show - 02.mkv", Size: 10})
+	b.poll()
+	q.fake.finish(qbHashA)
+	b.poll()
+	if err := b.FinalizePlacement(qbHashA); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := b.Placement(qbHashA)
+	_ = os.Remove(p.Files[1].Path) // a skipped file is never written; the fake wrote every file
+	n := len(q.fake.callLog())
+
+	if err := b.WantPlacedFiles(qbHashA, []string{p.Files[1].Torrent}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, c := range q.callsSince(n) {
+		switch {
+		case strings.HasPrefix(c, "setDownloadPath"):
+			order = append(order, "path")
+		case strings.HasPrefix(c, "rename") && strings.HasSuffix(c, "Show - 02.mkv.part"):
+			order = append(order, "part")
+		case c == "filePrio "+qbHashA+" ids=1 priority=1":
+			order = append(order, "want")
+		}
+	}
+	if want := []string{"path", "part", "want"}; !reflect.DeepEqual(order, want) {
+		t.Fatalf("calls = %v (all: %v), want %v", order, q.callsSince(n), want)
+	}
+	if p, _ := b.Placement(qbHashA); p.Completed || p.Files[1].Skipped {
+		t.Fatalf("placement completed=%v, file 2 skipped=%v; want reopened and wanted", p.Completed, p.Files[1].Skipped)
+	}
+	// qBittorrent still reports the old complete state: the finish step must not rename the new,
+	// empty ".part" to its final name meanwhile (decisions/140).
+	if err := b.FinalizePlacement(qbHashA); err == nil || !strings.Contains(err.Error(), "not complete yet") {
+		t.Fatalf("FinalizePlacement on the stale complete state = %v, want \"not complete yet\"", err)
+	}
+}

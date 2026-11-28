@@ -65,6 +65,12 @@ torrent is added back so rain re-checks the files). `Open`'s crash branch became
 name or the final name. `FinalizePlacement` of a staging placement copies the files into the
 library instead of renaming `.part` files.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** a pick with files unticked (`PlacementRequest.Skip`) whose torrent
+the app already has keeps that torrent's placement, as above: the pick's choice is dropped
+(`withoutSkipForPlacedTorrent`) instead of being lost silently, and that placement's own choice
+says which episodes get records (`untickedEpisodes`). Marking files of a pack another cour holds
+would take them from that cour; the Downloads panel changes a torrent's files.
+
 **Don't "fix" by:** recomputing the map on load "so a renamed anime moves too" (moves a seeding
 file); storing absolute paths; letting a second `SetPlacement` overwrite the first; opening an existing destination as-is;
 installing `CustomStorage` unconditionally (hardlink mode would stop being what it was) or dropping

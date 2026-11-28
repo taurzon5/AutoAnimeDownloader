@@ -62,5 +62,13 @@ func JSONDownloadError(w http.ResponseWriter, err error, code string) {
 		JSONError(w, http.StatusConflict, "INSUFFICIENT_DISK_SPACE", err.Error())
 		return
 	}
+	if errors.Is(err, daemon.ErrFileSelectionNeedsQBittorrent) {
+		JSONError(w, http.StatusConflict, "FILE_SELECTION_UNSUPPORTED", err.Error())
+		return
+	}
+	if errors.Is(err, daemon.ErrEpisodeFileUnticked) {
+		JSONError(w, http.StatusConflict, "EPISODE_FILE_UNTICKED", err.Error())
+		return
+	}
 	JSONError(w, http.StatusInternalServerError, code, err.Error())
 }

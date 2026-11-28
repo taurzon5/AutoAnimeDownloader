@@ -10,6 +10,7 @@
   import { ChevronDown, ChevronRight, ChevronsUp, Pause, Play, RefreshCw, Trash2 } from "@lucide/svelte";
   import {
     getAnimes,
+    getStatus,
     getTorrents,
     pauseTorrent,
     resumeTorrent,
@@ -494,6 +495,9 @@
   }
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  // The file panel offers its boxes only with qBittorrent running: rain downloads every file
+  // (decisions/165).
+  let clientSelectsFiles = false;
 
   // The "no connection" banner (spec §9.3) reads the app-wide connection (lib/websocket/shared.ts).
   // ensureWsConnected() revives it if the client had given up; Downloads doesn't show daemon
@@ -503,6 +507,9 @@
     viewState = decodeViewState($querystring ?? "");
     load();
     loadCovers();
+    getStatus({ silent: true })
+      .then((s) => (clientSelectsFiles = s.torrent_client === "qbittorrent"))
+      .catch(() => {});
     ensureWsConnected();
     // Polling only while the screen is mounted: each snapshot costs one Stats() per torrent, which
     // is a blocking round-trip into each one's goroutine.
@@ -988,7 +995,7 @@
                   </div>
                 </div>
                 {#if openFiles.has(t.hash)}
-                  <TorrentFiles hash={t.hash} mode="raw" tick={filesTick} />
+                  <TorrentFiles hash={t.hash} mode="raw" tick={filesTick} selectable={clientSelectsFiles} />
                 {/if}
               {/each}
             {/if}

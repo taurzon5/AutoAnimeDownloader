@@ -13,6 +13,13 @@ Concrete case: for the One Piece 1-12 window, the only live pack that covers it 
 100 GB ceiling blocks it; the loose episodes exist and are dead. No indexer swap solves this,
 because 574 episodes weigh what they weigh.
 
+## Progress (2026-11-27)
+
+Per-file selection exists with qBittorrent ([decisions/165](../agents/decisions/165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):
+a pack picked by hand can be added with only some of its files, and the disk guard counts only
+those. The size ceiling still drops a big pack in the pass, which doesn't choose files yet (megapack
+spec step 3, with the megapack queue for the big ones).
+
 ## What to check
 
 Three exits, each in its own spec:

@@ -47,6 +47,11 @@ keeps reading one season until file selection (spec step 2) can skip what nobody
 `TestScrapNyaaForAnime_LaterSeasonStillDropsASeasonRangePack` and the golden case
 `kimetsu-season2-range-pack`.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** file
+selection exists now (megapack spec step 2), but only for the user's picks and later changes:
+the pass still downloads every file of the pack it takes. The hold above stands until the pass
+chooses files itself (spec step 3), so a later season still drops a season-range pack.
+
 **`FindAll` and not `FindString`** because a rejected match must not end the search: in `[Group] Anime (2021-2022) 01-24 [BD]` the real range comes **after** the year.
 
 **Accepted trade-off:** `FindAll` is **non-overlapping**, so Hibike still has no range. The match `2 - 01` consumes the `01`, and the following `01 ~ 13` is never seen. It stays as-is on purpose: scanning with overlap (restarting one character after each rejection) produces junk sub-matches — a rejected `2021-2022` would become `021-2022`, which passes the band and stores the range 21..2022. A pack with no range falls on the safe path; a pack with a wrong range lies to ownership by coverage ([#78](078-a-torrents-unit-of-ownership-is-coverage-on-the.md)).

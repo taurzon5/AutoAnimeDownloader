@@ -209,7 +209,7 @@ func processAnimeEpisodes(
 
 	// Ownership by coverage, BEFORE any search: what an already downloaded pack covers on the series'
 	// absolute axis doesn't go back to Nyaa (see coverage.go).
-	adopted := adoptCoveredEpisodes(anime, animeTitle, animeSeason, totalEpisodes, sel.toDownload, savedEpisodes, seriesIndex, torrentsHashSet)
+	adopted := adoptCoveredEpisodes(anime, animeTitle, animeSeason, totalEpisodes, sel.toDownload, savedEpisodes, seriesIndex, torrentsHashSet, packSkips(backend))
 	sel.toDownload = dropAdopted(sel.toDownload, adopted)
 	result.newEpisodes = append(result.newEpisodes, adopted...)
 
@@ -323,7 +323,24 @@ func processAnimeEpisodes(
 		missKey := files.EpisodeKey{AnimeID: anime.Media.Id, Episode: ep.Episode}
 
 		resolved := magnetsForEpisodes[ep.Episode]
-		candidates := resolved.candidates
+		target := torrentTarget{anime: anime, batch: resolved.skipSubfolder}
+		if !resolved.skipSubfolder {
+			target.episode = ep.Episode
+		}
+		if series, ok := seriesIndex[anime.Media.Id]; ok {
+			target.series = &series
+		}
+		// A torrent the app has with this episode's file unticked is no candidate (decisions/165).
+		// An episode a pack was resolved for whose every candidate is such a torrent falls back to a
+		// search of its own as a single episode: the pack's folder rule, name and range belong to the
+		// pack that was left out, and recorded on another torrent they would lie to ownership by
+		// coverage (decisions/078).
+		candidates := withoutUntickedRepicks(backend, resolved.candidates, target)
+		untickedRepicks := len(resolved.candidates) - len(candidates)
+		if len(candidates) == 0 && untickedRepicks > 0 {
+			resolved = resolvedMagnets{}
+			target.batch, target.episode = false, ep.Episode
+		}
 		skipSubfolder := resolved.skipSubfolder
 		if resolved.overrideName != "" {
 			epName = resolved.overrideName
@@ -350,6 +367,9 @@ func processAnimeEpisodes(
 					Msg("Skipping per-episode search: a recent search came back empty")
 			} else {
 				candidates, searchStats = filterSearchResults(rankSeriesResults(searcher.searchSingleEpisode(ep, anime.Media, seriesLength), finished, searcher.ranking), configs.MaxEpisodeTorrentSizeGB, configs.MinSeeders)
+				found := len(candidates)
+				candidates = withoutUntickedRepicks(backend, candidates, target)
+				untickedRepicks += found - len(candidates)
 				if len(candidates) == 0 && searcher.misses != nil {
 					searcher.misses.record(missKey, time.Now(), searchStats)
 				}
@@ -359,6 +379,15 @@ func processAnimeEpisodes(
 		// Without a magnet there's nothing to try: announcing "starting download" here sent a false push
 		// on every loop pass while the episode wasn't on Nyaa, and also made attemptDownloadWithRetries
 		// log "failed after all attempts" with zero attempts.
+		if len(candidates) == 0 && untickedRepicks > 0 {
+			// Only torrents the app has with this episode's file unticked: the user chose it, so no
+			// issue (no episode_stuck two days on) and no hold on the later episodes, whose own
+			// releases are out there as usual (decisions/100 is about an episode not on Nyaa yet).
+			logger.Logger.Info().
+				Str("episode", epName).
+				Msg("No torrent to download for this episode but the one where its file is unticked")
+			continue
+		}
 		if len(candidates) == 0 {
 			stuck = searcher.misses != nil
 			logger.Logger.Warn().
@@ -384,13 +413,6 @@ func processAnimeEpisodes(
 			notifications.Notify(configs, notifications.NewEpisode, torrentItem(torrentKey, notifications.Episode{AnimeID: anime.Media.Id, AnimeName: animeTitle, Number: ep.Episode}))
 		}
 
-		target := torrentTarget{anime: anime, batch: skipSubfolder}
-		if !skipSubfolder {
-			target.episode = ep.Episode
-		}
-		if series, ok := seriesIndex[anime.Media.Id]; ok {
-			target.series = &series
-		}
 		hash, chosen := attemptDownloadWithRetries(configs, backend, disk, candidates, epName, target)
 
 		if hash != "" {

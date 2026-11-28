@@ -782,6 +782,11 @@
   "picker_mapping_reason_no_entry": "No entry of the franchise matches its name",
   "picker_mapping_reason_past_series": "Past the last episode AniList lists",
   "picker_mapping_reason_no_number": "No episode number",
+  "picker_files_selected": "Downloading {bytes} of {total} · {count} of {files} files",
+  "picker_files_choose_hint": "Untick what you don't want: qBittorrent never downloads it.",
+  "picker_files_toggle_entry": "Download {title}",
+  "picker_files_toggle_file": "Download {name}",
+  "picker_files_none_selected": "Tick at least one file to download.",
   "picker_seeders": [
     {
       "declarations": [
@@ -921,6 +926,28 @@
   "next_airing": "Next ep. {when}",
   "status_col_next_airing": "Next ep.",
   "files_waiting_metadata": "Waiting for the torrent metadata",
+  "files_choice_save": "Save file choice",
+  "files_choice_reset": "Undo changes",
+  "files_choice_skipped": "Not downloaded",
+  "files_choice_confirm_title": [
+    {
+      "declarations": [
+        "input count"
+      ],
+      "selectors": [
+        "count"
+      ],
+      "match": {
+        "count=1": "Stop downloading {count} file?",
+        "count=*": "Stop downloading {count} files?"
+      }
+    }
+  ],
+  "files_choice_confirm_body": "Files already downloaded are deleted (finished ones in Shoko's folders stay). An episode left with no file loses its record, and the app may download it from another torrent.",
+  "files_choice_confirm_block": "Don't download those episodes automatically",
+  "files_choice_confirm": "Stop downloading",
+  "files_choice_done": "File choice saved",
+  "files_choice_error": "Could not change the file choice",
   "files_toggle": "Show or hide the files of {name}",
   "api_toast_anilist": "Failed to reach AniList",
   "api_toast_unknown": "Unknown error",

@@ -101,7 +101,7 @@ func TestClientMethodsHitExpectedPaths(t *testing.T) {
 			return c.ReleaseEpisode(21, 3)
 		}},
 		{"ReplaceAnime", http.MethodPost, "/api/v1/animes/21/replace", nil, `{"magnet":"magnet:?xt=urn:btih:abc"}`, "null", func(c *Client) error {
-			return c.ReplaceAnime(21, "magnet:?xt=urn:btih:abc")
+			return c.ReplaceAnime(21, ReplaceAnimeRequest{Magnet: "magnet:?xt=urn:btih:abc"})
 		}},
 		{"ReplaceEpisode", http.MethodPost, "/api/v1/animes/21/episodes/3/replace", nil, `{"magnet":"magnet:?xt=urn:btih:abc"}`, "null", func(c *Client) error {
 			return c.ReplaceEpisode(21, 3, "magnet:?xt=urn:btih:abc")
@@ -116,6 +116,10 @@ func TestClientMethodsHitExpectedPaths(t *testing.T) {
 		}},
 		{"PauseTorrent", http.MethodPost, "/api/v1/torrents/deadbeef/pause", nil, "", "null", func(c *Client) error {
 			return c.PauseTorrent("deadbeef")
+		}},
+		{"ChooseTorrentFiles", http.MethodPut, "/api/v1/torrents/deadbeef/files", nil, `{"skip":["Pack/02.mkv"],"block":true}`, "{}", func(c *Client) error {
+			_, err := c.ChooseTorrentFiles("deadbeef", TorrentFileChoiceRequest{Skip: []string{"Pack/02.mkv"}, Block: true})
+			return err
 		}},
 		{"ResumeTorrent", http.MethodPost, "/api/v1/torrents/deadbeef/resume", nil, "", "null", func(c *Client) error {
 			return c.ResumeTorrent("deadbeef")

@@ -17,6 +17,7 @@ vi.mock('../../src/lib/api/client.js', async () => {
     replaceAnimeWithMagnet: vi.fn(),
     getEpisodeTorrentCandidates: vi.fn(),
     replaceEpisodeWithMagnet: vi.fn(),
+    getStatus: vi.fn(),
   }
 })
 
@@ -35,6 +36,7 @@ const addStandaloneAnime = vi.mocked(client.addStandaloneAnime)
 const replaceAnimeWithMagnet = vi.mocked(client.replaceAnimeWithMagnet)
 const getEpisodeTorrentCandidates = vi.mocked(client.getEpisodeTorrentCandidates)
 const replaceEpisodeWithMagnet = vi.mocked(client.replaceEpisodeWithMagnet)
+const getStatus = vi.mocked(client.getStatus)
 const pop = vi.mocked(router.pop)
 const push = vi.mocked(router.push)
 
@@ -97,6 +99,7 @@ beforeEach(() => {
   getTorrentCandidateDetail.mockResolvedValue(detail())
   addStandaloneAnime.mockResolvedValue({ added: 2 })
   replaceAnimeWithMagnet.mockResolvedValue(undefined)
+  getStatus.mockResolvedValue({ torrent_client: 'builtin' } as Awaited<ReturnType<typeof client.getStatus>>)
   pop.mockResolvedValue(undefined)
   push.mockResolvedValue(undefined)
 })
@@ -578,5 +581,64 @@ describe('TorrentPicker — megapack mapping', () => {
     await screen.findByText('A very good pack')
     expect(screen.queryByText('What goes where')).toBeNull()
     expect(screen.queryByText('Megapack')).toBeNull()
+  })
+})
+
+describe('TorrentPicker — choosing files', () => {
+  const kimetsu = {
+    description_html: '<p>Batch</p>',
+    nyaa_url: 'https://nyaa.si/view/2013468',
+    files: [
+      { name: 'Trix/S01/01.mkv', size_bytes: 100 },
+      { name: 'Trix/S02/01.mkv', size_bytes: 100 },
+      { name: 'Trix/NCOP.mkv', size_bytes: 10 },
+    ],
+    mapping: {
+      megapack: true,
+      total_bytes: 210,
+      mapped_bytes: 200,
+      entries: [
+        { id: 21, title: 'Season 1', format: 'TV', episodes: [1], files: [{ name: 'Trix/S01/01.mkv', size_bytes: 100 }], bytes: 100, seed: true },
+        { id: 22, title: 'Season 2', format: 'TV', episodes: [1], files: [{ name: 'Trix/S02/01.mkv', size_bytes: 100 }], bytes: 100 },
+      ],
+      unmapped: [{ name: 'Trix/NCOP.mkv', size_bytes: 10, reason: 'creditless' }],
+    },
+  }
+
+  it('shows no boxes with the built-in client and sends no skip_files', async () => {
+    getTorrentCandidateDetail.mockResolvedValue(kimetsu)
+    await mountPicker()
+    await screen.findByText('Batch')
+    expect(screen.queryByRole('checkbox', { name: 'Download Season 2' })).toBeNull()
+    await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    await waitFor(() => expect(addStandaloneAnime).toHaveBeenCalled())
+    expect(addStandaloneAnime.mock.calls[0][1]).not.toHaveProperty('skip_files')
+  })
+
+  it('with qBittorrent starts a megapack with the unmapped files unticked and sends what was unticked', async () => {
+    getStatus.mockResolvedValue({ torrent_client: 'qbittorrent' } as Awaited<ReturnType<typeof client.getStatus>>)
+    getTorrentCandidateDetail.mockResolvedValue(kimetsu)
+    await mountPicker()
+    const season2 = await screen.findByRole('checkbox', { name: 'Download Season 2' })
+    expect(season2).toBeChecked()
+    expect(screen.getAllByRole('checkbox', { name: 'Download Trix/NCOP.mkv' })[0]).not.toBeChecked()
+    expect(screen.getByTestId('file-choice-summary').textContent).toContain('2 of 3 files')
+
+    await fireEvent.click(season2)
+    await waitFor(() => expect(screen.getByTestId('file-choice-summary').textContent).toContain('1 of 3 files'))
+    await fireEvent.click(screen.getByRole('button', { name: 'Download this' }))
+    await waitFor(() => expect(addStandaloneAnime).toHaveBeenCalled())
+    expect(addStandaloneAnime.mock.calls[0][1]?.skip_files?.sort()).toEqual(['Trix/NCOP.mkv', 'Trix/S02/01.mkv'])
+  })
+
+  it('refuses to download with every file unticked', async () => {
+    getStatus.mockResolvedValue({ torrent_client: 'qbittorrent' } as Awaited<ReturnType<typeof client.getStatus>>)
+    getTorrentCandidateDetail.mockResolvedValue({ ...kimetsu, mapping: undefined, files: kimetsu.files.slice(0, 2) })
+    await mountPicker()
+    for (const name of ['Download Trix/S01/01.mkv', 'Download Trix/S02/01.mkv']) {
+      await fireEvent.click(await screen.findByRole('checkbox', { name }))
+    }
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download this' })).toBeDisabled())
+    expect(screen.getByText('Tick at least one file to download.')).toBeTruthy()
   })
 })

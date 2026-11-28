@@ -20,5 +20,9 @@ now calls `DELETE /animes/{id}`, so its flags map by meaning, not name: `--delet
 `delete_files`, and the new `--blacklist` → `blacklist`. Both still default to `false`, and the
 command still needs `--yes`. `blacklist add` / `remove` delete nothing and take no `--yes`.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** `torrents skip` joins the list: it deletes a skipped file that is
+already on disk, so it refuses without `--yes` (optional `--block`). `torrents want` downloads
+again and needs no `--yes`.
+
 **Don't "fix" by:** prompting when stdin is not a TTY, defaulting `--yes` on in scripts, or adding
 `confirm=true` to the API.

@@ -72,6 +72,14 @@ it carries).
 Trade-off accepted: restarting seasons with a missing last episode shift the next season's offsets,
 the same limit `PackFileRange`'s flattening has.
 
+**Amendment (see [#165](165-a-torrents-files-are-chosen-with-qbittorrents-file.md)):** file
+selection (spec step 2) is built for the picker and the Downloads file panel, qBittorrent only:
+the mapping now decides the picker's default boxes (everything it places ticked, its unmapped
+videos not), and the add reads the cached list (`nyaa.TorrentFileList`) for the selected size and
+the episodes left with no file. The pass still takes whole packs and doesn't read the mapping, so
+the season-range hold (#83) stays until the pass chooses files itself (spec step 3, with
+"Download related seasons").
+
 **Don't "fix" by:**
 - Calling a torrent a megapack from its name alone: `001 ~ 366` is one entry, and `Complete Batch`
   is often one season.

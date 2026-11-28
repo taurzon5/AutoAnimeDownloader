@@ -1106,6 +1106,14 @@ func (b *QBitBackend) applyPlacement(ctx context.Context, client *qbitClient, se
 			return fmt.Errorf("failed to rename %s to %s: %w", f.Name, want, err)
 		}
 	}
+	// The files the user unticked at the add (PlacementRequest.Skip) or later, or that Shoko
+	// already has: priority 0 BEFORE the torrent starts, so qBittorrent never writes them. Set on
+	// every apply, which is harmless: qBittorrent keeps a priority (decisions/165).
+	if ids := skippedFileIDs(p); len(ids) > 0 {
+		if err := client.filePrio(ctx, hash, ids, 0); err != nil {
+			return fmt.Errorf("failed to skip the unwanted files: %w", err)
+		}
+	}
 
 	b.mu.Lock()
 	start := b.awaitingStart[hash]
@@ -1537,16 +1545,81 @@ func (b *QBitBackend) SetPlacementKept(hash string, kept bool) error {
 // a priority-0 file, and a deleted one doesn't stop it seeding the rest, even after a recheck
 // (measured on 5.x, decisions/153).
 func (b *QBitBackend) SkipPlacedFiles(hash string, torrentPaths []string) error {
-	p, err := b.placements.setSkipped(hash, torrentPaths)
+	p, err := b.placements.setSkipped(hash, torrentPaths, true)
 	if err != nil {
 		return err
 	}
+	return b.setFilePriority(hash, skippedFileIDs(p), 0)
+}
+
+// WantPlacedFiles clears the mark and puts those files back at qBittorrent's normal priority (1):
+// qBittorrent downloads them, and a finished torrent turns incomplete until they are in, so
+// onComplete fires again then (decisions/165). A finished placement is reopened first, as a
+// redownload of missing files is: its new files are written as ".part" (with part files on),
+// never under a final name Jellyfin or Shoko could take half-written, they don't read as missing
+// while they download, and the finish step renames them. Its download path is cleared, so a
+// staged torrent writes them into the library, next to the rest (decisions/145).
+func (b *QBitBackend) WantPlacedFiles(hash string, torrentPaths []string) error {
+	p, ok := b.placements.get(hash)
+	if !ok || len(p.Files) == 0 {
+		return fmt.Errorf("%w: %s", ErrFilesNotPlanned, hash)
+	}
+	if p.Completed {
+		client, settings, _, root, err := b.connection()
+		if err != nil {
+			return err
+		}
+		ctx, cancel := qbitContext()
+		defer cancel()
+		if err := client.setDownloadPath(ctx, hash, ""); err != nil {
+			return err
+		}
+		if err := b.placements.reopen(hash, ""); err != nil {
+			return err
+		}
+		// Until qBittorrent shows the torrent incomplete, its old complete state neither fires
+		// onComplete nor lets FinalizePlacement rename the new ".part" (decisions/140); and the poll
+		// retries the placement if the apply below fails.
+		b.mu.Lock()
+		delete(b.applied, hash)
+		b.reopened[hash] = time.Now()
+		b.mu.Unlock()
+		// While the files are still marked skipped: the not-yet-written wanted file is renamed
+		// ".part" before it gets a priority that lets qBittorrent write it.
+		if err := b.applyPlacement(ctx, client, settings, root, hash); err != nil {
+			return err
+		}
+	}
+	p, err := b.placements.setSkipped(hash, torrentPaths, false)
+	if err != nil {
+		return err
+	}
+	given := make(map[string]bool, len(torrentPaths))
+	for _, t := range torrentPaths {
+		given[t] = true
+	}
+	var ids []string
+	for i, f := range p.Files {
+		if given[f.Torrent] && !f.Skipped {
+			ids = append(ids, strconv.Itoa(i))
+		}
+	}
+	return b.setFilePriority(hash, ids, 1)
+}
+
+// skippedFileIDs are the qBittorrent file indexes of the placement's skipped files: a placed
+// torrent's file i is qBittorrent's file index i (applyPlacement plans them in index order).
+func skippedFileIDs(p Placement) []string {
 	var ids []string
 	for i, f := range p.Files {
 		if f.Skipped {
 			ids = append(ids, strconv.Itoa(i))
 		}
 	}
+	return ids
+}
+
+func (b *QBitBackend) setFilePriority(hash string, ids []string, priority int) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -1556,7 +1629,7 @@ func (b *QBitBackend) SkipPlacedFiles(hash string, torrentPaths []string) error 
 	}
 	ctx, cancel := qbitContext()
 	defer cancel()
-	return client.filePrio(ctx, hash, ids, 0)
+	return client.filePrio(ctx, hash, ids, priority)
 }
 
 func (b *QBitBackend) Announce(hash string) error {

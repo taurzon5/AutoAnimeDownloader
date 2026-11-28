@@ -439,8 +439,9 @@ func (c *Client) ReleaseEpisode(id, episode int) error {
 	return c.send(http.MethodPost, episodePath(id, episode)+"/release", nil, nil)
 }
 
-func (c *Client) ReplaceAnime(id int, magnet string) error {
-	return c.send(http.MethodPost, "/api/v1/animes/"+strconv.Itoa(id)+"/replace", map[string]string{"magnet": magnet}, nil)
+// ReplaceAnime is POST /animes/{id}/replace.
+func (c *Client) ReplaceAnime(id int, req ReplaceAnimeRequest) error {
+	return c.send(http.MethodPost, "/api/v1/animes/"+strconv.Itoa(id)+"/replace", req, nil)
 }
 
 func (c *Client) ReplaceEpisode(id, episode int, magnet string) error {
@@ -461,6 +462,16 @@ func (c *Client) GetTorrentFiles(hash string) ([]TorrentFileResponse, error) {
 		return nil, err
 	}
 	return list, nil
+}
+
+// ChooseTorrentFiles is PUT /torrents/{hash}/files: stop downloading skip (a file on disk is
+// deleted), download want again (decisions/165).
+func (c *Client) ChooseTorrentFiles(hash string, req TorrentFileChoiceRequest) (*daemon.FileChoiceResult, error) {
+	var out daemon.FileChoiceResult
+	if err := c.send(http.MethodPut, "/api/v1/torrents/"+hash+"/files", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 func (c *Client) PauseTorrent(hash string) error {

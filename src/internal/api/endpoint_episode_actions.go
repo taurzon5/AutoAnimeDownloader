@@ -293,6 +293,12 @@ func handleReplaceEpisodeWithMagnet(server *Server) http.HandlerFunc {
 			}
 		}
 
+		// Refused before the episode's current download is deleted (decisions/165).
+		if err := daemon.CheckEpisodeMagnet(server.FileManager, server.Torrents, configs, animeId, episodeNumber, body.Magnet); err != nil {
+			JSONDownloadError(w, err, "REPLACE_FAILED")
+			return
+		}
+
 		if alreadyDownloaded {
 			// Abort on failure: the replacement torrent would otherwise be untracked.
 			if err := daemon.RemoveEpisodesWithLinks(server.FileManager, server.Torrents, server.Librarian, []files.EpisodeKey{key}); err != nil {
@@ -330,6 +336,18 @@ func handleReplaceEpisodeWithMagnet(server *Server) http.HandlerFunc {
 
 // handleReplaceAnimeWithMagnet deletes all existing torrents for the anime and downloads using the
 // provided magnet link, marking all aired episodes as downloaded
+// ReplaceAnimeRequest is POST /animes/{id}/replace. Name, nyaa_id and size_bytes are the torrent
+// picker's row, recorded with the release (decisions/150); absent for a pasted magnet. SkipFiles
+// are the torrent files the user unticked (paths from Nyaa's file list), qBittorrent only:
+// 409 FILE_SELECTION_UNSUPPORTED otherwise, before anything is deleted (decisions/165).
+type ReplaceAnimeRequest struct {
+	Magnet    string   `json:"magnet"`
+	Name      string   `json:"name,omitempty"`
+	NyaaID    int      `json:"nyaa_id,omitempty"`
+	SizeBytes int64    `json:"size_bytes,omitempty"`
+	SkipFiles []string `json:"skip_files,omitempty"`
+}
+
 func handleReplaceAnimeWithMagnet(server *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -343,14 +361,7 @@ func handleReplaceAnimeWithMagnet(server *Server) http.HandlerFunc {
 			return
 		}
 
-		// name, nyaa_id and size_bytes: the torrent picker's row, recorded with the release
-		// (decisions/150). Absent for a pasted magnet.
-		var body struct {
-			Magnet    string `json:"magnet"`
-			Name      string `json:"name,omitempty"`
-			NyaaID    int    `json:"nyaa_id,omitempty"`
-			SizeBytes int64  `json:"size_bytes,omitempty"`
-		}
+		var body ReplaceAnimeRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !strings.HasPrefix(body.Magnet, "magnet:") {
 			JSONError(w, http.StatusBadRequest, "INVALID_MAGNET", "Invalid or missing magnet link")
 			return
@@ -360,6 +371,12 @@ func handleReplaceAnimeWithMagnet(server *Server) http.HandlerFunc {
 		if err != nil {
 			logger.Logger.Error().Err(err).Msg("Failed to load configs")
 			JSONInternalError(w, err)
+			return
+		}
+
+		// Refused before anything is deleted: replace removes the anime's episodes first.
+		if err := daemon.CheckFileSelection(configs, server.Torrents, body.SkipFiles); err != nil {
+			JSONDownloadError(w, err, "REPLACE_FAILED")
 			return
 		}
 
@@ -386,7 +403,7 @@ func handleReplaceAnimeWithMagnet(server *Server) http.HandlerFunc {
 			}
 		}
 
-		episodes, err := daemon.ManualDownloadAnimeWithMagnet(server.FileManager, server.Torrents, animeId, body.Magnet, configs, daemon.PickedRelease{Name: body.Name, NyaaID: body.NyaaID, SizeBytes: body.SizeBytes})
+		episodes, err := daemon.ManualDownloadAnimeWithMagnet(server.FileManager, server.Torrents, animeId, body.Magnet, configs, daemon.PickedRelease{Name: body.Name, NyaaID: body.NyaaID, SizeBytes: body.SizeBytes, Skip: body.SkipFiles})
 		if err != nil {
 			logger.Logger.Error().Err(err).Int("anime_id", animeId).Msg("Failed to replace anime with magnet")
 			JSONDownloadError(w, err, "REPLACE_FAILED")
